@@ -2,6 +2,16 @@
 
 A shift scheduling and leave management system built as a database course project. The system evolves across three database phases — relational, document, and graph — all running simultaneously via a one-time migration.
 
+## Microservice refactor
+
+The current application remains the runnable monolith. The proposed target architecture, local infrastructure template, service boundaries, and recommended migration order are described in [docs/microservices-refactor.md](docs/microservices-refactor.md).
+
+The main target-state artifacts are:
+
+- `docker-compose.microservices.yml` — executable architecture and implementation checklist.
+- `docs/shift-happens-high-level-architecture.drawio` — editable high-level diagram.
+- `docs/microservices-refactor.md` — teammate handoff and migration guide.
+
 ---
 
 ## Final Project Artifacts Guide
