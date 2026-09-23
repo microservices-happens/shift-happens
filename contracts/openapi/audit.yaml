@@ -1,0 +1,190 @@
+# Generated from the monolith DTOs; edit freely, this file is now the contract.
+# See contracts/README.md for conventions.
+openapi: 3.1.0
+info:
+  title: Audit Service
+  version: 1.0.0
+  description: 'Consumes every event (queue audit.events, binding #) and appends it unchanged. Idempotent by eventId.'
+servers:
+- url: /
+  description: Service root. Exposed by the gateway as /api.
+security:
+- bearerAuth: []
+tags:
+- name: audit
+- name: ops
+paths:
+  /auditlogs:
+    get:
+      tags:
+      - audit
+      summary: Search the audit log
+      description: 'Roles: Administrator.'
+      operationId: searchAudit
+      parameters:
+      - name: eventType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: aggregateId
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: correlationId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Liveness/readiness probe used by the gateway and Compose
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - UP
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'RS256 JWT issued by identity-service. Verify with JWT_JWKS_URL. Claims: sub, employeeId, role, iss, iat,
+        exp.'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Propagated on every outgoing call and copied into events.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details (application/problem+json).
+      required:
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    AuditEntry:
+      type: object
+      required:
+      - auditId
+      - eventId
+      - eventType
+      - occurredAt
+      - producer
+      - aggregateId
+      - envelope
+      properties:
+        auditId:
+          type: integer
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        producer:
+          type: string
+        aggregateId:
+          type: integer
+        correlationId:
+          type: string
+        receivedAt:
+          type: string
+          format: date-time
+        envelope:
+          type: object
+          description: The original event envelope, stored unchanged.
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Role not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Business rule violated
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

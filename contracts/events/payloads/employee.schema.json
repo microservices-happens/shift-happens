@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/employee.schema.json",
+  "title": "EmployeeSnapshot",
+  "description": "data of workforce.employee.created.v1 and workforce.employee.updated.v1. Never contains passwords or salary.",
+  "type": "object",
+  "required": [
+    "employeeId",
+    "employeeNumber",
+    "userRole",
+    "firstName",
+    "lastName",
+    "email",
+    "employmentStatus"
+  ],
+  "properties": {
+    "employeeId": {
+      "type": "integer"
+    },
+    "employeeNumber": {
+      "type": "string"
+    },
+    "userRole": {
+      "type": "string",
+      "enum": [
+        "Administrator",
+        "Manager",
+        "Employee"
+      ]
+    },
+    "firstName": {
+      "type": "string"
+    },
+    "lastName": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "phoneNumber": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hireDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "employmentStatus": {
+      "type": "string",
+      "description": "e.g. ACTIVE, INACTIVE. Identity disables login for anything other than ACTIVE."
+    },
+    "primaryWorkLocationId": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  }
+}

@@ -4,13 +4,14 @@ A shift scheduling and leave management system built as a database course projec
 
 ## Microservice refactor
 
-The current application remains the runnable monolith. The proposed target architecture, local infrastructure template, service boundaries, and recommended migration order are described in [docs/microservices-refactor.md](docs/microservices-refactor.md).
+The current application remains the runnable monolith. The target architecture, service boundaries and migration order are described in [docs/microservices-refactor.md](docs/microservices-refactor.md).
 
 The main target-state artifacts are:
 
-- `docker-compose.microservices.yml` — executable architecture and implementation checklist.
+- `contracts/` — REST (OpenAPI) and RabbitMQ event contracts between the services.
+- `services/*/README.md` — scaffold per service: what it owns, provides, publishes and consumes.
+- `docker-compose.microservices.yml` — runnable target system and implementation checklist.
 - `docs/shift-happens-high-level-architecture.drawio` — editable high-level diagram.
-- `docs/microservices-refactor.md` — teammate handoff and migration guide.
 
 ---
 

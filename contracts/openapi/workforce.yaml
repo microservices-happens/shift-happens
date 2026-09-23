@@ -1,0 +1,998 @@
+# Generated from the monolith DTOs; edit freely, this file is now the contract.
+# See contracts/README.md for conventions.
+openapi: 3.1.0
+info:
+  title: Workforce Service
+  version: 1.0.0
+  description: Employees and organisational reference data. Publishes workforce.employee.created.v1 and workforce.employee.updated.v1.
+    scheduling-command and leave-command call GET /employees/{id} and GET /employeejobroles?employeeId= to validate commands.
+servers:
+- url: /
+  description: Service root. Exposed by the gateway as /api.
+security:
+- bearerAuth: []
+tags:
+- name: employees
+- name: contracts
+- name: job-roles
+- name: departments
+- name: locations
+- name: ops
+paths:
+  /employees:
+    get:
+      tags:
+      - employees
+      summary: List employees
+      operationId: list_employees
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Employee'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - employees
+      summary: Create Employee
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
+      operationId: create_employees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Employee'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /employees/{id}:
+    get:
+      tags:
+      - employees
+      summary: Get Employee
+      operationId: get_employees
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    patch:
+      tags:
+      - employees
+      summary: Update Employee
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
+      operationId: update_employees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Employee'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - employees
+      summary: Delete Employee
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
+      operationId: delete_employees
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /employeecontracts:
+    get:
+      tags:
+      - contracts
+      summary: List employeecontracts
+      operationId: list_employeecontracts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeContract'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - contracts
+      summary: Create EmployeeContract
+      description: 'Roles: Administrator, Manager.'
+      operationId: create_employeecontracts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeContract'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeContract'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /employeecontracts/{id}:
+    get:
+      tags:
+      - contracts
+      summary: Get EmployeeContract
+      operationId: get_employeecontracts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeContract'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - contracts
+      summary: Update EmployeeContract
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_employeecontracts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeContract'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeContract'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - contracts
+      summary: Delete EmployeeContract
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_employeecontracts
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /employeejobroles:
+    get:
+      tags:
+      - job-roles
+      summary: List employeejobroles
+      operationId: list_employeejobroles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeJobRole'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - name: employeeId
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by employee. Used by scheduling-command to check qualifications before assigning.
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - job-roles
+      summary: Create EmployeeJobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: create_employeejobroles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeJobRole'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeJobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /employeejobroles/{id}:
+    get:
+      tags:
+      - job-roles
+      summary: Get EmployeeJobRole
+      operationId: get_employeejobroles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeJobRole'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - job-roles
+      summary: Update EmployeeJobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_employeejobroles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeJobRole'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeJobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - job-roles
+      summary: Delete EmployeeJobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_employeejobroles
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /departments:
+    get:
+      tags:
+      - departments
+      summary: List departments
+      operationId: list_departments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Department'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - departments
+      summary: Create Department
+      description: 'Roles: Administrator, Manager.'
+      operationId: create_departments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Department'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /departments/{id}:
+    get:
+      tags:
+      - departments
+      summary: Get Department
+      operationId: get_departments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    patch:
+      tags:
+      - departments
+      summary: Update Department
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_departments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Department'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - departments
+      summary: Delete Department
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_departments
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /jobroles:
+    get:
+      tags:
+      - job-roles
+      summary: List jobroles
+      operationId: list_jobroles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobRole'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - job-roles
+      summary: Create JobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: create_jobroles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRole'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /jobroles/{id}:
+    get:
+      tags:
+      - job-roles
+      summary: Get JobRole
+      operationId: get_jobroles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRole'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - job-roles
+      summary: Update JobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_jobroles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRole'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - job-roles
+      summary: Delete JobRole
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_jobroles
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /worklocations:
+    get:
+      tags:
+      - locations
+      summary: List worklocations
+      operationId: list_worklocations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkLocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - locations
+      summary: Create WorkLocation
+      description: 'Roles: Administrator, Manager.'
+      operationId: create_worklocations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkLocation'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+  /worklocations/{id}:
+    get:
+      tags:
+      - locations
+      summary: Get WorkLocation
+      operationId: get_worklocations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkLocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - locations
+      summary: Update WorkLocation
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_worklocations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkLocation'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - locations
+      summary: Delete WorkLocation
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_worklocations
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Liveness/readiness probe used by the gateway and Compose
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - UP
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'RS256 JWT issued by identity-service. Verify with JWT_JWKS_URL. Claims: sub, employeeId, role, iss, iat,
+        exp.'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Propagated on every outgoing call and copied into events.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details (application/problem+json).
+      required:
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    Employee:
+      type: object
+      required:
+      - employeeNumber
+      - userRole
+      - firstName
+      - lastName
+      - email
+      - employmentStatus
+      properties:
+        employeeId:
+          type: integer
+          readOnly: true
+        employeeNumber:
+          type: string
+        userRole:
+          type: string
+          enum:
+          - Administrator
+          - Manager
+          - Employee
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type:
+          - string
+          - 'null'
+        hireDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        employmentStatus:
+          type: string
+        primaryWorkLocationId:
+          type:
+          - integer
+          - 'null'
+      description: 'No password field: passwords are set via identity-service PUT /auth/accounts/{employeeId}/password.'
+    EmployeeContract:
+      type: object
+      required:
+      - employeeId
+      - departmentId
+      - contractType
+      - startDate
+      properties:
+        contractId:
+          type: integer
+          readOnly: true
+        employeeId:
+          type: integer
+        departmentId:
+          type: integer
+        contractType:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        weeklyHours:
+          type:
+          - integer
+          - 'null'
+        isActive:
+          type: boolean
+      description: salaryAmount is stored but never exposed.
+    EmployeeJobRole:
+      type: object
+      required:
+      - employeeId
+      - jobRoleId
+      - assignedDate
+      properties:
+        employeeJobRoleId:
+          type: integer
+          readOnly: true
+        employeeId:
+          type: integer
+        jobRoleId:
+          type: integer
+        assignedDate:
+          type: string
+          format: date
+        expiryDate:
+          type:
+          - string
+          - 'null'
+          format: date
+        proficiencyLevel:
+          type:
+          - string
+          - 'null'
+    Department:
+      type: object
+      required:
+      - departmentName
+      properties:
+        departmentId:
+          type: integer
+          readOnly: true
+        departmentName:
+          type: string
+        isActive:
+          type: boolean
+    JobRole:
+      type: object
+      required:
+      - roleName
+      properties:
+        jobRoleId:
+          type: integer
+          readOnly: true
+        roleName:
+          type: string
+        jobRoleDescription:
+          type:
+          - string
+          - 'null'
+        isCertificationRequired:
+          type: boolean
+    WorkLocation:
+      type: object
+      required:
+      - locationName
+      - city
+      - country
+      - timezone
+      properties:
+        workLocationId:
+          type: integer
+          readOnly: true
+        locationName:
+          type: string
+        addressLine1:
+          type:
+          - string
+          - 'null'
+        addressLine2:
+          type:
+          - string
+          - 'null'
+        city:
+          type: string
+        country:
+          type: string
+        timezone:
+          type: string
+        isActive:
+          type: boolean
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Role not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Business rule violated
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

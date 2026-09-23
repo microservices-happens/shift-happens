@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/leave-request.schema.json",
+  "title": "LeaveRequestSnapshot",
+  "description": "data of leave.request.submitted.v1, leave.request.approved.v1 and leave.request.rejected.v1. decision is null while the request is pending.",
+  "type": "object",
+  "required": ["leaveRequestId", "employeeId", "leaveTypeId", "leaveTypeName", "startDate", "endDate", "requestStatus", "requestedDatetime", "decision"],
+  "properties": {
+    "leaveRequestId": { "type": "integer" },
+    "employeeId": { "type": "integer" },
+    "leaveTypeId": { "type": "integer" },
+    "leaveTypeName": { "type": "string" },
+    "startDate": { "type": "string", "format": "date" },
+    "endDate": { "type": "string", "format": "date" },
+    "requestStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "CANCELLED"] },
+    "reason": { "type": ["string", "null"] },
+    "requestedDatetime": { "type": "string", "format": "date-time" },
+    "decision": {
+      "type": ["object", "null"],
+      "required": ["approverEmployeeId", "decision", "decisionDatetime"],
+      "properties": {
+        "approverEmployeeId": { "type": "integer" },
+        "decision": { "type": "string", "enum": ["APPROVED", "REJECTED"] },
+        "comment": { "type": ["string", "null"] },
+        "decisionDatetime": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

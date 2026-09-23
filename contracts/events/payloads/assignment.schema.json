@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/assignment.schema.json",
+  "title": "ShiftAssignmentSnapshot",
+  "description": "data of scheduling.assignment.created.v1 and scheduling.assignment.updated.v1. shiftStartDatetime/shiftEndDatetime are copied in so consumers can show the assignment without looking up the shift.",
+  "type": "object",
+  "required": ["shiftAssignmentId", "shiftId", "employeeId", "assignmentStatus", "shiftStartDatetime", "shiftEndDatetime"],
+  "properties": {
+    "shiftAssignmentId": { "type": "integer" },
+    "shiftId": { "type": "integer" },
+    "employeeId": { "type": "integer" },
+    "assignmentStatus": { "type": "string", "description": "e.g. ASSIGNED, APPROVED, CANCELLED, SWAPPED, LEAVE_CONFLICT." },
+    "assignedDatetime": { "type": ["string", "null"], "format": "date-time" },
+    "checkInDatetime": { "type": ["string", "null"], "format": "date-time" },
+    "checkOutDatetime": { "type": ["string", "null"], "format": "date-time" },
+    "shiftStartDatetime": { "type": "string", "format": "date-time" },
+    "shiftEndDatetime": { "type": "string", "format": "date-time" }
+  }
+}

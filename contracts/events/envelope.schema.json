@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/envelope.schema.json",
+  "title": "EventEnvelope",
+  "description": "Body of every message published to the shift-happens.events exchange. The routing key equals eventType.",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "aggregateId", "aggregateVersion", "correlationId", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique per event. Consumers use it for de-duplication."
+    },
+    "eventType": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z-]+\\.[a-z-]+\\.v[0-9]+$",
+      "description": "<context>.<entity>.<what-happened>.v<version>, e.g. scheduling.swap.approved.v1. Also used as the routing key.",
+      "examples": ["scheduling.swap.approved.v1"]
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "enum": ["workforce-service", "scheduling-service", "leave-service"]
+    },
+    "aggregateId": {
+      "type": "integer",
+      "description": "Id of the entity the event is about (employeeId, shiftId, shiftSwapId, ...)."
+    },
+    "aggregateVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Increments on every change of the aggregate. Consumers ignore snapshots older than the one they hold."
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "Copied from the X-Correlation-Id of the request (or the correlationId of the event) that caused this event."
+    },
+    "causationId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "eventId of the event that caused this one, if any."
+    },
+    "data": {
+      "type": "object",
+      "description": "Full snapshot of the entity after the change. Schema per eventType is listed in catalog.md."
+    }
+  },
+  "examples": [
+    {
+      "eventId": "0b7c6c2e-4f7a-4d8e-9a3c-1f5e2d6b7a90",
+      "eventType": "scheduling.swap.approved.v1",
+      "occurredAt": "2026-10-01T08:15:00Z",
+      "producer": "scheduling-service",
+      "aggregateId": 17,
+      "aggregateVersion": 2,
+      "correlationId": "c1d2e3f4-0000-4000-8000-000000000001",
+      "causationId": null,
+      "data": {
+        "shiftSwapId": 17,
+        "originalShiftAssignmentId": 88,
+        "shiftId": 12,
+        "employeeFromId": 42,
+        "employeeToId": 57,
+        "swapStatus": "APPROVED",
+        "reason": "Doctor's appointment",
+        "requestDatetime": "2026-09-30T14:02:00Z",
+        "decision": {
+          "approverEmployeeId": 3,
+          "decision": "APPROVED",
+          "comment": "OK",
+          "decisionDatetime": "2026-10-01T08:15:00Z"
+        }
+      }
+    }
+  ]
+}

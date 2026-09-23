@@ -1,136 +1,105 @@
 # Microservice Refactor Guide
 
-This document explains the proposed target architecture and how the team can move toward it without stopping work on the current application.
+This document explains the target architecture and how the team moves toward it while the monolith keeps working. The focus is **Large Systems**: service boundaries, data ownership, messaging, CQRS and deployment. We deliberately keep integration technology to a minimum, so data moves in only two ways: REST/JSON and RabbitMQ events.
 
-The current `docker-compose.yml` remains the runnable monolith. `docker-compose.microservices.yml` describes the target system and acts as an implementation checklist. Application folders under `services/` are intentionally absent until the corresponding bounded context is extracted.
+| Artifact | Purpose |
+|---|---|
+| `docker-compose.microservices.yml` | Runnable target system and implementation checklist |
+| `contracts/` | **The contracts between services**: OpenAPI per service, event envelope, event catalog, queues |
+| `services/<name>/README.md` | Scaffold per service: what it owns, provides, publishes and consumes, and when it is done |
+| `docs/shift-happens-high-level-architecture.drawio` | Editable diagram |
 
-The editable architecture diagram is `docs/shift-happens-high-level-architecture.drawio`.
+The current `docker-compose.yml` remains the runnable monolith.
 
 ## Architecture at a glance
 
-The browser communicates only with the edge and the GraphQL BFF/API Gateway. It never connects directly to a business service or database.
+The browser talks only to the API gateway. It never reaches a business service or database directly.
 
-The five core business domains are:
+| Service | Responsibility | Data |
+|---|---|---|
+| **Identity** | Login, accounts, JWT signing | Postgres |
+| **Workforce** | Employees, contracts, departments, job roles, locations | Postgres |
+| **Scheduling** | Shifts, assignments, approvals and **shift swaps** (CQRS) | Postgres write + Mongo read |
+| **Leave** | Requests, types, approvals, immutable ledger (CQRS) | Postgres write + Mongo read |
+| Notification | In-app notifications and email, fed by events | Postgres |
+| Audit | Append-only log of every event | Postgres |
 
-- **Identity:** local credentials, external OIDC login, JWT issuance, and account lifecycle.
-- **Workforce:** employees, contracts, departments, job roles, and work locations.
-- **Scheduling:** shifts, required roles, assignments, conflict checking, and schedule queries.
-- **Leave:** leave requests, leave types, approval decisions, and the immutable leave ledger.
-- **Shift Swap:** swap requests, eligibility workflow, acceptance, rejection, and expiry.
+**Shift swaps are part of Scheduling.** A swap moves an existing assignment to another employee. Inside one service, approving the swap and reassigning the shift is a single local transaction. As a separate service it would need a distributed workflow with compensation for no real benefit.
 
-Notification, Audit, and AI are supporting services rather than additional core business domains.
+## Communication
 
-## Communication choices
+| From → To | How | Contract |
+|---|---|---|
+| Browser → gateway | HTTPS `/api/<resource>` (same URLs as the monolith) | – |
+| Gateway → service | REST/JSON. The gateway strips `/api` and routes by path. For Scheduling and Leave, `GET` goes to the query role and writes go to the command role | `contracts/openapi/*.yaml` |
+| Service → service (needs an answer now) | REST/JSON lookup, forwarding the caller's JWT | `contracts/openapi/workforce.yaml` |
+| Service → service (something happened) | RabbitMQ topic exchange `shift-happens.events`, routing key = `eventType` | `contracts/events/` |
 
-- **Browser to edge:** HTTPS. Caddy represents TLS termination and a future Kubernetes Ingress or cloud load balancer.
-- **Browser to BFF:** REST for commands and authentication, GraphQL for composed reads, and SSE for live in-app notifications.
-- **BFF to business services:** gRPC with Protocol Buffers for synchronous internal requests.
-- **Service to service:** RabbitMQ topic exchanges for asynchronous domain events and publish/subscribe fan-out.
-- **Email:** Notification Service consumes events and sends messages through SMTP. Mailpit is the local email sink.
+There is no gRPC, GraphQL or SSE. The gateway is plain Caddy with path routing and no custom code. Each service validates the JWT itself using identity's public key, because each service owns its own authorization rules.
 
-The BFF validates the token and performs coarse route-level authorization. Each business service must still enforce authorization for its own operations because it owns the business rules and data.
+The only synchronous service-to-service calls go to Workforce: Scheduling and Leave check that an employee exists, is active and holds the right job role before accepting a command. Everything else flows through events.
 
-## Data ownership
+## Data ownership and CQRS
 
-Every service owns its data. A service must not read or write another service's database directly.
+Every service owns its database, and no service reads another service's tables.
 
-Scheduling and Leave use CQRS because their read and write needs differ:
+Scheduling and Leave each run as two containers built from one codebase (`APP_ROLE=command|query`):
 
-- The command process owns the relational write model and transactional outbox.
-- The query process consumes events and owns a MongoDB read model.
-- Both processes are deployments of the same bounded-context codebase, not separate business microservices.
-- The read model is eventually consistent and can be rebuilt from published events where supported.
+- **Command:** Postgres write model. It writes events to an outbox table in the same transaction as the state change.
+- **Query:** consumes events into a MongoDB read model shaped for the UI (overviews, balances). This model is eventually consistent and can be rebuilt by replaying events.
 
-The Leave ledger is append-only and idempotent. It should only be described as full event sourcing if the implemented service can rebuild its authoritative state from the stored events. The Audit Service is an append-only event consumer, not the source of truth for other services.
+The Leave ledger is append-only: corrections are new entries, never updates.
 
-## Event-processing rules
+## Events in one paragraph
 
-Applications declare RabbitMQ exchanges, bindings, durable queues, retries, and dead-letter routing at startup. Compose only supplies the broker and configuration values.
-
-Every event envelope should contain at least:
-
-- `eventId`
-- `eventType` and schema version
-- `aggregateId` and `aggregateVersion`
-- `occurredAt`
-- `correlationId` and `causationId`
-- tenant/company identifier when multi-tenancy is introduced
-
-Consumers store processed `eventId` values to make redelivery idempotent. For state-update projections, an older `aggregateVersion` or timestamp is ignored. This makes last-write-wins handlers commutative for the specific fields where that rule is valid; timestamps alone do not make every business operation commutative.
-
-Each subscriber has its own queue. For example, Scheduling Projection, Notification, and Audit may all receive the same `shift.updated` event without competing for one message. Multiple replicas of the same subscriber share its queue and act as competing consumers.
-
-Command services should use the transactional outbox pattern so a database commit and its event cannot silently diverge.
+Every event is an envelope (`eventId`, `eventType`, `aggregateId`, `aggregateVersion`, `correlationId` and so on) with a **full snapshot** of the entity in `data`. Each consumer has its own durable queue, so one event fans out to Scheduling-query, Notification and Audit without them competing. Consumers deduplicate by `eventId` and ignore older `aggregateVersion`s. The full list of events, schemas, queues and bindings is in [`contracts/events/catalog.md`](../contracts/events/catalog.md).
 
 ## Local usage
 
-Validate the target Compose model:
-
 ```bash
-docker compose -f docker-compose.microservices.yml config --quiet
-docker compose -f docker-compose.microservices.yml --profile app --profile ai config --quiet
-```
+# Validate
+docker compose -f docker-compose.microservices.yml --profile app config --quiet
 
-Start infrastructure before application services exist:
-
-```bash
+# Infrastructure only (DBs, RabbitMQ, Mailpit, OTel collector)
 docker compose -f docker-compose.microservices.yml up -d
-```
 
-This starts the service-owned databases, RabbitMQ, Mailpit, and the OpenTelemetry Collector. Useful local endpoints are:
-
-- RabbitMQ management: `http://localhost:15672`
-- Mailpit: `http://localhost:8025`
-
-After all required `services/*` build contexts exist, start the target application:
-
-```bash
+# Whole system, once every services/* folder has a Dockerfile
 docker compose -f docker-compose.microservices.yml --profile app up --build
 ```
 
-The target application is exposed at `https://localhost:8443`. Caddy uses a local certificate authority, so a browser may warn until its local CA is trusted.
+- App: `https://localhost:8443` (Caddy local CA, so the browser may warn)
+- RabbitMQ management: `http://localhost:15672`
+- Mailpit: `http://localhost:8025`
 
-Enable the optional AI Assistant with both profiles:
+Do not use the development passwords from Compose in a deployed environment.
 
-```bash
-docker compose -f docker-compose.microservices.yml \
-  --profile app --profile ai up --build
-```
+## Migration order (strangler)
 
-Do not use the development passwords from Compose in a deployed environment. Kubernetes or a cloud secret manager should provide production credentials.
+1. **Agree on `contracts/`.** Review the OpenAPI files and the event catalog together. After this, teams can work in parallel.
+2. **Identity + Workforce.** Login keeps working, and employee events start flowing.
+3. **Scheduling, including swaps.** Build the command side and outbox first, then the query projection.
+4. **Leave.** Requests and approvals, then the ledger, then the query projection and the leave-conflict event into Scheduling.
+5. **Notification + Audit.** Two independent subscribers demonstrate fan-out.
+6. **Remove migrated monolith routes** once a cooperation test proves the replacement flow works.
 
-## Recommended migration order
-
-Use a strangler-style migration: keep the monolith working while one responsibility at a time moves behind the gateway.
-
-1. **Agree on contracts.** Define JWT claims, the event envelope, RabbitMQ routing-key naming, protobuf package conventions, `/health`, and correlation IDs.
-2. **Create the edge and BFF skeleton.** Initially, it may proxy unchanged endpoints to the monolith.
-3. **Extract Identity and Workforce.** They establish authentication and the reference data used by later services.
-4. **Extract Scheduling.** Begin with its relational command side, add the outbox, then build the asynchronous query projection.
-5. **Extract Leave.** Implement requests and approval first, followed by the immutable ledger and query projection.
-6. **Extract Shift Swap.** Implement it as an event-driven workflow. Call it a saga only when compensating actions are implemented.
-7. **Add Notification and Audit subscribers.** Their separate queues demonstrate publish/subscribe fan-out.
-8. **Add the AI Assistant last.** The BFF supplies explicitly approved, read-only context; the assistant has no database or RabbitMQ access.
-9. **Remove migrated monolith routes.** Delete old code only after cooperation tests prove that the replacement workflow works.
-
-This order is a recommendation, not a requirement. A team can work in parallel after the shared contracts and ownership boundaries are agreed.
+Until a service exists, its Caddy route can temporarily point at the monolith (`reverse_proxy` to the old backend) so the frontend always works.
 
 ## Definition of done for a service
 
-A service extraction is complete when it has:
-
-- A clear owner and bounded responsibility.
-- Its own build, container image, schema migrations, and database.
-- Versioned gRPC, REST, GraphQL, or event contracts as applicable.
-- Independent authentication and operation-level authorization.
-- Idempotent event handlers and an outbox for reliable publication where needed.
-- Structured logs, correlation IDs, OpenTelemetry instrumentation, and `/health`.
-- Unit tests for business rules, database/broker integration tests, and at least one cooperation test.
-- CI steps that build, test, scan, and publish the image.
-- No direct access to another service's database.
+- Implements its `contracts/openapi/<service>.yaml` and the events listed in its `services/<name>/README.md`.
+- Has its own Dockerfile, database, schema migrations and `/health`.
+- Validates the JWT and enforces role rules for its own operations.
+- Uses an outbox (producers) or idempotent handlers (consumers).
+- Propagates `X-Correlation-Id` / `correlationId` and exports OpenTelemetry data.
+- Has unit tests for business rules plus at least one cooperation test across a queue or REST call.
+- Never accesses another service's database.
 
 ## Deployment mapping
 
-Docker Compose simulates the logical structure locally. In Kubernetes, each application role becomes a Deployment and Service, each health endpoint becomes readiness/liveness probes, and Caddy is replaced by an Ingress controller or managed gateway. Production databases and RabbitMQ can be managed services. Horizontal scaling applies to stateless application processes and RabbitMQ consumers; database and broker scaling require their own plans.
+Compose simulates the logical structure locally. In Kubernetes:
 
-The initial OpenTelemetry Collector accepts logs, metrics, and traces and writes them with a debug exporter. A later deployment can route them to Grafana, Prometheus, Loki, Jaeger, or a managed observability platform.
+- Each container role becomes a Deployment and a Service, and `/health` becomes the readiness and liveness probes.
+- Caddy is replaced by an Ingress with the same path rules.
+- Stateless roles and queue consumers scale horizontally. Command and query roles scale independently.
+
+The OpenTelemetry Collector currently prints to its debug exporter. Later it can forward to Grafana, Prometheus, Loki or Jaeger.

@@ -1,21 +1,19 @@
 # Target-state local environment for the Shift Happens microservice refactor.
 #
-# This is both a Compose template and an implementation checklist. Application
-# build contexts under ./services are intentionally not present yet. Create one
-# as each bounded context is extracted from the monolith. The existing
-# docker-compose.yml remains the runnable monolith during the migration.
+# This is both a Compose template and an implementation checklist. Each
+# ./services/<name> folder holds a README scaffold describing what the service
+# owns and which contracts it provides/consumes. Add a Dockerfile there when the
+# service is extracted from the monolith. The existing docker-compose.yml
+# remains the runnable monolith during the migration.
+#
+# Only two ways to move data between services (see contracts/README.md):
+#   1. REST/JSON over HTTP  — synchronous request/response (contracts/openapi)
+#   2. RabbitMQ events      — asynchronous publish/subscribe (contracts/events)
 #
 # Start infrastructure only:
 #   docker compose -f docker-compose.microservices.yml up -d
 # Start the completed target system:
 #   docker compose -f docker-compose.microservices.yml --profile app up --build
-# Add the optional AI assistant:
-#   docker compose -f docker-compose.microservices.yml --profile app --profile ai up --build
-#
-# Applications declare durable queues and bindings at startup. Each event uses
-# an envelope containing eventId, aggregateId, aggregateVersion, occurredAt and
-# eventType. Consumers deduplicate eventId and ignore stale aggregateVersion
-# values; Compose cannot provide those application-level guarantees.
 
 name: shift-happens-microservices
 
@@ -25,21 +23,23 @@ x-app: &app
   profiles: [app]
   restart: unless-stopped
 
-# Proposed event-client contract shared by Java and Node.js services.
-x-event-client: &event-client
+# Shared settings every business service uses: broker, JWT verification and
+# telemetry. Names match contracts/README.md.
+x-service-env: &service-env
+  HTTP_PORT: "8080"
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_PORT: "5672"
   RABBITMQ_USER: ${RABBITMQ_USER:-shift}
   RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-shift_dev}
   RABBITMQ_VHOST: shift-happens
   EVENT_EXCHANGE: shift-happens.events
-  EVENT_EXCHANGE_TYPE: topic
-  RETRY_EXCHANGE: shift-happens.retry
   DEAD_LETTER_EXCHANGE: shift-happens.dlx
+  JWT_ISSUER: shift-happens-identity
+  JWT_JWKS_URL: http://identity-service:8080/.well-known/jwks.json
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
 
-# Every application implements the technology-neutral /health contract and its
-# image contains curl (or replaces this with an equivalent command).
+# Every application exposes GET /health on port 8080 and its image contains
+# curl (or replaces this with an equivalent command).
 x-app-healthcheck: &app-healthcheck
   test: [CMD-SHELL, "curl -fsS http://localhost:8080/health || exit 1"]
   interval: 10s
@@ -75,8 +75,10 @@ x-mongo: &mongo
     start_period: 30s
 
 services:
-  # Local equivalent of cloud TLS termination, load balancing and K8s Ingress.
-  ingress:
+  # API gateway: TLS termination and path-based routing to the owning service.
+  # It does not contain business logic; every service validates the JWT itself.
+  # Local stand-in for a Kubernetes Ingress / cloud load balancer.
+  api-gateway:
     <<: *app
     image: caddy:2-alpine
     ports:
@@ -87,11 +89,25 @@ services:
     volumes:
       - caddy-data:/data
       - caddy-config:/config
-    networks: [edge]
+    networks: [edge, service-bus]
     depends_on:
       frontend:
         condition: service_started
-      gateway-bff:
+      identity-service:
+        condition: service_started
+      workforce-service:
+        condition: service_started
+      scheduling-command:
+        condition: service_started
+      scheduling-query:
+        condition: service_started
+      leave-command:
+        condition: service_started
+      leave-query:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      audit-service:
         condition: service_started
 
   frontend:
@@ -108,67 +124,22 @@ services:
       timeout: 3s
       retries: 10
 
-  # Public REST/GraphQL BFF. It validates JWTs, performs coarse authorization,
-  # composes queries and calls internal services over gRPC.
-  gateway-bff:
-    <<: *app
-    build: ./services/gateway-bff
-    image: ${GATEWAY_IMAGE:-shift-happens/gateway-bff:dev}
-    environment:
-      HTTP_PORT: "8080"
-      IDENTITY_GRPC_ADDRESS: identity-service:50051
-      IDENTITY_HTTP_URL: http://identity-service:8080
-      WORKFORCE_GRPC_ADDRESS: workforce-service:50051
-      SCHEDULING_COMMAND_GRPC_ADDRESS: scheduling-command:50051
-      SCHEDULING_QUERY_GRPC_ADDRESS: scheduling-query:50051
-      LEAVE_COMMAND_GRPC_ADDRESS: leave-command:50051
-      LEAVE_QUERY_GRPC_ADDRESS: leave-query:50051
-      SHIFT_SWAP_GRPC_ADDRESS: shift-swap-service:50051
-      NOTIFICATION_HTTP_URL: http://notification-service:8080
-      AI_ASSISTANT_HTTP_URL: http://ai-assistant:8080
-      OIDC_ISSUER: https://localhost:8443/auth
-      OIDC_JWKS_URL: http://identity-service:8080/.well-known/jwks.json
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-shift-happens}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    expose: ["8080"]
-    networks: [edge, service-bus, assistant]
-    depends_on:
-      identity-service:
-        condition: service_started
-      workforce-service:
-        condition: service_started
-      scheduling-command:
-        condition: service_started
-      scheduling-query:
-        condition: service_started
-      leave-command:
-        condition: service_started
-      leave-query:
-        condition: service_started
-      shift-swap-service:
-        condition: service_started
-      notification-service:
-        condition: service_started
-    healthcheck: *app-healthcheck
-
-  # Authentication, local credentials, OIDC integration, JWTs and accounts.
+  # Login, password hashes and JWT signing. Keeps a login account per employee
+  # in sync by consuming workforce.employee.* events.
+  # Contract: contracts/openapi/identity.yaml
   identity-service:
     <<: *app
     build: ./services/identity-service
     image: ${IDENTITY_IMAGE:-shift-happens/identity-service:dev}
     environment:
-      <<: *event-client
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
+      <<: *service-env
       DB_HOST: identity-db
       DB_PORT: "5432"
       DB_NAME: identity
       DB_USER: identity
       DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev}
-      OIDC_ISSUER: https://localhost:8443/auth
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-shift-happens}
-      OUTBOX_ENABLED: "true"
-    expose: ["8080", "50051"]
+      RABBITMQ_QUEUE: identity.accounts
+    expose: ["8080"]
     networks: [service-bus, identity-data]
     depends_on:
       identity-db:
@@ -177,22 +148,21 @@ services:
         condition: service_healthy
     healthcheck: *app-healthcheck
 
-  # Employees, contracts, departments, roles and work locations.
+  # Employees, contracts, departments, job roles and work locations.
+  # Contract: contracts/openapi/workforce.yaml
   workforce-service:
     <<: *app
     build: ./services/workforce-service
     image: ${WORKFORCE_IMAGE:-shift-happens/workforce-service:dev}
     environment:
-      <<: *event-client
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
+      <<: *service-env
       DB_HOST: workforce-db
       DB_PORT: "5432"
       DB_NAME: workforce
       DB_USER: workforce
       DB_PASSWORD: ${WORKFORCE_DB_PASSWORD:-workforce_dev}
       OUTBOX_ENABLED: "true"
-    expose: ["50051"]
+    expose: ["8080"]
     networks: [service-bus, workforce-data]
     depends_on:
       workforce-db:
@@ -201,25 +171,26 @@ services:
         condition: service_healthy
     healthcheck: *app-healthcheck
 
-  # Scheduling is one bounded context deployed in independently scalable CQRS
-  # roles. Both roles are built from the same service codebase and image.
+  # Scheduling owns shifts, required roles, assignments, shift approvals and
+  # shift swaps. One codebase/image deployed in two CQRS roles: the gateway
+  # sends GET requests to the query role and all writes to the command role.
+  # Contract: contracts/openapi/scheduling.yaml
   scheduling-command:
     <<: *app
     build: ./services/scheduling-service
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
-      <<: *event-client
+      <<: *service-env
       APP_ROLE: command
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
       DB_HOST: scheduling-write-db
       DB_PORT: "5432"
       DB_NAME: scheduling
       DB_USER: scheduling
       DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_dev}
-      RABBITMQ_QUEUE: scheduling.command-events
+      WORKFORCE_URL: http://workforce-service:8080
+      RABBITMQ_QUEUE: scheduling.leave-conflicts
       OUTBOX_ENABLED: "true"
-    expose: ["50051"]
+    expose: ["8080"]
     networks: [service-bus, scheduling-write-data]
     depends_on:
       scheduling-write-db:
@@ -233,10 +204,8 @@ services:
     build: ./services/scheduling-service
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
-      <<: *event-client
+      <<: *service-env
       APP_ROLE: query
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
       MONGO_HOST: scheduling-read-db
       MONGO_PORT: "27017"
       MONGO_DATABASE: scheduling_read
@@ -244,7 +213,7 @@ services:
       MONGO_PASSWORD: ${SCHEDULING_MONGO_PASSWORD:-scheduling_read_dev}
       MONGO_AUTH_DATABASE: admin
       RABBITMQ_QUEUE: scheduling.projection
-    expose: ["50051"]
+    expose: ["8080"]
     networks: [service-bus, scheduling-read-data]
     depends_on:
       scheduling-read-db:
@@ -253,26 +222,24 @@ services:
         condition: service_healthy
     healthcheck: *app-healthcheck
 
-  # Leave command owns requests, types and the immutable leave ledger. Its query
-  # role projects those events into a read-optimized document model.
+  # Leave requests, types, approvals and the immutable leave ledger. Same CQRS
+  # split as Scheduling.
+  # Contract: contracts/openapi/leave.yaml
   leave-command:
     <<: *app
     build: ./services/leave-service
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
-      <<: *event-client
+      <<: *service-env
       APP_ROLE: command
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
       DB_HOST: leave-write-db
       DB_PORT: "5432"
       DB_NAME: leave
       DB_USER: leave
       DB_PASSWORD: ${LEAVE_DB_PASSWORD:-leave_dev}
-      WORKFORCE_GRPC_ADDRESS: workforce-service:50051
-      RABBITMQ_QUEUE: leave.command-events
+      WORKFORCE_URL: http://workforce-service:8080
       OUTBOX_ENABLED: "true"
-    expose: ["50051"]
+    expose: ["8080"]
     networks: [service-bus, leave-write-data]
     depends_on:
       leave-write-db:
@@ -286,10 +253,8 @@ services:
     build: ./services/leave-service
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
-      <<: *event-client
+      <<: *service-env
       APP_ROLE: query
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
       MONGO_HOST: leave-read-db
       MONGO_PORT: "27017"
       MONGO_DATABASE: leave_read
@@ -297,7 +262,7 @@ services:
       MONGO_PASSWORD: ${LEAVE_MONGO_PASSWORD:-leave_read_dev}
       MONGO_AUTH_DATABASE: admin
       RABBITMQ_QUEUE: leave.projection
-    expose: ["50051"]
+    expose: ["8080"]
     networks: [service-bus, leave-read-data]
     depends_on:
       leave-read-db:
@@ -306,58 +271,29 @@ services:
         condition: service_healthy
     healthcheck: *app-healthcheck
 
-  # Event-driven workflow; do not call it a saga until compensating actions are
-  # actually implemented.
-  shift-swap-service:
-    <<: *app
-    build: ./services/shift-swap-service
-    image: ${SHIFT_SWAP_IMAGE:-shift-happens/shift-swap-service:dev}
-    environment:
-      <<: *event-client
-      HTTP_PORT: "8080"
-      GRPC_PORT: "50051"
-      DB_HOST: shift-swap-db
-      DB_PORT: "5432"
-      DB_NAME: shift_swap
-      DB_USER: shift_swap
-      DB_PASSWORD: ${SHIFT_SWAP_DB_PASSWORD:-shift_swap_dev}
-      SCHEDULING_GRPC_ADDRESS: scheduling-command:50051
-      WORKFORCE_GRPC_ADDRESS: workforce-service:50051
-      RABBITMQ_QUEUE: shift-swap.workflow
-      OUTBOX_ENABLED: "true"
-    expose: ["50051"]
-    networks: [service-bus, shift-swap-data]
-    depends_on:
-      shift-swap-db:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    healthcheck: *app-healthcheck
-
-  # Separate durable queue gives this subscriber an independent copy of each
-  # matching event (publish/subscribe fan-out). Stores in-app notification state
-  # and streams updates to the BFF with SSE; email is a second delivery channel.
+  # Fan-out subscriber: its own queue receives a copy of every matching event.
+  # Stores in-app notifications (read over REST) and sends email via SMTP.
+  # Contract: contracts/openapi/notification.yaml
   notification-service:
     <<: *app
     build: ./services/notification-service
     image: ${NOTIFICATION_IMAGE:-shift-happens/notification-service:dev}
     environment:
-      <<: *event-client
-      HTTP_PORT: "8080"
+      <<: *service-env
       DB_HOST: notification-db
       DB_PORT: "5432"
       DB_NAME: notification
       DB_USER: notification
       DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev}
-      RABBITMQ_QUEUE: notifications
-      SSE_PATH: /events
+      RABBITMQ_QUEUE: notification.events
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-no-reply@shift-happens.local}
     expose: ["8080"]
-    networks: [service-bus, notification-data]
+    # egress lets SMTP_HOST point at a real provider instead of Mailpit.
+    networks: [service-bus, notification-data, egress]
     depends_on:
       notification-db:
         condition: service_healthy
@@ -367,42 +303,27 @@ services:
         condition: service_started
     healthcheck: *app-healthcheck
 
-  # Independent fan-out subscriber. Its handler is idempotent by eventId and
-  # appends records rather than modifying business-service databases.
+  # Fan-out subscriber that appends every event to an append-only store.
+  # Idempotent by eventId. Contract: contracts/openapi/audit.yaml
   audit-service:
     <<: *app
     build: ./services/audit-service
     image: ${AUDIT_IMAGE:-shift-happens/audit-service:dev}
     environment:
-      <<: *event-client
-      HTTP_PORT: "8080"
+      <<: *service-env
       DB_HOST: audit-db
       DB_PORT: "5432"
       DB_NAME: audit
       DB_USER: audit
       DB_PASSWORD: ${AUDIT_DB_PASSWORD:-audit_dev}
-      RABBITMQ_QUEUE: audit
+      RABBITMQ_QUEUE: audit.events
+    expose: ["8080"]
     networks: [service-bus, audit-data]
     depends_on:
       audit-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    healthcheck: *app-healthcheck
-
-  # Optional, read-only integration. The gateway supplies approved context, so
-  # this container has no database, broker or direct business-service access.
-  ai-assistant:
-    profiles: [ai]
-    restart: unless-stopped
-    build: ./services/ai-assistant
-    image: ${AI_IMAGE:-shift-happens/ai-assistant:dev}
-    environment:
-      HTTP_PORT: "8080"
-      AI_API_KEY: ${AI_API_KEY:-}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    expose: ["8080"]
-    networks: [assistant]
     healthcheck: *app-healthcheck
 
   rabbitmq:
@@ -485,15 +406,6 @@ services:
     volumes: ["leave-read-data:/data/db"]
     networks: [leave-read-data]
 
-  shift-swap-db:
-    <<: *postgres
-    environment:
-      POSTGRES_DB: shift_swap
-      POSTGRES_USER: shift_swap
-      POSTGRES_PASSWORD: ${SHIFT_SWAP_DB_PASSWORD:-shift_swap_dev}
-    volumes: ["shift-swap-data:/var/lib/postgresql/data"]
-    networks: [shift-swap-data]
-
   notification-db:
     <<: *postgres
     environment:
@@ -525,49 +437,111 @@ services:
       - "127.0.0.1:4318:4318"
     networks: [service-bus, ops]
 
-# Inline edge configuration keeps the architecture template portable. Caddy's
-# local CA demonstrates TLS termination; the browser may need to trust that CA.
+# Path-based routing. The frontend keeps calling /api/<resource> exactly as it
+# does against the monolith; the gateway strips /api and forwards to the owner.
+# Scheduling and Leave: GET goes to the query role, everything else to command.
 configs:
   caddyfile:
     content: |
+      (upstream) {
+        health_uri /health
+        health_interval 10s
+        health_timeout 3s
+      }
+
       https://localhost {
         tls internal
 
-        @events path /events /events/*
-        handle @events {
-          reverse_proxy gateway-bff:8080 {
-            health_uri /health
-            health_interval 10s
-            health_timeout 3s
-            flush_interval -1
+        @identity path /api/auth /api/auth/*
+        handle @identity {
+          uri strip_prefix /api
+          reverse_proxy identity-service:8080 {
+            import upstream
           }
         }
 
-        @gateway path /api /api/* /graphql /graphql/* /auth /auth/*
-        handle @gateway {
-          reverse_proxy gateway-bff:8080 {
-            health_uri /health
-            health_interval 10s
-            health_timeout 3s
+        @workforce path /api/employees* /api/employeecontracts* /api/employeejobroles* /api/departments* /api/jobroles* /api/worklocations*
+        handle @workforce {
+          uri strip_prefix /api
+          reverse_proxy workforce-service:8080 {
+            import upstream
           }
+        }
+
+        @schedulingRead {
+          method GET
+          path /api/shifts* /api/shiftassignments* /api/shiftrequiredjobroles* /api/shiftapprovals* /api/shiftswaps* /api/shiftswapapprovals* /api/views/employee-shift-overview*
+        }
+        handle @schedulingRead {
+          uri strip_prefix /api
+          reverse_proxy scheduling-query:8080 {
+            import upstream
+          }
+        }
+
+        @schedulingWrite path /api/shifts* /api/shiftassignments* /api/shiftrequiredjobroles* /api/shiftapprovals* /api/shiftswaps* /api/shiftswapapprovals*
+        handle @schedulingWrite {
+          uri strip_prefix /api
+          reverse_proxy scheduling-command:8080 {
+            import upstream
+          }
+        }
+
+        @leaveRead {
+          method GET
+          path /api/leaverequests* /api/leavetypes* /api/leaveapprovals* /api/leaveledgers* /api/views/employee-leave-overview*
+        }
+        handle @leaveRead {
+          uri strip_prefix /api
+          reverse_proxy leave-query:8080 {
+            import upstream
+          }
+        }
+
+        @leaveWrite path /api/leaverequests* /api/leavetypes* /api/leaveapprovals* /api/leaveledgers*
+        handle @leaveWrite {
+          uri strip_prefix /api
+          reverse_proxy leave-command:8080 {
+            import upstream
+          }
+        }
+
+        @notification path /api/notifications*
+        handle @notification {
+          uri strip_prefix /api
+          reverse_proxy notification-service:8080 {
+            import upstream
+          }
+        }
+
+        @audit path /api/auditlogs*
+        handle @audit {
+          uri strip_prefix /api
+          reverse_proxy audit-service:8080 {
+            import upstream
+          }
+        }
+
+        # Named (not a bare path) so Caddy keeps it after the routes above.
+        @unknownApi path /api /api/*
+        handle @unknownApi {
+          respond "Unknown API route" 404
         }
 
         handle {
           reverse_proxy frontend:80 {
-            health_uri /health
-            health_interval 10s
-            health_timeout 3s
+            import upstream
           }
         }
       }
 
 networks:
   edge: {}
+  ops: {}
+  # Outbound internet access for services that need an external provider.
+  egress: {}
   service-bus:
     internal: true
-  assistant:
-    internal: true
-  ops: {}
   identity-data:
     internal: true
   workforce-data:
@@ -579,8 +553,6 @@ networks:
   leave-write-data:
     internal: true
   leave-read-data:
-    internal: true
-  shift-swap-data:
     internal: true
   notification-data:
     internal: true
@@ -595,7 +567,6 @@ volumes:
   scheduling-read-data: {}
   leave-write-data: {}
   leave-read-data: {}
-  shift-swap-data: {}
   notification-data: {}
   audit-data: {}
   caddy-data: {}

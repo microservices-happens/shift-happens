@@ -1,199 +1,54 @@
 <mxfile host="65bd71144e">
-    <diagram id="shift-happens-high-level" name="High-Level Architecture">
-        <mxGraphModel dx="1207" dy="1570" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1150" math="0" shadow="0">
-            <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
-                <mxCell id="title" value="Microservice_Happens Architecture" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
-                    <mxGeometry x="400" y="-90" width="800" height="40" as="geometry"/>
-                </mxCell>
-                <mxCell id="frontend" value="&lt;b&gt;Frontend Web Application&lt;/b&gt;&lt;br&gt;Employees · Managers · Administrators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" parent="1" vertex="1">
-                    <mxGeometry x="650" y="-40" width="300" height="65" as="geometry"/>
-                </mxCell>
-                <mxCell id="ingress" value="&lt;b&gt;Load Balancer / Kubernetes Ingress&lt;/b&gt;&lt;br&gt;TLS termination · Health-based routing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="650" y="90" width="300" height="65" as="geometry"/>
-                </mxCell>
-                <mxCell id="gateway" value="&lt;b&gt;API Gateway / GraphQL BFF&lt;/b&gt;&lt;br&gt;JWT validation · Routing · Query composition" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" parent="1" vertex="1">
-                    <mxGeometry x="650" y="230" width="300" height="70" as="geometry"/>
-                </mxCell>
-                <mxCell id="ai" value="&lt;b&gt;AI Assistant&lt;/b&gt;&lt;br&gt;Schedule suggestions · Summaries · Chatbot&lt;br&gt;&lt;i&gt;Read-only; no direct writes&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;dashed=1;" parent="1" vertex="1">
-                    <mxGeometry x="1120" y="110" width="280" height="90" as="geometry"/>
-                </mxCell>
-                <mxCell id="identity" value="&lt;b&gt;Identity Service&lt;/b&gt;&lt;br&gt;Login · OIDC/OAuth2&lt;br&gt;Accounts · Token issuance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="65" y="430" width="210" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="workforce" value="&lt;b&gt;Workforce Service&lt;/b&gt;&lt;br&gt;Employees · Contracts&lt;br&gt;Departments · Roles · Locations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="330" y="430" width="210" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="scheduling" value="&lt;b&gt;Scheduling Service&lt;/b&gt;&lt;br&gt;Shifts · Assignments&lt;br&gt;&lt;i&gt;CQRS&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="665" y="430" width="210" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="leave" value="&lt;b&gt;Leave Service&lt;/b&gt;&lt;br&gt;Requests · Types · Approvals&lt;br&gt;&lt;i&gt;Immutable Ledger · CQRS&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="1030" y="430" width="210" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="swap" value="&lt;b&gt;Shift Swap Service&lt;/b&gt;&lt;br&gt;Requests · Eligibility&lt;br&gt;&lt;i&gt;Event-driven workflow&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="1360" y="430" width="210" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="identity-db" value="&lt;b&gt;Identity DB&lt;/b&gt;&lt;br&gt;Relational" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="95" y="560" width="150" height="90" as="geometry"/>
-                </mxCell>
-                <mxCell id="workforce-db" value="&lt;b&gt;Workforce DB&lt;/b&gt;&lt;br&gt;Relational" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="360" y="560" width="150" height="90" as="geometry"/>
-                </mxCell>
-                <mxCell id="scheduling-write-db" value="&lt;b&gt;Scheduling Write DB&lt;/b&gt;&lt;br&gt;Relational" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="610" y="555" width="145" height="95" as="geometry"/>
-                </mxCell>
-                <mxCell id="scheduling-read-db" value="&lt;b&gt;Schedule Read Model&lt;/b&gt;&lt;br&gt;Document DB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="785" y="555" width="145" height="95" as="geometry"/>
-                </mxCell>
-                <mxCell id="leave-write-db" value="&lt;b&gt;Leave Write DB&lt;/b&gt;&lt;br&gt;Requests + Ledger&lt;br&gt;Relational" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="975" y="555" width="145" height="95" as="geometry"/>
-                </mxCell>
-                <mxCell id="leave-read-db" value="&lt;b&gt;Leave Read Model&lt;/b&gt;&lt;br&gt;Balances + Overviews&lt;br&gt;Document DB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="1155" y="555" width="145" height="95" as="geometry"/>
-                </mxCell>
-                <mxCell id="swap-db" value="&lt;b&gt;Shift Swap DB&lt;/b&gt;&lt;br&gt;Relational" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="1390" y="560" width="150" height="90" as="geometry"/>
-                </mxCell>
-                <mxCell id="rabbit" value="&lt;b&gt;RabbitMQ Message Broker&lt;/b&gt;&lt;br&gt;Domain events · Durable queues · Retries / DLQ" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" parent="1" vertex="1">
-                    <mxGeometry x="640" y="725" width="320" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="notifications" value="&lt;b&gt;Notification Service&lt;/b&gt;&lt;br&gt;In-app via SSE · Email" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="330" y="855" width="210" height="65" as="geometry"/>
-                </mxCell>
-                <mxCell id="audit" value="&lt;b&gt;Audit Log Service&lt;/b&gt;&lt;br&gt;Append-only · Idempotent consumer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="695" y="870" width="210" height="65" as="geometry"/>
-                </mxCell>
-                <mxCell id="audit-db" value="&lt;b&gt;Audit Store&lt;/b&gt;&lt;br&gt;Append-only" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
-                    <mxGeometry x="725" y="980" width="150" height="85" as="geometry"/>
-                </mxCell>
-                <mxCell id="patterns-note" value="&lt;b&gt;Architectural patterns&lt;/b&gt;&lt;br&gt;• Microservices + service-owned data&lt;br&gt;• CQRS: Scheduling + Leave&lt;br&gt;• Immutable Leave Ledger&lt;br&gt;• Transactional Outbox&lt;br&gt;• Idempotent consumers&lt;br&gt;• Eventual consistency&lt;div&gt;&lt;font color=&quot;#000000&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font color=&quot;#000000&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font color=&quot;#000000&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font color=&quot;#000000&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;Blue: external REST/GraphQL&lt;/div&gt;&lt;div&gt;Black: Internal gRPC/data access&lt;/div&gt;&lt;div&gt;Red daashed: RabbitMQ events&lt;/div&gt;&lt;div&gt;Purple cylinders: service-onwed data&lt;/div&gt;&lt;/div&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;spacingLeft=10;" parent="1" vertex="1">
-                    <mxGeometry x="1250" y="840" width="300" height="240" as="geometry"/>
-                </mxCell>
-                <mxCell id="front-ingress" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;fontSize=12;" edge="1" parent="1" source="frontend" target="ingress">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="ingress-gateway" value="REST + GraphQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#6c8ebf;fontSize=12;" edge="1" parent="1" source="ingress" target="gateway">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="gateway-ai" value="REST" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#9673a6;fontSize=11;exitX=0.995;exitY=0.152;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="gateway" target="ai">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="gateway-identity" value="gRPC / OIDC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=-0.005;exitY=0.137;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="gateway" target="identity">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="650" y="289.9969230769231" as="sourcePoint"/>
-                        <mxPoint x="170.0769230769231" y="414.92" as="targetPoint"/>
-                        <Array as="points">
-                            <mxPoint x="170" y="240"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="gateway-workforce" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" parent="1" source="gateway" target="workforce">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="440" y="280"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="gateway-scheduling" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" parent="1" source="gateway" target="scheduling">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="770" y="330"/>
-                            <mxPoint x="770" y="330"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="gateway-leave" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" edge="1" parent="1" source="gateway" target="leave">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="gateway-swap" value="gRPC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;" edge="1" parent="1" source="gateway" target="swap">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="identity-data" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;fontSize=10;" edge="1" parent="1" source="identity" target="identity-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="workforce-data" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;fontSize=10;" edge="1" parent="1" source="workforce" target="workforce-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="scheduling-write" value="commands" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1" source="scheduling" target="scheduling-write-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="scheduling-read" value="queries" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1" source="scheduling" target="scheduling-read-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="leave-write" value="commands" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1" source="leave">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="1052.5555555555552" y="555" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="leave-read" value="queries" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1" source="leave" target="leave-read-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="swap-data" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;fontSize=10;" edge="1" parent="1" source="swap" target="swap-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="identity-mq" value="Account events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;exitX=0.876;exitY=0.996;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="identity" target="rabbit">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="249" y="710"/>
-                            <mxPoint x="680" y="710"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="workforce-mq" value="Workforce events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;" edge="1" parent="1" source="workforce" target="rabbit">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="520" y="680"/>
-                            <mxPoint x="710" y="680"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="scheduling-mq" value="Shift events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;" edge="1" parent="1" source="scheduling" target="rabbit">
-                    <mxGeometry x="0.4762" relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="770" y="670"/>
-                            <mxPoint x="770" y="670"/>
-                        </Array>
-                        <mxPoint y="-1" as="offset"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="leave-mq" value="Leave events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;" edge="1" parent="1" source="leave" target="rabbit">
-                    <mxGeometry x="0.6788" relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="940" y="473"/>
-                        </Array>
-                        <mxPoint as="offset"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="swap-mq" value="Swap events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;entryX=1;entryY=0.75;entryDx=0;entryDy=0;exitX=-0.007;exitY=0.609;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="swap" target="rabbit">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1320" y="482"/>
-                            <mxPoint x="1320" y="784"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="mq-schedule-read" value="Projection updates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;" edge="1" parent="1" source="rabbit" target="scheduling-read-db">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="858" y="700"/>
-                            <mxPoint x="858" y="700"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="mq-leave-read" value="Projection updates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=10;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" edge="1" parent="1" source="rabbit" target="leave-read-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="mq-notifications" value="Messaging" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=11;exitX=0.055;exitY=0.904;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="rabbit" target="notifications">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="mq-audit" value="Messaging" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;strokeColor=#b85450;fontSize=11;" edge="1" parent="1" source="rabbit" target="audit">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="audit-data" value="writes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1" source="audit" target="audit-db">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
+  <diagram id="shift-happens-high-level" name="High-Level Architecture">
+    <mxGraphModel dx="1400" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Shift Happens — Microservice Architecture" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;strokeColor=none;fillColor=none;" parent="1" vertex="1"><mxGeometry x="420" y="-100" width="800" height="40" as="geometry"/></mxCell>
+        <mxCell id="frontend" value="&lt;b&gt;Frontend Web Application&lt;/b&gt;&lt;br&gt;React · Employees · Managers · Administrators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" parent="1" vertex="1"><mxGeometry x="660" y="-40" width="320" height="65" as="geometry"/></mxCell>
+        <mxCell id="gateway" value="&lt;b&gt;API Gateway (Caddy / K8s Ingress)&lt;/b&gt;&lt;br&gt;TLS · /api/&amp;lt;resource&amp;gt; → owning service&lt;br&gt;GET → query role · writes → command role" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" parent="1" vertex="1"><mxGeometry x="620" y="95" width="400" height="80" as="geometry"/></mxCell>
+        <mxCell id="identity" value="&lt;b&gt;Identity Service&lt;/b&gt;&lt;br&gt;Login · Accounts&lt;br&gt;JWT signing (JWKS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1"><mxGeometry x="40" y="260" width="240" height="100" as="geometry"/></mxCell>
+        <mxCell id="workforce" value="&lt;b&gt;Workforce Service&lt;/b&gt;&lt;br&gt;Employees · Contracts · Departments&lt;br&gt;Job Roles · Work Locations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1"><mxGeometry x="360" y="260" width="240" height="100" as="geometry"/></mxCell>
+        <mxCell id="scheduling" value="&lt;b&gt;Scheduling Service&lt;/b&gt;&lt;br&gt;Shifts · Assignments · Approvals&lt;br&gt;&lt;b&gt;Shift Swaps&lt;/b&gt;&lt;br&gt;&lt;i&gt;CQRS: command | query&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1"><mxGeometry x="680" y="260" width="280" height="100" as="geometry"/></mxCell>
+        <mxCell id="leave" value="&lt;b&gt;Leave Service&lt;/b&gt;&lt;br&gt;Requests · Types · Approvals&lt;br&gt;&lt;i&gt;Immutable Ledger · CQRS&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" parent="1" vertex="1"><mxGeometry x="1040" y="260" width="260" height="100" as="geometry"/></mxCell>
+        <mxCell id="identity-db" value="&lt;b&gt;Identity DB&lt;/b&gt;&lt;br&gt;Postgres" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="85" y="410" width="150" height="90" as="geometry"/></mxCell>
+        <mxCell id="workforce-db" value="&lt;b&gt;Workforce DB&lt;/b&gt;&lt;br&gt;Postgres" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="405" y="410" width="150" height="90" as="geometry"/></mxCell>
+        <mxCell id="scheduling-write-db" value="&lt;b&gt;Scheduling Write&lt;/b&gt;&lt;br&gt;Postgres + Outbox" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="670" y="410" width="135" height="90" as="geometry"/></mxCell>
+        <mxCell id="scheduling-read-db" value="&lt;b&gt;Schedule Read Model&lt;/b&gt;&lt;br&gt;MongoDB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="835" y="410" width="135" height="90" as="geometry"/></mxCell>
+        <mxCell id="leave-write-db" value="&lt;b&gt;Leave Write&lt;/b&gt;&lt;br&gt;Requests + Ledger&lt;br&gt;Postgres + Outbox" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="1035" y="410" width="125" height="90" as="geometry"/></mxCell>
+        <mxCell id="leave-read-db" value="&lt;b&gt;Leave Read Model&lt;/b&gt;&lt;br&gt;MongoDB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="1180" y="410" width="125" height="90" as="geometry"/></mxCell>
+        <mxCell id="rabbit" value="&lt;b&gt;RabbitMQ&lt;/b&gt; · topic exchange &lt;i&gt;shift-happens.events&lt;/i&gt;&lt;br&gt;routing key = eventType · one durable queue per consumer · DLX" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" parent="1" vertex="1"><mxGeometry x="590" y="590" width="460" height="80" as="geometry"/></mxCell>
+        <mxCell id="notifications" value="&lt;b&gt;Notification Service&lt;/b&gt;&lt;br&gt;In-app (REST) · Email" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" parent="1" vertex="1"><mxGeometry x="330" y="760" width="240" height="70" as="geometry"/></mxCell>
+        <mxCell id="notification-db" value="&lt;b&gt;Notification DB&lt;/b&gt;&lt;br&gt;Postgres" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="330" y="870" width="115" height="80" as="geometry"/></mxCell>
+        <mxCell id="mailpit" value="&lt;b&gt;SMTP&lt;/b&gt;&lt;br&gt;Mailpit locally" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;" parent="1" vertex="1"><mxGeometry x="470" y="880" width="100" height="60" as="geometry"/></mxCell>
+        <mxCell id="audit" value="&lt;b&gt;Audit Service&lt;/b&gt;&lt;br&gt;Append-only · Idempotent by eventId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" parent="1" vertex="1"><mxGeometry x="1070" y="760" width="240" height="70" as="geometry"/></mxCell>
+        <mxCell id="audit-db" value="&lt;b&gt;Audit Store&lt;/b&gt;&lt;br&gt;Postgres" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" parent="1" vertex="1"><mxGeometry x="1115" y="870" width="150" height="80" as="geometry"/></mxCell>
+        <mxCell id="legend" value='&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;font color="#6c8ebf"&gt;&lt;b&gt;Blue&lt;/b&gt;&lt;/font&gt;: REST/JSON from the browser via the gateway&lt;br&gt;&lt;b&gt;Black&lt;/b&gt;: REST lookup between services&lt;br&gt;&lt;font color="#b85450"&gt;&lt;b&gt;Red dashed&lt;/b&gt;&lt;/font&gt;: RabbitMQ events&lt;br&gt;Purple cylinders: data owned by one service&lt;br&gt;&lt;br&gt;&lt;b&gt;Contracts&lt;/b&gt; (repo /contracts)&lt;br&gt;• openapi/*.yaml per service&lt;br&gt;• events/envelope.schema.json&lt;br&gt;• events/catalog.md: events, queues, bindings&lt;br&gt;&lt;br&gt;&lt;b&gt;Patterns&lt;/b&gt;&lt;br&gt;• Database per service&lt;br&gt;• CQRS: Scheduling + Leave&lt;br&gt;• Transactional outbox&lt;br&gt;• Snapshot events, idempotent consumers&lt;br&gt;• Immutable leave ledger' style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;" parent="1" vertex="1"><mxGeometry x="1380" y="-40" width="300" height="360" as="geometry"/></mxCell>
+        <mxCell id="front-gateway" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;" parent="1" source="frontend" target="gateway" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="gw-identity" value="REST /api/auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gateway" target="identity" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="160" y="135"/></Array></mxGeometry></mxCell>
+        <mxCell id="gw-workforce" value="REST /api/employees …" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gateway" target="workforce" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="700" y="220"/><mxPoint x="480" y="220"/></Array></mxGeometry></mxCell>
+        <mxCell id="gw-scheduling" value="REST /api/shifts, /api/shiftswaps …" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gateway" target="scheduling" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="gw-leave" value="REST /api/leaverequests …" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gateway" target="leave" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1170" y="135"/></Array></mxGeometry></mxCell>
+        <mxCell id="gw-notifications" value="REST /api/notifications" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gateway" target="notifications" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="20" y="160"/><mxPoint x="20" y="795"/></Array></mxGeometry></mxCell>
+        <mxCell id="gw-audit" value="REST /api/auditlogs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;strokeColor=#6c8ebf;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gateway" target="audit" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1340" y="160"/><mxPoint x="1340" y="795"/></Array></mxGeometry></mxCell>
+        <mxCell id="sched-workforce" value="REST lookup:&lt;br&gt;employee, job roles" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="scheduling" target="workforce" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="leave-workforce" value="REST lookup: employee" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;exitX=0.27;exitY=0;exitDx=0;exitDy=0;entryX=0.83;entryY=0;entryDx=0;entryDy=0;" parent="1" source="leave" target="workforce" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1110" y="240"/><mxPoint x="560" y="240"/></Array></mxGeometry></mxCell>
+        <mxCell id="identity-identity-db" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="identity" target="identity-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="workforce-workforce-db" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="workforce" target="workforce-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="scheduling-scheduling-write-db" value="command" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="scheduling" target="scheduling-write-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="scheduling-scheduling-read-db" value="query" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="scheduling" target="scheduling-read-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="leave-leave-write-db" value="command" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="leave" target="leave-write-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="leave-leave-read-db" value="query" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="leave" target="leave-read-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="notifications-notification-db" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="notifications" target="notification-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="audit-audit-db" value="owns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;endArrow=none;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="audit" target="audit-db" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="notif-smtp" value="SMTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;fontSize=10;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="notifications" target="mailpit" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="workforce-mq" value="publishes&lt;br&gt;workforce.employee.*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;fontSize=10;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0.1087;entryY=0;entryDx=0;entryDy=0;" parent="1" source="workforce" target="rabbit" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="640" y="340"/></Array></mxGeometry></mxCell>
+        <mxCell id="sched-mq" value="publishes scheduling.*&lt;br&gt;consumes leave.request.approved,&lt;br&gt;projection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;startArrow=block;startFill=1;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="scheduling" target="rabbit" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="leave-mq" value="publishes leave.*&lt;br&gt;consumes projection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;startArrow=block;startFill=1;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="leave" target="rabbit" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1170" y="630"/></Array></mxGeometry></mxCell>
+        <mxCell id="mq-identity" value="consumes&lt;br&gt;workforce.employee.*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;fontSize=10;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" parent="1" source="rabbit" target="identity" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="310" y="650"/><mxPoint x="310" y="330"/></Array></mxGeometry></mxCell>
+        <mxCell id="mq-notifications" value="queue notification.events" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;fontSize=10;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="rabbit" target="notifications" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="705" y="720"/><mxPoint x="450" y="720"/></Array></mxGeometry></mxCell>
+        <mxCell id="mq-audit" value="queue audit.events (#)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=11;dashed=1;strokeColor=#b85450;fontSize=10;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="rabbit" target="audit" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="935" y="720"/><mxPoint x="1190" y="720"/></Array></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>

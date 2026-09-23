@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/ledger-entry.schema.json",
+  "title": "LeaveLedgerEntry",
+  "description": "data of leave.ledger.entry-recorded.v1. Ledger entries are immutable; a correction is a new entry with the opposite amount. balanceAfterDays lets consumers show the balance without summing the ledger.",
+  "type": "object",
+  "required": ["leaveLedgerId", "employeeId", "leaveTypeId", "changeAmountDays", "balanceAfterDays", "transactionType", "transactionDatetime"],
+  "properties": {
+    "leaveLedgerId": { "type": "integer" },
+    "employeeId": { "type": "integer" },
+    "leaveTypeId": { "type": "integer" },
+    "changeAmountDays": { "type": "number", "description": "Positive = accrual, negative = usage." },
+    "balanceAfterDays": { "type": "number" },
+    "transactionType": { "type": "string", "description": "e.g. ACCRUAL, USAGE, ADJUSTMENT." },
+    "referenceEntityType": { "type": ["string", "null"], "description": "e.g. LEAVE_REQUEST." },
+    "referenceEntityId": { "type": ["integer", "null"] },
+    "transactionDatetime": { "type": "string", "format": "date-time" }
+  }
+}

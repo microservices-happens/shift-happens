@@ -1,0 +1,237 @@
+# Generated from the monolith DTOs; edit freely, this file is now the contract.
+# See contracts/README.md for conventions.
+openapi: 3.1.0
+info:
+  title: Identity Service
+  version: 1.0.0
+  description: Login, password storage and JWT issuing. Consumes workforce.employee.* to keep one account per employee (email,
+    role, active flag).
+servers:
+- url: /
+  description: Service root. Exposed by the gateway as /api.
+security:
+- bearerAuth: []
+tags:
+- name: auth
+- name: ops
+paths:
+  /auth/login:
+    post:
+      tags:
+      - auth
+      summary: Log in and receive a JWT
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/accounts/{employeeId}/password:
+    put:
+      tags:
+      - auth
+      summary: Set or reset an employee's password
+      description: 'Roles: Administrator, or the employee themself. The account itself is created from workforce.employee.created.v1,
+        so passwords never pass through workforce-service.'
+      operationId: setPassword
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetPasswordRequest'
+      responses:
+        '204':
+          description: Password set
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /.well-known/jwks.json:
+    get:
+      tags:
+      - auth
+      summary: Public keys for verifying JWTs (internal, called by every service)
+      operationId: jwks
+      security: []
+      responses:
+        '200':
+          description: Key set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jwks'
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Liveness/readiness probe used by the gateway and Compose
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - UP
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'RS256 JWT issued by identity-service. Verify with JWT_JWKS_URL. Claims: sub, employeeId, role, iss, iat,
+        exp.'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Propagated on every outgoing call and copied into events.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details (application/problem+json).
+      required:
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required:
+      - token
+      - employeeId
+      - email
+      - roleName
+      properties:
+        token:
+          type: string
+        employeeId:
+          type: integer
+        employeeNumber:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        roleName:
+          type: string
+          enum:
+          - Administrator
+          - Manager
+          - Employee
+      description: Same shape as the monolith's LoginResponse so the frontend is unchanged.
+    SetPasswordRequest:
+      type: object
+      required:
+      - password
+      properties:
+        password:
+          type: string
+          format: password
+          minLength: 8
+    Jwks:
+      type: object
+      required:
+      - keys
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+      description: RFC 7517 JSON Web Key Set.
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Role not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Business rule violated
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
