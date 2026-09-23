@@ -4,18 +4,18 @@ openapi: 3.1.0
 info:
   title: Notification Service
   version: 1.0.0
-  description: Consumes events from queue notification.events (see events/catalog.md), stores in-app notifications and sends
-    email via SMTP. The frontend polls GET /notifications.
+  description: Consumes events from queue notification.events (see asyncapi.yaml), stores in-app notifications and publishes
+    notification.email.requested.v1 for email-function. The frontend polls GET /notifications.
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
 - name: notifications
 - name: ops
 paths:
-  /notifications:
+  /v1/notifications:
     get:
       tags:
       - notifications
@@ -39,7 +39,7 @@ paths:
                   $ref: '#/components/schemas/Notification'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /notifications/{id}:
+  /v1/notifications/{id}:
     patch:
       tags:
       - notifications
@@ -101,6 +101,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header

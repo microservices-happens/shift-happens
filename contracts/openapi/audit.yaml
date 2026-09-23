@@ -4,17 +4,17 @@ openapi: 3.1.0
 info:
   title: Audit Service
   version: 1.0.0
-  description: 'Consumes every event (queue audit.events, binding #) and appends it unchanged. Idempotent by eventId.'
+  description: Consumes every business event (queue audit.events) and appends it unchanged. Idempotent by eventId.
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
 - name: audit
 - name: ops
 paths:
-  /auditlogs:
+  /v1/auditlogs:
     get:
       tags:
       - audit
@@ -97,6 +97,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header

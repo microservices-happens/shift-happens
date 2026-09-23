@@ -1,22 +1,19 @@
 # workforce-service
 
 **Owns:** employees, employee contracts, employee job roles, departments, job roles and work locations.
-**Database:** `workforce-db` (Postgres). **Compose:** `workforce-service`.
+**Database:** `workforce-db` (Postgres, Flyway). **Compose:** `workforce-service`.
 
 ## Provides
-- REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yaml)
-  - Browser CRUD on `/employees`, `/employeecontracts`, `/employeejobroles`, `/departments`, `/jobroles` and `/worklocations`
-  - Internal lookups for validation:
-    - `GET /employees/{id}`, used by scheduling-command and leave-command
-    - `GET /employeejobroles?employeeId=`, used by scheduling-command
+REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yaml). CRUD under `/v1/employees`, `/v1/employeecontracts`, `/v1/employeejobroles`, `/v1/departments`, `/v1/jobroles` and `/v1/worklocations`.
 
-## Publishes
+## Publishes (outbox)
 | Event | When |
 |---|---|
 | `workforce.employee.created.v1` | Employee created |
-| `workforce.employee.updated.v1` | Any employee change, including status |
+| `workforce.employee.updated.v1` | Any employee field changes, or their job roles change (`jobRoleIds` is part of the snapshot) |
+| `workforce.employee.deleted.v1` | Soft delete (tombstone) |
 
-Payload: [`employee.schema.json`](../../contracts/events/payloads/employee.schema.json). Use the transactional outbox.
+This is the only source of employee data for other services. Nobody calls Workforce synchronously.
 
 ## Consumes
 Nothing.
@@ -26,4 +23,4 @@ Nothing.
 
 ## Done when
 - [ ] Employee pages work through the gateway.
-- [ ] Creating an employee produces an event that identity, scheduling-query, leave-query and audit all receive.
+- [ ] Creating an employee reaches identity, scheduling, leave and audit (integration test on the outbox and RabbitMQ).

@@ -4,11 +4,11 @@ openapi: 3.1.0
 info:
   title: Workforce Service
   version: 1.0.0
-  description: Employees and organisational reference data. Publishes workforce.employee.created.v1 and workforce.employee.updated.v1.
-    scheduling-command and leave-command call GET /employees/{id} and GET /employeejobroles?employeeId= to validate commands.
+  description: Employees and organisational reference data. Publishes workforce.employee.created/updated/deleted.v1 so other
+    services keep local copies; no service calls Workforce synchronously.
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
@@ -19,7 +19,7 @@ tags:
 - name: locations
 - name: ops
 paths:
-  /employees:
+  /v1/employees:
     get:
       tags:
       - employees
@@ -42,8 +42,11 @@ paths:
       tags:
       - employees
       summary: Create Employee
-      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
       operationId: create_employees
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created/updated/deleted.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -65,9 +68,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /employees/{id}:
+  /v1/employees/{id}:
     get:
       tags:
       - employees
@@ -91,7 +92,7 @@ paths:
       tags:
       - employees
       summary: Update Employee
-      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created/updated/deleted.v1.'
       operationId: update_employees
       requestBody:
         required: true
@@ -123,7 +124,7 @@ paths:
       tags:
       - employees
       summary: Delete Employee
-      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created.v1 / updated.v1.'
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.created/updated/deleted.v1.'
       operationId: delete_employees
       responses:
         '204':
@@ -139,7 +140,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /employeecontracts:
+  /v1/employeecontracts:
     get:
       tags:
       - contracts
@@ -162,8 +163,11 @@ paths:
       tags:
       - contracts
       summary: Create EmployeeContract
-      description: 'Roles: Administrator, Manager.'
       operationId: create_employeecontracts
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -185,9 +189,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /employeecontracts/{id}:
+  /v1/employeecontracts/{id}:
     get:
       tags:
       - contracts
@@ -259,7 +261,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /employeejobroles:
+  /v1/employeejobroles:
     get:
       tags:
       - job-roles
@@ -282,14 +284,17 @@ paths:
         required: false
         schema:
           type: integer
-        description: Filter by employee. Used by scheduling-command to check qualifications before assigning.
+        description: Filter by employee.
       - $ref: '#/components/parameters/CorrelationId'
     post:
       tags:
       - job-roles
       summary: Create EmployeeJobRole
-      description: 'Roles: Administrator, Manager.'
       operationId: create_employeejobroles
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.updated.v1 (jobRoleIds).'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -311,9 +316,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /employeejobroles/{id}:
+  /v1/employeejobroles/{id}:
     get:
       tags:
       - job-roles
@@ -337,7 +340,7 @@ paths:
       tags:
       - job-roles
       summary: Update EmployeeJobRole
-      description: 'Roles: Administrator, Manager.'
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.updated.v1 (jobRoleIds).'
       operationId: update_employeejobroles
       requestBody:
         required: true
@@ -369,7 +372,7 @@ paths:
       tags:
       - job-roles
       summary: Delete EmployeeJobRole
-      description: 'Roles: Administrator, Manager.'
+      description: 'Roles: Administrator, Manager. Publishes workforce.employee.updated.v1 (jobRoleIds).'
       operationId: delete_employeejobroles
       responses:
         '204':
@@ -385,7 +388,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /departments:
+  /v1/departments:
     get:
       tags:
       - departments
@@ -408,8 +411,11 @@ paths:
       tags:
       - departments
       summary: Create Department
-      description: 'Roles: Administrator, Manager.'
       operationId: create_departments
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -431,9 +437,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /departments/{id}:
+  /v1/departments/{id}:
     get:
       tags:
       - departments
@@ -505,7 +509,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /jobroles:
+  /v1/jobroles:
     get:
       tags:
       - job-roles
@@ -528,8 +532,11 @@ paths:
       tags:
       - job-roles
       summary: Create JobRole
-      description: 'Roles: Administrator, Manager.'
       operationId: create_jobroles
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -551,9 +558,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /jobroles/{id}:
+  /v1/jobroles/{id}:
     get:
       tags:
       - job-roles
@@ -625,7 +630,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /worklocations:
+  /v1/worklocations:
     get:
       tags:
       - locations
@@ -648,8 +653,11 @@ paths:
       tags:
       - locations
       summary: Create WorkLocation
-      description: 'Roles: Administrator, Manager.'
       operationId: create_worklocations
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -671,9 +679,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /worklocations/{id}:
+  /v1/worklocations/{id}:
     get:
       tags:
       - locations
@@ -779,6 +785,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header

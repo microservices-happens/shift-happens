@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://shift-happens.local/contracts/events/payloads/employee.schema.json",
   "title": "EmployeeSnapshot",
-  "description": "data of workforce.employee.created.v1 and workforce.employee.updated.v1. Never contains passwords or salary.",
+  "description": "data of workforce.employee.created.v1 and workforce.employee.updated.v1 (full snapshot). Never contains passwords or salary. Deletion is workforce.employee.deleted.v1 with a tombstone.",
   "type": "object",
   "required": [
     "employeeId",
@@ -11,7 +11,8 @@
     "firstName",
     "lastName",
     "email",
-    "employmentStatus"
+    "employmentStatus",
+    "jobRoleIds"
   ],
   "properties": {
     "employeeId": {
@@ -60,6 +61,13 @@
         "integer",
         "null"
       ]
+    },
+    "jobRoleIds": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "Currently valid job roles. Scheduling keeps a local copy to check qualifications without calling Workforce. Changes to employee job roles publish workforce.employee.updated.v1."
     }
   }
 }

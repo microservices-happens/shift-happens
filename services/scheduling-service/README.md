@@ -1,37 +1,35 @@
 # scheduling-service
 
 **Owns:** shifts, required job roles per shift, shift assignments, shift approvals, **shift swaps** and swap approvals.
-**Deployed as two CQRS roles from this one codebase/image** (`APP_ROLE`):
+**Deployed as two CQRS roles from one codebase/image** (`APP_ROLE`):
 
-| Role | Compose | Store | Handles |
+| Role | Compose | Store | API |
 |---|---|---|---|
-| `command` | `scheduling-command` | `scheduling-write-db` (Postgres) + outbox | POST/PUT/DELETE, leave conflicts |
-| `query` | `scheduling-query` | `scheduling-read-db` (Mongo) | GET, projection |
+| `command` | `scheduling-command` | `scheduling-write-db` (Postgres, Flyway) + outbox + employee replica | REST writes: [`openapi/scheduling.yaml`](../../contracts/openapi/scheduling.yaml) |
+| `query` | `scheduling-query` | `scheduling-read-db` (MongoDB) | GraphQL reads: [`graphql/scheduling.graphql`](../../contracts/graphql/scheduling.graphql) |
 
-Shift swaps used to be a separate service. They live here because a swap only reassigns an existing assignment. Approving a swap and moving the assignment happen in **one local transaction**, so no saga or compensation is needed.
+**Why CQRS here:** writes are small, validated transactions (assign, swap, approve). Reads are wide, nested views such as a week's schedule with assignments, employee names and AI suggestions. Mongo documents shaped for those views, served over GraphQL, avoid multi-table joins on every page load. The two roles also scale independently, since reads far outnumber writes.
 
-## Provides
-- REST: [`contracts/openapi/scheduling.yaml`](../../contracts/openapi/scheduling.yaml)
-  - `/shifts`, `/shiftrequiredjobroles`, `/shiftassignments`, `/shiftapprovals`, `/shiftswaps`, `/shiftswapapprovals`
-  - `/views/employee-shift-overview`
+**Why swaps live here:** a swap only reassigns an existing assignment. Approval and reassignment are one local transaction, so no saga is needed.
 
-## Calls (sync REST)
-- workforce `GET /employees/{id}`: the employee exists and is active (assign, swap target).
-- workforce `GET /employeejobroles?employeeId=`: the employee has the job role the shift requires.
-
-## Publishes
-`scheduling.shift.{created,updated,cancelled}.v1`, `scheduling.assignment.{created,updated}.v1`, `scheduling.swap.{requested,approved,rejected}.v1`. The payload schemas are listed in [`catalog.md`](../../contracts/events/catalog.md).
+## Publishes (outbox)
+- Shifts: `scheduling.shift.{created,updated,deleted}.v1`
+- Assignments: `scheduling.assignment.{created,updated,deleted}.v1`
+- Swaps: `scheduling.swap.{requested,approved,rejected}.v1`
+- Understaffing: `scheduling.shift.understaffed.v1` (with pre-filtered candidates for ai-service)
+- Saga replies: `scheduling.leave-release.{completed,rejected}.v1`
 
 ## Consumes
-| Queue | Role | Binding | Handling |
+| Queue | Role | Routing keys | Handling |
 |---|---|---|---|
-| `scheduling.projection` | query | `scheduling.#`, `workforce.employee.#` | Upsert read-model documents (ignore older `aggregateVersion`) |
-| `scheduling.leave-conflicts` | command | `leave.request.approved.*` | Mark overlapping assignments `LEAVE_CONFLICT` and publish `assignment.updated` |
+| `scheduling.command` | command | `workforce.employee.*` | Upsert the local employee replica (version-based, tombstones win) |
+| | | `leave.request.approval-started.v1` | **Saga step.** Release the overlapping assignments and reply `completed`. If any overlapping shift is `LOCKED`, reply `rejected` and change nothing |
+| `scheduling.projection` | query | `scheduling.*`, `workforce.employee.*`, `ai.replacement.suggested.v1` | Upsert read-model documents (highest `aggregateVersion` wins) |
 
 ## Extract from monolith
-`shift`, `shiftrequiredjobrole`, `shiftassignment`, `shiftapproval`, `shiftswap`, `shiftswapapproval` and `view/employeeshiftoverview`.
+`shift`, `shiftrequiredjobrole`, `shiftassignment`, `shiftapproval`, `shiftswap`, `shiftswapapproval` and `view/employeeshiftoverview` (now GraphQL).
 
 ## Done when
-- [ ] Shift and swap pages work through the gateway.
-- [ ] An approved swap moves the assignment and both events reach notification and audit.
-- [ ] Approved leave flags the overlapping assignment.
+- [ ] The schedule page reads via GraphQL, and create, assign and swap work via REST.
+- [ ] An approved swap moves the assignment, and both events reach notification and audit.
+- [ ] Cooperation test: `leave.request.approval-started` → `leave-release.completed` or `rejected`.

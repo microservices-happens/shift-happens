@@ -4,18 +4,18 @@ openapi: 3.1.0
 info:
   title: Identity Service
   version: 1.0.0
-  description: Login, password storage and JWT issuing. Consumes workforce.employee.* to keep one account per employee (email,
-    role, active flag).
+  description: Local login and third-party login (Google, GitHub via OAuth 2.0/OpenID Connect); issues the Shift Happens JWT.
+    Consumes workforce.employee.* to keep one account per employee (email, role, active flag).
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
 - name: auth
 - name: ops
 paths:
-  /auth/login:
+  /v1/auth/login:
     post:
       tags:
       - auth
@@ -39,7 +39,61 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /auth/accounts/{employeeId}/password:
+  /v1/auth/oidc/{provider}/authorize:
+    get:
+      tags:
+      - auth
+      summary: Start third-party login (OAuth 2.0 authorization code + PKCE)
+      operationId: oidcAuthorize
+      security: []
+      description: 'Redirects the browser to the provider. Supported providers: google, github.'
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - google
+          - github
+      responses:
+        '302':
+          description: Redirect to the provider's consent page
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/auth/oidc/{provider}/callback:
+    get:
+      tags:
+      - auth
+      summary: Provider redirect target
+      operationId: oidcCallback
+      security: []
+      description: 'Exchanges the code, verifies the provider''s ID token (or GitHub user API), matches the verified email
+        to an active account and redirects to FRONTEND_LOGIN_CALLBACK_URL#token=<Shift Happens JWT>. Unknown or inactive emails
+        are refused: accounts are only created from workforce events.'
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - google
+          - github
+      - name: code
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '302':
+          description: 'Redirect to the frontend with the JWT in the URL fragment, or with #error=...'
+  /v1/auth/accounts/{employeeId}/password:
     put:
       tags:
       - auth
@@ -119,6 +173,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header

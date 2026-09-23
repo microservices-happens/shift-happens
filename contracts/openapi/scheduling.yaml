@@ -4,47 +4,32 @@ openapi: 3.1.0
 info:
   title: Scheduling Service
   version: 1.0.0
-  description: Shifts, required job roles, assignments, shift approvals and shift swaps. Deployed as two roles from one codebase.
-    The gateway sends GET to the query role (Mongo read model, eventually consistent) and every other method to the command
-    role (Postgres, transactional outbox). Command endpoints return 202 Accepted with the resulting resource. Consumes leave.request.approved.v1
-    to flag conflicting assignments.
+  description: 'Shifts, required job roles, assignments, shift approvals and shift swaps. Deployed as two roles from one codebase:
+    the command role (Postgres, transactional outbox) serves writes and returns 202 Accepted with the resulting resource;
+    the query role (Mongo read model, eventually consistent) serves reads. Deletes are soft (tombstone) and publish *.deleted.v1.
+    This file covers the command role only: all reads are GraphQL on the query role (contracts/graphql/scheduling.graphql,
+    /api/graphql). Participates in the leave-approval saga (consumes leave.request.approval-started.v1).'
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
 - name: shifts
 - name: assignments
 - name: swaps
-- name: views
 - name: ops
 paths:
-  /shifts:
-    get:
-      tags:
-      - shifts
-      summary: List shifts
-      operationId: list_shifts
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Shift'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shifts:
     post:
       tags:
       - shifts
       summary: Create Shift
-      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.*.'
       operationId: create_shifts
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.*.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -66,28 +51,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shifts/{id}:
-    get:
-      tags:
-      - shifts
-      summary: Get Shift
-      operationId: get_shifts
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Shift'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shifts/{id}:
     put:
       tags:
       - shifts
@@ -140,31 +104,16 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /shiftrequiredjobroles:
-    get:
-      tags:
-      - shifts
-      summary: List shiftrequiredjobroles
-      operationId: list_shiftrequiredjobroles
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ShiftRequiredJobRole'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftrequiredjobroles:
     post:
       tags:
       - shifts
       summary: Create ShiftRequiredJobRole
-      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.updated.v1.'
       operationId: create_shiftrequiredjobroles
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.updated.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -186,28 +135,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shiftrequiredjobroles/{id}:
-    get:
-      tags:
-      - shifts
-      summary: Get ShiftRequiredJobRole
-      operationId: get_shiftrequiredjobroles
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftRequiredJobRole'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftrequiredjobroles/{id}:
     put:
       tags:
       - shifts
@@ -260,32 +188,18 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /shiftassignments:
-    get:
-      tags:
-      - assignments
-      summary: List shiftassignments
-      operationId: list_shiftassignments
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ShiftAssignment'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftassignments:
     post:
       tags:
       - assignments
       summary: Create ShiftAssignment
-      description: 'Roles: Administrator, Manager. Validates the employee via workforce GET /employees/{id} and /employeejobroles?employeeId=.
-        Publishes scheduling.assignment.*.'
       operationId: create_shiftassignments
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -307,34 +221,14 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shiftassignments/{id}:
-    get:
-      tags:
-      - assignments
-      summary: Get ShiftAssignment
-      operationId: get_shiftassignments
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftAssignment'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftassignments/{id}:
     put:
       tags:
       - assignments
       summary: Update ShiftAssignment
-      description: 'Roles: Administrator, Manager. Validates the employee via workforce GET /employees/{id} and /employeejobroles?employeeId=.
-        Publishes scheduling.assignment.*.'
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
       operationId: update_shiftassignments
       requestBody:
         required: true
@@ -366,8 +260,9 @@ paths:
       tags:
       - assignments
       summary: Delete ShiftAssignment
-      description: 'Roles: Administrator, Manager. Validates the employee via workforce GET /employees/{id} and /employeejobroles?employeeId=.
-        Publishes scheduling.assignment.*.'
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
       operationId: delete_shiftassignments
       responses:
         '202':
@@ -383,31 +278,16 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /shiftapprovals:
-    get:
-      tags:
-      - assignments
-      summary: List shiftapprovals
-      operationId: list_shiftapprovals
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ShiftApproval'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftapprovals:
     post:
       tags:
       - assignments
       summary: Create ShiftApproval
-      description: 'Roles: Administrator, Manager. Publishes scheduling.assignment.updated.v1.'
       operationId: create_shiftapprovals
+      description: 'Roles: Administrator, Manager. Publishes scheduling.assignment.updated.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -429,28 +309,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shiftapprovals/{id}:
-    get:
-      tags:
-      - assignments
-      summary: Get ShiftApproval
-      operationId: get_shiftapprovals
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftApproval'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftapprovals/{id}:
     put:
       tags:
       - assignments
@@ -503,31 +362,17 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /shiftswaps:
-    get:
-      tags:
-      - swaps
-      summary: List shiftswaps
-      operationId: list_shiftswaps
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ShiftSwap'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswaps:
     post:
       tags:
       - swaps
       summary: Create ShiftSwap
-      description: 'Roles: Administrator, Manager. POST validates employeeToId via workforce and publishes scheduling.swap.requested.v1.'
       operationId: create_shiftswaps
+      description: 'Roles: Administrator, Manager, or an Employee for their own assignment (employeeFromId = JWT employeeId).
+        POST validates employeeToId against the local employee replica and publishes scheduling.swap.requested.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -549,33 +394,13 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shiftswaps/{id}:
-    get:
-      tags:
-      - swaps
-      summary: Get ShiftSwap
-      operationId: get_shiftswaps
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftSwap'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswaps/{id}:
     put:
       tags:
       - swaps
       summary: Update ShiftSwap
-      description: 'Roles: Administrator, Manager. POST validates employeeToId via workforce and publishes scheduling.swap.requested.v1.'
+      description: 'Roles: Administrator, Manager. POST validates employeeToId against the local employee replica and publishes
+        scheduling.swap.requested.v1.'
       operationId: update_shiftswaps
       requestBody:
         required: true
@@ -607,7 +432,8 @@ paths:
       tags:
       - swaps
       summary: Delete ShiftSwap
-      description: 'Roles: Administrator, Manager. POST validates employeeToId via workforce and publishes scheduling.swap.requested.v1.'
+      description: 'Roles: Administrator, Manager. POST validates employeeToId against the local employee replica and publishes
+        scheduling.swap.requested.v1.'
       operationId: delete_shiftswaps
       responses:
         '202':
@@ -623,32 +449,17 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /shiftswapapprovals:
-    get:
-      tags:
-      - swaps
-      summary: List shiftswapapprovals
-      operationId: list_shiftswapapprovals
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ShiftSwapApproval'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswapapprovals:
     post:
       tags:
       - swaps
       summary: Create ShiftSwapApproval
+      operationId: create_shiftswapapprovals
       description: 'Roles: Administrator, Manager. POST with decision APPROVED reassigns the assignment in the same transaction
         and publishes scheduling.swap.approved.v1 + scheduling.assignment.updated.v1; REJECTED publishes scheduling.swap.rejected.v1.'
-      operationId: create_shiftswapapprovals
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -670,28 +481,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /shiftswapapprovals/{id}:
-    get:
-      tags:
-      - swaps
-      summary: Get ShiftSwapApproval
-      operationId: get_shiftswapapprovals
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ShiftSwapApproval'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-      parameters:
-      - $ref: '#/components/parameters/Id'
-      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswapapprovals/{id}:
     put:
       tags:
       - swaps
@@ -746,49 +536,6 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /views/employee-shift-overview:
-    get:
-      tags:
-      - views
-      summary: Shift overview for all employees
-      operationId: shiftOverview
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EmployeeShiftOverview'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /views/employee-shift-overview/employee/{employeeId}:
-    get:
-      tags:
-      - views
-      summary: Shift overview for one employee
-      operationId: shiftOverviewForEmployee
-      parameters:
-      - name: employeeId
-        in: path
-        required: true
-        schema:
-          type: integer
-      - $ref: '#/components/parameters/CorrelationId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EmployeeShiftOverview'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /health:
     get:
       tags:
@@ -823,6 +570,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -1012,36 +768,6 @@ components:
           - string
           - 'null'
           format: date-time
-    EmployeeShiftOverview:
-      type: object
-      required:
-      - employeeId
-      - shiftId
-      - shiftAssignmentId
-      properties:
-        employeeId:
-          type: integer
-        employeeName:
-          type: string
-        shiftId:
-          type: integer
-        shiftName:
-          type: string
-        startDatetime:
-          type: string
-          format: date-time
-        endDatetime:
-          type: string
-          format: date-time
-        shiftAssignmentId:
-          type: integer
-        assignmentStatus:
-          type: string
-        departmentId:
-          type: integer
-        workLocationId:
-          type: integer
-      description: Read-model document built by scheduling-query from scheduling.* and workforce.employee.* events.
   responses:
     BadRequest:
       description: Validation error

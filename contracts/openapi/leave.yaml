@@ -4,12 +4,14 @@ openapi: 3.1.0
 info:
   title: Leave Service
   version: 1.0.0
-  description: Leave types, requests, approvals and the immutable leave ledger. Deployed as two roles from one codebase. The
-    gateway sends GET to the query role (Mongo read model, eventually consistent) and every other method to the command role
-    (Postgres, transactional outbox). Command endpoints return 202 Accepted with the resulting resource.
+  description: 'Leave types, requests, approvals and the immutable leave ledger. Deployed as two roles from one codebase:
+    the command role (Postgres, transactional outbox) serves writes and returns 202 Accepted with the resulting resource;
+    the query role (Mongo read model, eventually consistent) serves reads. Deletes are soft (tombstone) and publish *.deleted.v1.
+    The gateway sends GET to the query role and other methods to the command role. leave-command orchestrates the leave-approval
+    saga.'
 servers:
 - url: /
-  description: Service root. Exposed by the gateway as /api.
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
 security:
 - bearerAuth: []
 tags:
@@ -19,7 +21,7 @@ tags:
 - name: views
 - name: ops
 paths:
-  /leavetypes:
+  /v1/leavetypes:
     get:
       tags:
       - leave-types
@@ -42,8 +44,11 @@ paths:
       tags:
       - leave-types
       summary: Create LeaveType
-      description: 'Roles: Administrator, Manager.'
       operationId: create_leavetypes
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -65,9 +70,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /leavetypes/{id}:
+  /v1/leavetypes/{id}:
     get:
       tags:
       - leave-types
@@ -139,7 +142,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /leaverequests:
+  /v1/leaverequests:
     get:
       tags:
       - requests
@@ -162,9 +165,12 @@ paths:
       tags:
       - requests
       summary: Create LeaveRequest
-      description: 'Roles: Administrator, Manager. POST validates the employee via workforce GET /employees/{id} and publishes
-        leave.request.submitted.v1.'
       operationId: create_leaverequests
+      description: 'Roles: Administrator, Manager, or an Employee for themself (employeeId = JWT employeeId). POST validates
+        the employee against the local replica and publishes leave.request.submitted.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -186,9 +192,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /leaverequests/{id}:
+  /v1/leaverequests/{id}:
     get:
       tags:
       - requests
@@ -212,8 +216,7 @@ paths:
       tags:
       - requests
       summary: Update LeaveRequest
-      description: 'Roles: Administrator, Manager. POST validates the employee via workforce GET /employees/{id} and publishes
-        leave.request.submitted.v1.'
+      description: 'Roles: Administrator, Manager. POST validates the employee against the local replica and publishes leave.request.submitted.v1.'
       operationId: update_leaverequests
       requestBody:
         required: true
@@ -245,8 +248,7 @@ paths:
       tags:
       - requests
       summary: Delete LeaveRequest
-      description: 'Roles: Administrator, Manager. POST validates the employee via workforce GET /employees/{id} and publishes
-        leave.request.submitted.v1.'
+      description: 'Roles: Administrator, Manager. POST validates the employee against the local replica and publishes leave.request.submitted.v1.'
       operationId: delete_leaverequests
       responses:
         '202':
@@ -262,7 +264,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /leaveapprovals:
+  /v1/leaveapprovals:
     get:
       tags:
       - requests
@@ -285,9 +287,13 @@ paths:
       tags:
       - requests
       summary: Create LeaveApproval
-      description: 'Roles: Administrator, Manager. POST publishes leave.request.approved.v1 or leave.request.rejected.v1;
-        approval also appends a USAGE ledger entry (leave.ledger.entry-recorded.v1) in the same transaction.'
       operationId: create_leaveapprovals
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -309,9 +315,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /leaveapprovals/{id}:
+  /v1/leaveapprovals/{id}:
     get:
       tags:
       - requests
@@ -335,8 +339,9 @@ paths:
       tags:
       - requests
       summary: Update LeaveApproval
-      description: 'Roles: Administrator, Manager. POST publishes leave.request.approved.v1 or leave.request.rejected.v1;
-        approval also appends a USAGE ledger entry (leave.ledger.entry-recorded.v1) in the same transaction.'
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
       operationId: update_leaveapprovals
       requestBody:
         required: true
@@ -368,8 +373,9 @@ paths:
       tags:
       - requests
       summary: Delete LeaveApproval
-      description: 'Roles: Administrator, Manager. POST publishes leave.request.approved.v1 or leave.request.rejected.v1;
-        approval also appends a USAGE ledger entry (leave.ledger.entry-recorded.v1) in the same transaction.'
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
       operationId: delete_leaveapprovals
       responses:
         '202':
@@ -385,7 +391,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /leaveapprovals/request/{leaveRequestId}:
+  /v1/leaveapprovals/request/{leaveRequestId}:
     get:
       tags:
       - requests
@@ -409,7 +415,7 @@ paths:
                   $ref: '#/components/schemas/LeaveApproval'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /leaveledgers:
+  /v1/leaveledgers:
     get:
       tags:
       - ledger
@@ -432,8 +438,11 @@ paths:
       tags:
       - ledger
       summary: Create LeaveLedgerEntry
-      description: 'Roles: Administrator, Manager. Append-only: no PUT or DELETE. Publishes leave.ledger.entry-recorded.v1.'
       operationId: create_leaveledgers
+      description: 'Roles: Administrator, Manager. Append-only: no PUT or DELETE. Publishes leave.ledger.entry-recorded.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
       requestBody:
         required: true
         content:
@@ -455,9 +464,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
-      parameters:
-      - $ref: '#/components/parameters/CorrelationId'
-  /leaveledgers/{id}:
+  /v1/leaveledgers/{id}:
     get:
       tags:
       - ledger
@@ -477,7 +484,7 @@ paths:
       parameters:
       - $ref: '#/components/parameters/Id'
       - $ref: '#/components/parameters/CorrelationId'
-  /views/employee-leave-overview:
+  /v1/views/employee-leave-overview:
     get:
       tags:
       - views
@@ -496,7 +503,7 @@ paths:
                   $ref: '#/components/schemas/EmployeeLeaveOverview'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /views/employee-leave-overview/employee/{employeeId}:
+  /v1/views/employee-leave-overview/employee/{employeeId}:
     get:
       tags:
       - views
@@ -520,7 +527,7 @@ paths:
                   $ref: '#/components/schemas/EmployeeLeaveOverview'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /views/employee-leave-overview/status/{status}:
+  /v1/views/employee-leave-overview/status/{status}:
     get:
       tags:
       - views
@@ -544,7 +551,7 @@ paths:
                   $ref: '#/components/schemas/EmployeeLeaveOverview'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /views/employee-leave-overview/leave-type/{leaveTypeName}:
+  /v1/views/employee-leave-overview/leave-type/{leaveTypeName}:
     get:
       tags:
       - views
@@ -602,6 +609,15 @@ components:
       required: true
       schema:
         type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -672,6 +688,7 @@ components:
           type: string
           enum:
           - PENDING
+          - APPROVAL_PENDING
           - APPROVED
           - REJECTED
           - CANCELLED
@@ -680,6 +697,11 @@ components:
           type:
           - string
           - 'null'
+        rejectionReason:
+          type:
+          - string
+          - 'null'
+          readOnly: true
         requestedDatetime:
           type: string
           format: date-time

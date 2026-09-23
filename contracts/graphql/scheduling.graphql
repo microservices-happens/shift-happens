@@ -1,0 +1,96 @@
+# Scheduling read API, served by scheduling-query at /graphql
+# (exposed by the gateway as POST /api/graphql).
+#
+# - Read-only: every write goes through REST on scheduling-command
+#   (contracts/openapi/scheduling.yaml). There are no mutations here.
+# - Data comes from the Mongo read model built from events, so results are
+#   eventually consistent (normally < 1 s behind a write).
+# - Auth: the same Bearer JWT as REST. An Employee sees only their own
+#   assignments and swaps; a Manager or Administrator sees everything.
+# - Not versioned: evolve by adding fields; mark old fields @deprecated.
+
+scalar DateTime  # ISO-8601, e.g. 2026-10-01T08:00:00Z
+scalar Date      # YYYY-MM-DD
+
+type Query {
+  "Shifts that overlap [from, to), optionally filtered."
+  shifts(from: DateTime!, to: DateTime!, departmentId: Int, workLocationId: Int, status: ShiftStatus): [Shift!]!
+  shift(shiftId: Int!): Shift
+  "One employee's schedule, e.g. for the 'My shifts' page. Employees may only query themselves."
+  employeeSchedule(employeeId: Int!, from: DateTime!, to: DateTime!): [Assignment!]!
+  "Shifts missing staff for at least one required job role (manager dashboard)."
+  understaffedShifts(from: DateTime!, to: DateTime!): [Shift!]!
+  swapRequests(status: SwapStatus): [SwapRequest!]!
+}
+
+enum ShiftStatus { PLANNED PUBLISHED CANCELLED LOCKED }
+enum AssignmentStatus { ASSIGNED APPROVED CANCELLED SWAPPED RELEASED_FOR_LEAVE }
+enum SwapStatus { PENDING APPROVED REJECTED }
+enum SuggestionSource { LLM RULE }
+
+type Shift {
+  shiftId: Int!
+  shiftName: String!
+  departmentId: Int!
+  workLocationId: Int!
+  startDatetime: DateTime!
+  endDatetime: DateTime!
+  status: ShiftStatus!
+  requiredJobRoles: [RequiredJobRole!]!
+  assignments: [Assignment!]!
+  "True if any required job role has fewer active assignments than required."
+  isUnderstaffed: Boolean!
+  "Latest AI suggestions (ai.replacement.suggested.v1), newest first."
+  replacementSuggestions: [ReplacementSuggestion!]!
+}
+
+type RequiredJobRole {
+  jobRoleId: Int!
+  requiredEmployeeCount: Int!
+  assignedCount: Int!
+}
+
+type Assignment {
+  shiftAssignmentId: Int!
+  shift: Shift!
+  employee: Employee!
+  status: AssignmentStatus!
+  assignedDatetime: DateTime
+  checkInDatetime: DateTime
+  checkOutDatetime: DateTime
+}
+
+"Local copy built from workforce.employee.* events."
+type Employee {
+  employeeId: Int!
+  firstName: String!
+  lastName: String!
+  jobRoleIds: [Int!]!
+}
+
+type SwapRequest {
+  shiftSwapId: Int!
+  assignment: Assignment!
+  from: Employee!
+  to: Employee!
+  status: SwapStatus!
+  reason: String
+  requestDatetime: DateTime!
+  decidedBy: Employee
+  decisionComment: String
+  decisionDatetime: DateTime
+}
+
+type ReplacementSuggestion {
+  jobRoleId: Int!
+  source: SuggestionSource!
+  model: String
+  suggestedAt: DateTime!
+  candidates: [RankedCandidate!]!
+}
+
+type RankedCandidate {
+  rank: Int!
+  employee: Employee!
+  reason: String!
+}

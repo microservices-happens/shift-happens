@@ -4,7 +4,16 @@
   "title": "EventEnvelope",
   "description": "Body of every message published to the shift-happens.events exchange. The routing key equals eventType.",
   "type": "object",
-  "required": ["eventId", "eventType", "occurredAt", "producer", "aggregateId", "aggregateVersion", "correlationId", "data"],
+  "required": [
+    "eventId",
+    "eventType",
+    "occurredAt",
+    "producer",
+    "aggregateId",
+    "aggregateVersion",
+    "correlationId",
+    "data"
+  ],
   "additionalProperties": false,
   "properties": {
     "eventId": {
@@ -16,7 +25,9 @@
       "type": "string",
       "pattern": "^[a-z]+\\.[a-z-]+\\.[a-z-]+\\.v[0-9]+$",
       "description": "<context>.<entity>.<what-happened>.v<version>, e.g. scheduling.swap.approved.v1. Also used as the routing key.",
-      "examples": ["scheduling.swap.approved.v1"]
+      "examples": [
+        "scheduling.swap.approved.v1"
+      ]
     },
     "occurredAt": {
       "type": "string",
@@ -24,11 +35,17 @@
     },
     "producer": {
       "type": "string",
-      "enum": ["workforce-service", "scheduling-service", "leave-service"]
+      "enum": [
+        "workforce-service",
+        "scheduling-service",
+        "leave-service",
+        "ai-service",
+        "notification-service"
+      ]
     },
     "aggregateId": {
       "type": "integer",
-      "description": "Id of the entity the event is about (employeeId, shiftId, shiftSwapId, ...)."
+      "description": "Id of the entity the event is about (employeeId, shiftId, leaveRequestId, ...)."
     },
     "aggregateVersion": {
       "type": "integer",
@@ -40,13 +57,16 @@
       "description": "Copied from the X-Correlation-Id of the request (or the correlationId of the event) that caused this event."
     },
     "causationId": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "uuid",
       "description": "eventId of the event that caused this one, if any."
     },
     "data": {
       "type": "object",
-      "description": "Full snapshot of the entity after the change. Schema per eventType is listed in catalog.md."
+      "description": "Payload. Schema per eventType is defined in contracts/asyncapi.yaml."
     }
   },
   "examples": [

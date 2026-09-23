@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/replacement-suggestion.schema.json",
+  "title": "ReplacementSuggestion",
+  "description": "data of ai.replacement.suggested.v1. Advisory only: a manager still creates the assignment through Scheduling. aggregateId = shiftId.",
+  "type": "object",
+  "required": [
+    "shiftId",
+    "jobRoleId",
+    "rankedCandidates",
+    "source",
+    "model"
+  ],
+  "properties": {
+    "shiftId": {
+      "type": "integer"
+    },
+    "jobRoleId": {
+      "type": "integer"
+    },
+    "rankedCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "employeeId",
+          "rank",
+          "reason"
+        ],
+        "properties": {
+          "employeeId": {
+            "type": "integer"
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "llm",
+        "rule"
+      ],
+      "description": "rule = LLM unavailable or timed out; ranked by fewest hours this week."
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "examples": [
+        "llama3.2:1b"
+      ]
+    }
+  }
+}

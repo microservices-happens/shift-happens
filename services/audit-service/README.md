@@ -1,24 +1,16 @@
 # audit-service
 
-**Owns:** an append-only log of every event.
-**Database:** `audit-db` (Postgres). **Compose:** `audit-service`.
+**Owns:** an append-only log of every business event.
+**Database:** `audit-db` (Postgres, Flyway). **Compose:** `audit-service`.
 
 ## Provides
-- REST: [`contracts/openapi/audit.yaml`](../../contracts/openapi/audit.yaml)
-  - `GET /auditlogs`, Administrator only, filterable by `eventType`, `aggregateId`, `correlationId` and time range
+REST: [`contracts/openapi/audit.yaml`](../../contracts/openapi/audit.yaml). `GET /v1/auditlogs`, Administrator only, filterable by `eventType`, `aggregateId`, `correlationId` and time range.
 
 ## Consumes
-| Queue | Binding |
-|---|---|
-| `audit.events` | `#` (everything) |
-
-Store the envelope unchanged, with a unique constraint on `eventId` so redelivery is harmless.
-
-## Publishes
-Nothing.
+Queue `audit.events`: every `workforce.*`, `scheduling.*`, `leave.*` and `ai.*` event (email payloads are excluded because they contain personal data). It stores the envelope unchanged, with a unique constraint on `eventId`.
 
 ## Extract from monolith
-`auditlog`. The monolith writes audit rows directly; here audit rows come only from events.
+`auditlog`. In the monolith, services write audit rows directly. Here, audit rows come only from events.
 
 ## Done when
-- [ ] Following one `correlationId` shows the full chain, e.g. swap requested → swap approved → assignment updated.
+- [ ] Filtering by one `correlationId` shows a whole saga, e.g. approval-started → leave-release.completed → approved.

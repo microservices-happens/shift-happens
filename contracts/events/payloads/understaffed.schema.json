@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/understaffed.schema.json",
+  "title": "ShiftUnderstaffed",
+  "description": "data of scheduling.shift.understaffed.v1. Published when an assignment is released or cancelled and the shift no longer has enough staff for a job role. Scheduling already filters candidates (qualified, active, not on leave, no overlapping shift), so ai-service needs no other data. aggregateId = shiftId.",
+  "type": "object",
+  "required": [
+    "shiftId",
+    "shiftName",
+    "startDatetime",
+    "endDatetime",
+    "jobRoleId",
+    "missingCount",
+    "candidates"
+  ],
+  "properties": {
+    "shiftId": {
+      "type": "integer"
+    },
+    "shiftName": {
+      "type": "string"
+    },
+    "departmentId": {
+      "type": "integer"
+    },
+    "startDatetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endDatetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "jobRoleId": {
+      "type": "integer"
+    },
+    "missingCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "employeeId",
+          "name",
+          "hoursThisWeek",
+          "weeklyContractHours"
+        ],
+        "properties": {
+          "employeeId": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "hoursThisWeek": {
+            "type": "number"
+          },
+          "weeklyContractHours": {
+            "type": "number"
+          },
+          "proficiencyLevel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

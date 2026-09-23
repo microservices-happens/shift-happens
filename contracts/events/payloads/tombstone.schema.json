@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/tombstone.schema.json",
+  "title": "Tombstone",
+  "description": "data of every *.deleted.v1 event. The producer soft-deletes the row (deleted_at) and consumers keep the tombstone instead of removing the record, so a late, out-of-order update with a lower aggregateVersion can never resurrect it.",
+  "type": "object",
+  "required": [
+    "entityType",
+    "entityId",
+    "deletedAt"
+  ],
+  "properties": {
+    "entityType": {
+      "type": "string",
+      "enum": [
+        "employee",
+        "shift",
+        "assignment"
+      ]
+    },
+    "entityId": {
+      "type": "integer"
+    },
+    "deletedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

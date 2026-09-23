@@ -6,14 +6,18 @@
 # service is extracted from the monolith. The existing docker-compose.yml
 # remains the runnable monolith during the migration.
 #
-# Only two ways to move data between services (see contracts/README.md):
-#   1. REST/JSON over HTTP  — synchronous request/response (contracts/openapi)
-#   2. RabbitMQ events      — asynchronous publish/subscribe (contracts/events)
+# Communication (see contracts/README.md):
+#   Browser  -> services : REST /api/v1/* (contracts/openapi) and GraphQL /api/graphql
+#                          (contracts/graphql), both through the gateway.
+#   Service <-> service  : RabbitMQ events only (contracts/asyncapi.yaml). Services keep
+#                          local copies of the data they need instead of calling each other.
 #
 # Start infrastructure only:
 #   docker compose -f docker-compose.microservices.yml up -d
 # Start the completed target system:
 #   docker compose -f docker-compose.microservices.yml --profile app up --build
+# Add the local LLM for ai-service (first start pulls the model):
+#   docker compose -f docker-compose.microservices.yml --profile app --profile ai up --build
 
 name: shift-happens-microservices
 
@@ -110,6 +114,7 @@ services:
       audit-service:
         condition: service_started
 
+  # REST base URL is baked in at build time (see frontend/Dockerfile.microservices).
   frontend:
     <<: *app
     build:
@@ -124,8 +129,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # Login, password hashes and JWT signing. Keeps a login account per employee
-  # in sync by consuming workforce.employee.* events.
+  # Login (local password or Google/GitHub via OIDC), JWT signing. Keeps a login
+  # account per employee in sync by consuming workforce.employee.* events.
   # Contract: contracts/openapi/identity.yaml
   identity-service:
     <<: *app
@@ -139,8 +144,17 @@ services:
       DB_USER: identity
       DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev}
       RABBITMQ_QUEUE: identity.accounts
+      # Third-party login (OAuth 2.0 / OpenID Connect). Register the redirect URI
+      # https://localhost:8443/api/v1/auth/oidc/{google|github}/callback with the provider.
+      OIDC_REDIRECT_BASE_URL: https://localhost:8443/api/v1/auth/oidc
+      OIDC_GOOGLE_CLIENT_ID: ${OIDC_GOOGLE_CLIENT_ID:-}
+      OIDC_GOOGLE_CLIENT_SECRET: ${OIDC_GOOGLE_CLIENT_SECRET:-}
+      OIDC_GITHUB_CLIENT_ID: ${OIDC_GITHUB_CLIENT_ID:-}
+      OIDC_GITHUB_CLIENT_SECRET: ${OIDC_GITHUB_CLIENT_SECRET:-}
+      FRONTEND_LOGIN_CALLBACK_URL: https://localhost:8443/login/callback
     expose: ["8080"]
-    networks: [service-bus, identity-data]
+    # egress: token and JWKS calls to the external identity providers.
+    networks: [service-bus, identity-data, egress]
     depends_on:
       identity-db:
         condition: service_healthy
@@ -172,9 +186,10 @@ services:
     healthcheck: *app-healthcheck
 
   # Scheduling owns shifts, required roles, assignments, shift approvals and
-  # shift swaps. One codebase/image deployed in two CQRS roles: the gateway
-  # sends GET requests to the query role and all writes to the command role.
-  # Contract: contracts/openapi/scheduling.yaml
+  # shift swaps. One codebase/image deployed in two CQRS roles:
+  #   command: REST writes (contracts/openapi/scheduling.yaml), Postgres + outbox,
+  #            leave-saga participant, local replica of employees for validation.
+  #   query:   GraphQL reads (contracts/graphql/scheduling.graphql), Mongo read model.
   scheduling-command:
     <<: *app
     build: ./services/scheduling-service
@@ -187,8 +202,7 @@ services:
       DB_NAME: scheduling
       DB_USER: scheduling
       DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_dev}
-      WORKFORCE_URL: http://workforce-service:8080
-      RABBITMQ_QUEUE: scheduling.leave-conflicts
+      RABBITMQ_QUEUE: scheduling.command
       OUTBOX_ENABLED: "true"
     expose: ["8080"]
     networks: [service-bus, scheduling-write-data]
@@ -213,6 +227,7 @@ services:
       MONGO_PASSWORD: ${SCHEDULING_MONGO_PASSWORD:-scheduling_read_dev}
       MONGO_AUTH_DATABASE: admin
       RABBITMQ_QUEUE: scheduling.projection
+      GRAPHQL_PATH: /graphql
     expose: ["8080"]
     networks: [service-bus, scheduling-read-data]
     depends_on:
@@ -223,7 +238,7 @@ services:
     healthcheck: *app-healthcheck
 
   # Leave requests, types, approvals and the immutable leave ledger. Same CQRS
-  # split as Scheduling.
+  # split as Scheduling. leave-command orchestrates the leave-approval saga.
   # Contract: contracts/openapi/leave.yaml
   leave-command:
     <<: *app
@@ -237,7 +252,8 @@ services:
       DB_NAME: leave
       DB_USER: leave
       DB_PASSWORD: ${LEAVE_DB_PASSWORD:-leave_dev}
-      WORKFORCE_URL: http://workforce-service:8080
+      RABBITMQ_QUEUE: leave.command
+      SAGA_TIMEOUT: PT5M
       OUTBOX_ENABLED: "true"
     expose: ["8080"]
     networks: [service-bus, leave-write-data]
@@ -272,7 +288,8 @@ services:
     healthcheck: *app-healthcheck
 
   # Fan-out subscriber: its own queue receives a copy of every matching event.
-  # Stores in-app notifications (read over REST) and sends email via SMTP.
+  # Stores in-app notifications (read over REST) and hands email off to
+  # email-function by publishing notification.email.requested.v1.
   # Contract: contracts/openapi/notification.yaml
   notification-service:
     <<: *app
@@ -286,22 +303,44 @@ services:
       DB_USER: notification
       DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev}
       RABBITMQ_QUEUE: notification.events
-      SMTP_HOST: ${SMTP_HOST:-mailpit}
-      SMTP_PORT: ${SMTP_PORT:-1025}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@shift-happens.local}
+      OUTBOX_ENABLED: "true"
     expose: ["8080"]
-    # egress lets SMTP_HOST point at a real provider instead of Mailpit.
-    networks: [service-bus, notification-data, egress]
+    networks: [service-bus, notification-data]
     depends_on:
       notification-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Serverless function (not a microservice): sends one email per message on
+  # queue email.send, then exits when the queue is empty. In Kubernetes it runs as
+  # a KEDA ScaledJob on that queue's length (0 pods when idle); locally it is
+  # simply a long-running worker.
+  email-function:
+    <<: *app
+    build: ./functions/email-function
+    image: ${EMAIL_FUNCTION_IMAGE:-shift-happens/email-function:dev}
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER:-shift}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-shift_dev}
+      RABBITMQ_VHOST: shift-happens
+      RABBITMQ_QUEUE: email.send
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@shift-happens.local}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    # egress lets SMTP_HOST point at a real provider instead of Mailpit.
+    networks: [service-bus, egress]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
       mailpit:
         condition: service_started
-    healthcheck: *app-healthcheck
 
   # Fan-out subscriber that appends every event to an append-only store.
   # Idempotent by eventId. Contract: contracts/openapi/audit.yaml
@@ -325,6 +364,65 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck: *app-healthcheck
+
+  # Consumes scheduling.shift.understaffed.v1 (which already lists qualified,
+  # available candidates), asks the LLM to rank them with a short reason and
+  # publishes ai.replacement.suggested.v1. Scheduling-query shows the suggestion
+  # in GraphQL; notification tells the manager. Never writes schedules itself.
+  ai-service:
+    <<: *app
+    build: ./services/ai-service
+    image: ${AI_IMAGE:-shift-happens/ai-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: ai-db
+      DB_PORT: "5432"
+      DB_NAME: ai
+      DB_USER: ai
+      DB_PASSWORD: ${AI_DB_PASSWORD:-ai_dev}
+      RABBITMQ_QUEUE: ai.suggestions
+      OUTBOX_ENABLED: "true"
+      # Any OpenAI-compatible or Ollama endpoint. Local default: the ollama
+      # container (--profile ai). Without it, ai-service falls back to
+      # ranking candidates by a simple rule and marks the suggestion source "rule".
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
+      LLM_TIMEOUT: PT20S
+    expose: ["8080"]
+    networks: [service-bus, ai-data, llm]
+    depends_on:
+      ai-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Local LLM (third-party service, not a microservice).
+  ollama:
+    profiles: [ai]
+    image: ollama/ollama:0.12.3
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    networks: [llm, egress]
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: downloads the model into the shared volume, then exits.
+  ollama-pull:
+    profiles: [ai]
+    image: ollama/ollama:0.12.3
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: [ollama, pull, "${LLM_MODEL:-llama3.2:1b}"]
+    networks: [llm, egress]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
 
   rabbitmq:
     image: rabbitmq:4.1-management-alpine
@@ -424,6 +522,15 @@ services:
     volumes: ["audit-data:/var/lib/postgresql/data"]
     networks: [audit-data]
 
+  ai-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ai
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ${AI_DB_PASSWORD:-ai_dev}
+    volumes: ["ai-data:/var/lib/postgresql/data"]
+    networks: [ai-data]
+
   # Initial observability integration point. It accepts logs, metrics and traces;
   # replace the debug exporter with Grafana/Jaeger/another backend later.
   otel-collector:
@@ -437,9 +544,8 @@ services:
       - "127.0.0.1:4318:4318"
     networks: [service-bus, ops]
 
-# Path-based routing. The frontend keeps calling /api/<resource> exactly as it
-# does against the monolith; the gateway strips /api and forwards to the owner.
-# Scheduling and Leave: GET goes to the query role, everything else to command.
+# Path-based routing. REST is versioned: /api/v1/<resource> -> <service>/v1/<resource>.
+# The gateway only strips /api and forwards; it has no business logic.
 configs:
   caddyfile:
     content: |
@@ -452,7 +558,7 @@ configs:
       https://localhost {
         tls internal
 
-        @identity path /api/auth /api/auth/*
+        @identity path /api/v1/auth /api/v1/auth/*
         handle @identity {
           uri strip_prefix /api
           reverse_proxy identity-service:8080 {
@@ -460,7 +566,7 @@ configs:
           }
         }
 
-        @workforce path /api/employees* /api/employeecontracts* /api/employeejobroles* /api/departments* /api/jobroles* /api/worklocations*
+        @workforce path /api/v1/employees* /api/v1/employeecontracts* /api/v1/employeejobroles* /api/v1/departments* /api/v1/jobroles* /api/v1/worklocations*
         handle @workforce {
           uri strip_prefix /api
           reverse_proxy workforce-service:8080 {
@@ -468,18 +574,16 @@ configs:
           }
         }
 
-        @schedulingRead {
-          method GET
-          path /api/shifts* /api/shiftassignments* /api/shiftrequiredjobroles* /api/shiftapprovals* /api/shiftswaps* /api/shiftswapapprovals* /api/views/employee-shift-overview*
-        }
-        handle @schedulingRead {
+        # Scheduling reads are GraphQL (query role); writes are REST (command role).
+        @schedulingGraphql path /api/graphql
+        handle @schedulingGraphql {
           uri strip_prefix /api
           reverse_proxy scheduling-query:8080 {
             import upstream
           }
         }
 
-        @schedulingWrite path /api/shifts* /api/shiftassignments* /api/shiftrequiredjobroles* /api/shiftapprovals* /api/shiftswaps* /api/shiftswapapprovals*
+        @schedulingWrite path /api/v1/shifts* /api/v1/shiftassignments* /api/v1/shiftrequiredjobroles* /api/v1/shiftapprovals* /api/v1/shiftswaps* /api/v1/shiftswapapprovals*
         handle @schedulingWrite {
           uri strip_prefix /api
           reverse_proxy scheduling-command:8080 {
@@ -489,7 +593,7 @@ configs:
 
         @leaveRead {
           method GET
-          path /api/leaverequests* /api/leavetypes* /api/leaveapprovals* /api/leaveledgers* /api/views/employee-leave-overview*
+          path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers* /api/v1/views/employee-leave-overview*
         }
         handle @leaveRead {
           uri strip_prefix /api
@@ -498,7 +602,7 @@ configs:
           }
         }
 
-        @leaveWrite path /api/leaverequests* /api/leavetypes* /api/leaveapprovals* /api/leaveledgers*
+        @leaveWrite path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers*
         handle @leaveWrite {
           uri strip_prefix /api
           reverse_proxy leave-command:8080 {
@@ -506,7 +610,7 @@ configs:
           }
         }
 
-        @notification path /api/notifications*
+        @notification path /api/v1/notifications*
         handle @notification {
           uri strip_prefix /api
           reverse_proxy notification-service:8080 {
@@ -514,7 +618,7 @@ configs:
           }
         }
 
-        @audit path /api/auditlogs*
+        @audit path /api/v1/auditlogs*
         handle @audit {
           uri strip_prefix /api
           reverse_proxy audit-service:8080 {
@@ -558,6 +662,11 @@ networks:
     internal: true
   audit-data:
     internal: true
+  ai-data:
+    internal: true
+  # ai-service <-> ollama only.
+  llm:
+    internal: true
 
 volumes:
   rabbitmq-data: {}
@@ -569,5 +678,7 @@ volumes:
   leave-read-data: {}
   notification-data: {}
   audit-data: {}
+  ai-data: {}
+  ollama-models: {}
   caddy-data: {}
   caddy-config: {}

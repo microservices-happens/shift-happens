@@ -2,28 +2,100 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://shift-happens.local/contracts/events/payloads/leave-request.schema.json",
   "title": "LeaveRequestSnapshot",
-  "description": "data of leave.request.submitted.v1, leave.request.approved.v1 and leave.request.rejected.v1. decision is null while the request is pending.",
+  "description": "data of leave.request.submitted.v1, leave.request.approval-started.v1, leave.request.approved.v1 and leave.request.rejected.v1 (full snapshot). decision is null while pending.",
   "type": "object",
-  "required": ["leaveRequestId", "employeeId", "leaveTypeId", "leaveTypeName", "startDate", "endDate", "requestStatus", "requestedDatetime", "decision"],
+  "required": [
+    "leaveRequestId",
+    "employeeId",
+    "leaveTypeId",
+    "leaveTypeName",
+    "startDate",
+    "endDate",
+    "requestStatus",
+    "requestedDatetime",
+    "decision"
+  ],
   "properties": {
-    "leaveRequestId": { "type": "integer" },
-    "employeeId": { "type": "integer" },
-    "leaveTypeId": { "type": "integer" },
-    "leaveTypeName": { "type": "string" },
-    "startDate": { "type": "string", "format": "date" },
-    "endDate": { "type": "string", "format": "date" },
-    "requestStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "CANCELLED"] },
-    "reason": { "type": ["string", "null"] },
-    "requestedDatetime": { "type": "string", "format": "date-time" },
+    "leaveRequestId": {
+      "type": "integer"
+    },
+    "employeeId": {
+      "type": "integer"
+    },
+    "leaveTypeId": {
+      "type": "integer"
+    },
+    "leaveTypeName": {
+      "type": "string"
+    },
+    "startDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "endDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "requestStatus": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "APPROVAL_PENDING",
+        "APPROVED",
+        "REJECTED",
+        "CANCELLED"
+      ],
+      "description": "APPROVAL_PENDING = manager approved, saga waiting for Scheduling to release the employee's assignments."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requestedDatetime": {
+      "type": "string",
+      "format": "date-time"
+    },
     "decision": {
-      "type": ["object", "null"],
-      "required": ["approverEmployeeId", "decision", "decisionDatetime"],
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "approverEmployeeId",
+        "decision",
+        "decisionDatetime"
+      ],
       "properties": {
-        "approverEmployeeId": { "type": "integer" },
-        "decision": { "type": "string", "enum": ["APPROVED", "REJECTED"] },
-        "comment": { "type": ["string", "null"] },
-        "decisionDatetime": { "type": "string", "format": "date-time" }
+        "approverEmployeeId": {
+          "type": "integer"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "APPROVED",
+            "REJECTED"
+          ]
+        },
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decisionDatetime": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
+    },
+    "rejectionReason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Set when rejected, including saga compensation (e.g. 'Shift 12 is locked')."
     }
   }
 }
