@@ -1,0 +1,1 @@
+# Command role: Postgres write model + transactional outbox; handles REST writes and saga messages.

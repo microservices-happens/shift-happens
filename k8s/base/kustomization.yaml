@@ -1,0 +1,17 @@
+# Apply with: kubectl apply -k k8s/overlays/local
+namespace: shift-happens
+resources:
+  - namespace.yaml
+  - config.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - keda/email-function-scaledjob.yaml
+  - services/identity-service.yaml
+  - services/workforce-service.yaml
+  - services/scheduling-command.yaml
+  - services/scheduling-query.yaml
+  - services/leave-command.yaml
+  - services/leave-query.yaml
+  - services/ai-service.yaml
+  - services/notification-service.yaml
+  - services/audit-service.yaml

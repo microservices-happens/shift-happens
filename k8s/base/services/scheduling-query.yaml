@@ -1,0 +1,39 @@
+# Shifts, assignments, approvals and shift swaps (CQRS; GraphQL read side) — query role
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-query
+  labels: { app.kubernetes.io/name: scheduling-query, app.kubernetes.io/part-of: shift-happens }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: scheduling-query }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: scheduling-query, app.kubernetes.io/part-of: shift-happens }
+    spec:
+      containers:
+        - name: scheduling-query
+          image: ghcr.io/microservices-happens/scheduling-service:0.1.0
+          ports: [{ containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: shift-happens-config }
+            - secretRef: { name: scheduling-query-secrets, optional: true }
+          env:
+            - name: SPRING_APPLICATION_NAME
+              value: scheduling-query
+            - name: APP_ROLE
+              value: query
+          readinessProbe: { httpGet: { path: /health/readiness, port: 8080 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/liveness, port: 8080 }, initialDelaySeconds: 30, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduling-query
+spec:
+  selector: { app.kubernetes.io/name: scheduling-query }
+  ports: [{ port: 8080, targetPort: 8080 }]

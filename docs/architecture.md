@@ -8,6 +8,8 @@ This document covers the architecture topics of Mandatory Assignment 1 in *Devel
 | [`../contracts/`](../contracts) | Contracts between the services: OpenAPI, GraphQL SDL, AsyncAPI |
 | [`../services/*/README.md`](../services) | Scaffold for each service: owns / provides / publishes / consumes / done-when |
 | [`../docker-compose.microservices.yml`](../docker-compose.microservices.yml) | Development environment for the target system |
+| [`project-plan.md`](project-plan.md) | Work packages, tasks, sprints and requirement traceability |
+| [`adr/`](adr/README.md) | Architecture decision records |
 
 The current `docker-compose.yml` still runs the monolith, which the services are extracted from.
 

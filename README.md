@@ -11,6 +11,33 @@ The current application remains the runnable monolith. The target microservice a
 - `contracts/` — OpenAPI (REST), GraphQL SDL and AsyncAPI (events) contracts between the services.
 - `services/*/README.md`, `functions/*/README.md` — scaffold for each service.
 - `docker-compose.microservices.yml` — development environment for the target system.
+- `docs/project-plan.md` — work packages and tasks derived from the final project description.
+
+### Repository layout
+
+```
+.
+├── contracts/                  # Source of truth for all APIs: openapi/, graphql/, asyncapi.yaml, events/
+├── services/                   # One independently deployable Spring Boot service per folder
+│   └── <name>-service/
+│       ├── pom.xml  Dockerfile  README.md
+│       └── src/main/java/dk/ek/shift_happens/<name>/
+│           ├── api/                        # REST controllers / GraphQL resolvers
+│           ├── application/                # use cases, transactions
+│           ├── domain/                     # business rules (plain Java)
+│           ├── infrastructure/persistence/ # repositories, Flyway in resources/db/migration
+│           ├── infrastructure/messaging/   # RabbitMQ listeners, outbox relay
+│           └── config/                     # security, AMQP, OpenTelemetry
+├── functions/email-function/   # Serverless job (KEDA ScaledJob), not a microservice
+├── frontend/                   # React SPA (REST + GraphQL client)
+├── tests/cooperation/          # System-level tests: several services + RabbitMQ in containers
+├── k8s/                        # Kustomize base/overlays, KEDA, Ingress, Helm infrastructure notes
+├── docker/microservices/       # Config files mounted by docker-compose.microservices.yml
+├── docs/                       # architecture.md, project-plan.md, adr/, diagram
+└── .github/                    # CI workflows, PR/issue templates, CODEOWNERS, Dependabot
+```
+
+Each service currently is a **walking skeleton**: it builds, passes its test, and serves `GET /health`. Build one with `cd services/<name> && mvn verify`.
 
 ---
 

@@ -1,0 +1,22 @@
+# Serverless function: 0 pods when idle, one Job per burst of messages on email.send.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: email-function
+spec:
+  jobTargetRef:
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+          - name: email-function
+            image: ghcr.io/microservices-happens/email-function:0.1.0
+            envFrom:
+              - configMapRef: { name: shift-happens-config }
+              - secretRef: { name: email-function-secrets, optional: true }
+  pollingInterval: 10
+  maxReplicaCount: 5
+  triggers:
+    - type: rabbitmq
+      metadata: { queueName: email.send, mode: QueueLength, value: "20" }
+      authenticationRef: { name: rabbitmq-auth }

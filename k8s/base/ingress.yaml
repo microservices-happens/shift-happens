@@ -1,0 +1,23 @@
+# Same path rules as the Caddyfile in docker-compose.microservices.yml. Only routing, no business logic.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shift-happens
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: shift-happens.local
+      http:
+        paths:
+          # TODO: GET vs write split for leave (query vs command) needs two Ingress objects or a
+          # small routing rule in the ingress controller; start by sending all leave traffic to leave-command.
+          - { path: /api/(v1/auth.*),        pathType: ImplementationSpecific, backend: { service: { name: identity-service,     port: { number: 8080 } } } }
+          - { path: /api/(v1/(employees|employeecontracts|employeejobroles|departments|jobroles|worklocations).*), pathType: ImplementationSpecific, backend: { service: { name: workforce-service, port: { number: 8080 } } } }
+          - { path: /api/(graphql),          pathType: ImplementationSpecific, backend: { service: { name: scheduling-query,     port: { number: 8080 } } } }
+          - { path: /api/(v1/shift.*),       pathType: ImplementationSpecific, backend: { service: { name: scheduling-command,   port: { number: 8080 } } } }
+          - { path: /api/(v1/(leave|views/employee-leave).*), pathType: ImplementationSpecific, backend: { service: { name: leave-command, port: { number: 8080 } } } }
+          - { path: /api/(v1/notifications.*), pathType: ImplementationSpecific, backend: { service: { name: notification-service, port: { number: 8080 } } } }
+          - { path: /api/(v1/auditlogs.*),   pathType: ImplementationSpecific, backend: { service: { name: audit-service,        port: { number: 8080 } } } }
