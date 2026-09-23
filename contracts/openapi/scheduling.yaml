@@ -1,0 +1,801 @@
+# Generated from the monolith DTOs; edit freely, this file is now the contract.
+# See contracts/README.md for conventions.
+openapi: 3.1.0
+info:
+  title: Scheduling Service
+  version: 1.0.0
+  description: 'Shifts, required job roles, assignments, shift approvals and shift swaps. Deployed as two roles from one codebase:
+    the command role (Postgres, transactional outbox) serves writes and returns 202 Accepted with the resulting resource;
+    the query role (Mongo read model, eventually consistent) serves reads. Deletes are soft (tombstone) and publish *.deleted.v1.
+    This file covers the command role only: all reads are GraphQL on the query role (contracts/graphql/scheduling.graphql,
+    /api/graphql). Participates in the leave-approval saga (consumes leave.request.approval-started.v1).'
+servers:
+- url: /
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
+security:
+- bearerAuth: []
+tags:
+- name: shifts
+- name: assignments
+- name: swaps
+- name: ops
+paths:
+  /v1/shifts:
+    post:
+      tags:
+      - shifts
+      summary: Create Shift
+      operationId: create_shifts
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.*.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Shift'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shifts/{id}:
+    put:
+      tags:
+      - shifts
+      summary: Update Shift
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.*.'
+      operationId: update_shifts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Shift'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - shifts
+      summary: Delete Shift
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.*.'
+      operationId: delete_shifts
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftrequiredjobroles:
+    post:
+      tags:
+      - shifts
+      summary: Create ShiftRequiredJobRole
+      operationId: create_shiftrequiredjobroles
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.updated.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftRequiredJobRole'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftRequiredJobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shiftrequiredjobroles/{id}:
+    put:
+      tags:
+      - shifts
+      summary: Update ShiftRequiredJobRole
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.updated.v1.'
+      operationId: update_shiftrequiredjobroles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftRequiredJobRole'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftRequiredJobRole'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - shifts
+      summary: Delete ShiftRequiredJobRole
+      description: 'Roles: Administrator, Manager. Publishes scheduling.shift.updated.v1.'
+      operationId: delete_shiftrequiredjobroles
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftassignments:
+    post:
+      tags:
+      - assignments
+      summary: Create ShiftAssignment
+      operationId: create_shiftassignments
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftAssignment'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shiftassignments/{id}:
+    put:
+      tags:
+      - assignments
+      summary: Update ShiftAssignment
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
+      operationId: update_shiftassignments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftAssignment'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - assignments
+      summary: Delete ShiftAssignment
+      description: 'Roles: Administrator, Manager. Validates the employee against the local replica built from workforce.employee.*
+        (active, has the job role). Publishes scheduling.assignment.*; a cancellation that leaves the shift short also publishes
+        scheduling.shift.understaffed.v1.'
+      operationId: delete_shiftassignments
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftapprovals:
+    post:
+      tags:
+      - assignments
+      summary: Create ShiftApproval
+      operationId: create_shiftapprovals
+      description: 'Roles: Administrator, Manager. Publishes scheduling.assignment.updated.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftApproval'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shiftapprovals/{id}:
+    put:
+      tags:
+      - assignments
+      summary: Update ShiftApproval
+      description: 'Roles: Administrator, Manager. Publishes scheduling.assignment.updated.v1.'
+      operationId: update_shiftapprovals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftApproval'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - assignments
+      summary: Delete ShiftApproval
+      description: 'Roles: Administrator, Manager. Publishes scheduling.assignment.updated.v1.'
+      operationId: delete_shiftapprovals
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswaps:
+    post:
+      tags:
+      - swaps
+      summary: Create ShiftSwap
+      operationId: create_shiftswaps
+      description: 'Roles: Administrator, Manager, or an Employee for their own assignment (employeeFromId = JWT employeeId).
+        POST validates employeeToId against the local employee replica and publishes scheduling.swap.requested.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftSwap'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftSwap'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shiftswaps/{id}:
+    put:
+      tags:
+      - swaps
+      summary: Update ShiftSwap
+      description: 'Roles: Administrator, Manager. POST validates employeeToId against the local employee replica and publishes
+        scheduling.swap.requested.v1.'
+      operationId: update_shiftswaps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftSwap'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftSwap'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - swaps
+      summary: Delete ShiftSwap
+      description: 'Roles: Administrator, Manager. POST validates employeeToId against the local employee replica and publishes
+        scheduling.swap.requested.v1.'
+      operationId: delete_shiftswaps
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/shiftswapapprovals:
+    post:
+      tags:
+      - swaps
+      summary: Create ShiftSwapApproval
+      operationId: create_shiftswapapprovals
+      description: 'Roles: Administrator, Manager. POST with decision APPROVED reassigns the assignment in the same transaction
+        and publishes scheduling.swap.approved.v1 + scheduling.assignment.updated.v1; REJECTED publishes scheduling.swap.rejected.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftSwapApproval'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftSwapApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/shiftswapapprovals/{id}:
+    put:
+      tags:
+      - swaps
+      summary: Update ShiftSwapApproval
+      description: 'Roles: Administrator, Manager. POST with decision APPROVED reassigns the assignment in the same transaction
+        and publishes scheduling.swap.approved.v1 + scheduling.assignment.updated.v1; REJECTED publishes scheduling.swap.rejected.v1.'
+      operationId: update_shiftswapapprovals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftSwapApproval'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftSwapApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - swaps
+      summary: Delete ShiftSwapApproval
+      description: 'Roles: Administrator, Manager. POST with decision APPROVED reassigns the assignment in the same transaction
+        and publishes scheduling.swap.approved.v1 + scheduling.assignment.updated.v1; REJECTED publishes scheduling.swap.rejected.v1.'
+      operationId: delete_shiftswapapprovals
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Liveness/readiness probe used by the gateway and Compose
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - UP
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'RS256 JWT issued by identity-service. Verify with JWT_JWKS_URL. Claims: sub, employeeId, role, iss, iat,
+        exp.'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Propagated on every outgoing call and copied into events.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details (application/problem+json).
+      required:
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    Shift:
+      type: object
+      required:
+      - departmentId
+      - workLocationId
+      - shiftName
+      - startDatetime
+      - endDatetime
+      - shiftStatus
+      properties:
+        shiftId:
+          type: integer
+          readOnly: true
+        departmentId:
+          type: integer
+        workLocationId:
+          type: integer
+        shiftName:
+          type: string
+        startDatetime:
+          type: string
+          format: date-time
+        endDatetime:
+          type: string
+          format: date-time
+        shiftStatus:
+          type: string
+    ShiftRequiredJobRole:
+      type: object
+      required:
+      - shiftId
+      - jobRoleId
+      - requiredEmployeeCount
+      properties:
+        shiftRequiredJobRoleId:
+          type: integer
+          readOnly: true
+        shiftId:
+          type: integer
+        jobRoleId:
+          type: integer
+        requiredEmployeeCount:
+          type: integer
+          minimum: 1
+    ShiftAssignment:
+      type: object
+      required:
+      - shiftId
+      - employeeId
+      - assignmentStatus
+      properties:
+        shiftAssignmentId:
+          type: integer
+          readOnly: true
+        shiftId:
+          type: integer
+        employeeId:
+          type: integer
+        assignmentStatus:
+          type: string
+        assignedDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        checkInDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        checkOutDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    ShiftApproval:
+      type: object
+      required:
+      - shiftAssignmentId
+      - approverEmployeeId
+      - decision
+      properties:
+        shiftApprovalId:
+          type: integer
+          readOnly: true
+        shiftAssignmentId:
+          type: integer
+        approverEmployeeId:
+          type: integer
+        decision:
+          type: string
+          enum:
+          - APPROVED
+          - REJECTED
+        approvalComment:
+          type:
+          - string
+          - 'null'
+        decisionDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    ShiftSwap:
+      type: object
+      required:
+      - originalShiftAssignmentId
+      - employeeFromId
+      - employeeToId
+      properties:
+        shiftSwapId:
+          type: integer
+          readOnly: true
+        originalShiftAssignmentId:
+          type: integer
+        employeeFromId:
+          type: integer
+        employeeToId:
+          type: integer
+        swapStatus:
+          type: string
+          enum:
+          - PENDING
+          - APPROVED
+          - REJECTED
+          readOnly: true
+        requestDatetime:
+          type: string
+          format: date-time
+          readOnly: true
+        reason:
+          type:
+          - string
+          - 'null'
+    ShiftSwapApproval:
+      type: object
+      required:
+      - shiftSwapId
+      - approverEmployeeId
+      - decision
+      properties:
+        shiftSwapApprovalId:
+          type: integer
+          readOnly: true
+        shiftSwapId:
+          type: integer
+        approverEmployeeId:
+          type: integer
+        decision:
+          type: string
+          enum:
+          - APPROVED
+          - REJECTED
+        shiftSwapComment:
+          type:
+          - string
+          - 'null'
+        decisionDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Role not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Business rule violated
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

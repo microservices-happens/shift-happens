@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/swap.schema.json",
+  "title": "ShiftSwapSnapshot",
+  "description": "data of scheduling.swap.requested.v1, scheduling.swap.approved.v1 and scheduling.swap.rejected.v1. decision is null while the swap is pending.",
+  "type": "object",
+  "required": ["shiftSwapId", "originalShiftAssignmentId", "shiftId", "employeeFromId", "employeeToId", "swapStatus", "requestDatetime", "decision"],
+  "properties": {
+    "shiftSwapId": { "type": "integer" },
+    "originalShiftAssignmentId": { "type": "integer" },
+    "shiftId": { "type": "integer" },
+    "employeeFromId": { "type": "integer" },
+    "employeeToId": { "type": "integer" },
+    "swapStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+    "reason": { "type": ["string", "null"] },
+    "requestDatetime": { "type": "string", "format": "date-time" },
+    "decision": {
+      "type": ["object", "null"],
+      "required": ["approverEmployeeId", "decision", "decisionDatetime"],
+      "properties": {
+        "approverEmployeeId": { "type": "integer" },
+        "decision": { "type": "string", "enum": ["APPROVED", "REJECTED"] },
+        "comment": { "type": ["string", "null"] },
+        "decisionDatetime": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

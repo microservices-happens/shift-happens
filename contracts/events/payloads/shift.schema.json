@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/shift.schema.json",
+  "title": "ShiftSnapshot",
+  "description": "data of scheduling.shift.created.v1 and scheduling.shift.updated.v1 (full snapshot; cancelling sets shiftStatus CANCELLED). Deletion is scheduling.shift.deleted.v1 with a tombstone.",
+  "type": "object",
+  "required": [
+    "shiftId",
+    "departmentId",
+    "workLocationId",
+    "shiftName",
+    "startDatetime",
+    "endDatetime",
+    "shiftStatus",
+    "requiredJobRoles"
+  ],
+  "properties": {
+    "shiftId": {
+      "type": "integer"
+    },
+    "departmentId": {
+      "type": "integer"
+    },
+    "workLocationId": {
+      "type": "integer"
+    },
+    "shiftName": {
+      "type": "string"
+    },
+    "startDatetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "endDatetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "shiftStatus": {
+      "type": "string",
+      "description": "PLANNED, PUBLISHED, CANCELLED or LOCKED (starts within 24 h; assignments can no longer be released for leave)."
+    },
+    "requiredJobRoles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "jobRoleId",
+          "requiredEmployeeCount"
+        ],
+        "properties": {
+          "jobRoleId": {
+            "type": "integer"
+          },
+          "requiredEmployeeCount": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/email-request.schema.json",
+  "title": "EmailRequest",
+  "description": "data of notification.email.requested.v1, consumed by email-function (queue email.send). aggregateId = notificationId. email-function deduplicates by eventId.",
+  "type": "object",
+  "required": [
+    "notificationId",
+    "to",
+    "subject",
+    "body"
+  ],
+  "properties": {
+    "notificationId": {
+      "type": "integer"
+    },
+    "to": {
+      "type": "string",
+      "format": "email"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    }
+  }
+}

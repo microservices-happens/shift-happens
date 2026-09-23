@@ -1,0 +1,13 @@
+# Fill in owners when responsibilities are agreed (docs/project-plan.md, section 1).
+# Contract changes need review from the owners of every affected service.
+# /contracts/                    @team-leads
+# /services/identity-service/     @owner
+# /services/workforce-service/    @owner
+# /services/scheduling-service/   @owner
+# /services/leave-service/        @owner
+# /services/ai-service/           @owner
+# /services/notification-service/ @owner
+# /services/audit-service/        @owner
+# /functions/                     @owner
+# /frontend/                      @owner
+# /k8s/ /.github/                 @owner

@@ -1,0 +1,39 @@
+# Leave requests, approvals, immutable ledger, leave-approval saga (CQRS) — command role
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leave-command
+  labels: { app.kubernetes.io/name: leave-command, app.kubernetes.io/part-of: shift-happens }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: leave-command }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: leave-command, app.kubernetes.io/part-of: shift-happens }
+    spec:
+      containers:
+        - name: leave-command
+          image: ghcr.io/microservices-happens/leave-service:0.1.0
+          ports: [{ containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: shift-happens-config }
+            - secretRef: { name: leave-command-secrets, optional: true }
+          env:
+            - name: SPRING_APPLICATION_NAME
+              value: leave-command
+            - name: APP_ROLE
+              value: command
+          readinessProbe: { httpGet: { path: /health/readiness, port: 8080 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/liveness, port: 8080 }, initialDelaySeconds: 30, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: leave-command
+spec:
+  selector: { app.kubernetes.io/name: leave-command }
+  ports: [{ port: 8080, targetPort: 8080 }]

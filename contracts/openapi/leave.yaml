@@ -1,0 +1,824 @@
+# Generated from the monolith DTOs; edit freely, this file is now the contract.
+# See contracts/README.md for conventions.
+openapi: 3.1.0
+info:
+  title: Leave Service
+  version: 1.0.0
+  description: 'Leave types, requests, approvals and the immutable leave ledger. Deployed as two roles from one codebase:
+    the command role (Postgres, transactional outbox) serves writes and returns 202 Accepted with the resulting resource;
+    the query role (Mongo read model, eventually consistent) serves reads. Deletes are soft (tombstone) and publish *.deleted.v1.
+    The gateway sends GET to the query role and other methods to the command role. leave-command orchestrates the leave-approval
+    saga.'
+servers:
+- url: /
+  description: Service root. Exposed by the gateway under /api (e.g. /api/v1/shifts).
+security:
+- bearerAuth: []
+tags:
+- name: leave-types
+- name: requests
+- name: ledger
+- name: views
+- name: ops
+paths:
+  /v1/leavetypes:
+    get:
+      tags:
+      - leave-types
+      summary: List leavetypes
+      operationId: list_leavetypes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - leave-types
+      summary: Create LeaveType
+      operationId: create_leavetypes
+      description: 'Roles: Administrator, Manager.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveType'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/leavetypes/{id}:
+    get:
+      tags:
+      - leave-types
+      summary: Get LeaveType
+      operationId: get_leavetypes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - leave-types
+      summary: Update LeaveType
+      description: 'Roles: Administrator, Manager.'
+      operationId: update_leavetypes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveType'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - leave-types
+      summary: Delete LeaveType
+      description: 'Roles: Administrator, Manager.'
+      operationId: delete_leavetypes
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/leaverequests:
+    get:
+      tags:
+      - requests
+      summary: List leaverequests
+      operationId: list_leaverequests
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - requests
+      summary: Create LeaveRequest
+      operationId: create_leaverequests
+      description: 'Roles: Administrator, Manager, or an Employee for themself (employeeId = JWT employeeId). POST validates
+        the employee against the local replica and publishes leave.request.submitted.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequest'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/leaverequests/{id}:
+    get:
+      tags:
+      - requests
+      summary: Get LeaveRequest
+      operationId: get_leaverequests
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    patch:
+      tags:
+      - requests
+      summary: Update LeaveRequest
+      description: 'Roles: Administrator, Manager. POST validates the employee against the local replica and publishes leave.request.submitted.v1.'
+      operationId: update_leaverequests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequest'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - requests
+      summary: Delete LeaveRequest
+      description: 'Roles: Administrator, Manager. POST validates the employee against the local replica and publishes leave.request.submitted.v1.'
+      operationId: delete_leaverequests
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/leaveapprovals:
+    get:
+      tags:
+      - requests
+      summary: List leaveapprovals
+      operationId: list_leaveapprovals
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveApproval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - requests
+      summary: Create LeaveApproval
+      operationId: create_leaveapprovals
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveApproval'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/leaveapprovals/{id}:
+    get:
+      tags:
+      - requests
+      summary: Get LeaveApproval
+      operationId: get_leaveapprovals
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveApproval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    put:
+      tags:
+      - requests
+      summary: Update LeaveApproval
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
+      operationId: update_leaveapprovals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveApproval'
+      responses:
+        '202':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+    delete:
+      tags:
+      - requests
+      summary: Delete LeaveApproval
+      description: 'Roles: Administrator, Manager. REJECTED publishes leave.request.rejected.v1. APPROVED starts the leave-approval
+        saga: request becomes APPROVAL_PENDING, a RESERVATION ledger entry is appended and leave.request.approval-started.v1
+        is published; the final outcome arrives asynchronously (see contracts/events/catalog.md).'
+      operationId: delete_leaveapprovals
+      responses:
+        '202':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/leaveapprovals/request/{leaveRequestId}:
+    get:
+      tags:
+      - requests
+      summary: Approvals for a leave request
+      operationId: approvalsForRequest
+      parameters:
+      - name: leaveRequestId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveApproval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/leaveledgers:
+    get:
+      tags:
+      - ledger
+      summary: List leaveledgers
+      operationId: list_leaveledgers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveLedgerEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+    post:
+      tags:
+      - ledger
+      summary: Create LeaveLedgerEntry
+      operationId: create_leaveledgers
+      description: 'Roles: Administrator, Manager. Append-only: no PUT or DELETE. Publishes leave.ledger.entry-recorded.v1.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveLedgerEntry'
+      responses:
+        '202':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveLedgerEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/leaveledgers/{id}:
+    get:
+      tags:
+      - ledger
+      summary: Get LeaveLedgerEntry
+      operationId: get_leaveledgers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveLedgerEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/CorrelationId'
+  /v1/views/employee-leave-overview:
+    get:
+      tags:
+      - views
+      summary: Leave overview for all employees
+      operationId: leaveOverview
+      parameters:
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/views/employee-leave-overview/employee/{employeeId}:
+    get:
+      tags:
+      - views
+      summary: Leave overview for one employee
+      operationId: leaveOverviewForEmployee
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/views/employee-leave-overview/status/{status}:
+    get:
+      tags:
+      - views
+      summary: Leave overview filtered by request status
+      operationId: leaveOverviewByStatus
+      parameters:
+      - name: status
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/views/employee-leave-overview/leave-type/{leaveTypeName}:
+    get:
+      tags:
+      - views
+      summary: Leave overview filtered by leave type
+      operationId: leaveOverviewByType
+      parameters:
+      - name: leaveTypeName
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Liveness/readiness probe used by the gateway and Compose
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - UP
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'RS256 JWT issued by identity-service. Verify with JWT_JWKS_URL. Claims: sub, employeeId, role, iss, iat,
+        exp.'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated per user action. A repeated request with the same key returns the stored first response
+        and causes no second side effect (kept 24 h). Same key with a different body returns 409.
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Propagated on every outgoing call and copied into events.
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details (application/problem+json).
+      required:
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    LeaveType:
+      type: object
+      required:
+      - leaveTypeName
+      properties:
+        leaveTypeId:
+          type: integer
+          readOnly: true
+        leaveTypeName:
+          type: string
+        leaveTypeDescription:
+          type:
+          - string
+          - 'null'
+        requiresApproval:
+          type: boolean
+        isPaidLeave:
+          type: boolean
+    LeaveRequest:
+      type: object
+      required:
+      - employeeId
+      - leaveTypeId
+      - startDate
+      - endDate
+      properties:
+        leaveRequestId:
+          type: integer
+          readOnly: true
+        employeeId:
+          type: integer
+        leaveTypeId:
+          type: integer
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        requestStatus:
+          type: string
+          enum:
+          - PENDING
+          - APPROVAL_PENDING
+          - APPROVED
+          - REJECTED
+          - CANCELLED
+          readOnly: true
+        reason:
+          type:
+          - string
+          - 'null'
+        rejectionReason:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+        requestedDatetime:
+          type: string
+          format: date-time
+          readOnly: true
+    LeaveApproval:
+      type: object
+      required:
+      - leaveRequestId
+      - approverEmployeeId
+      - decision
+      properties:
+        leaveApprovalId:
+          type: integer
+          readOnly: true
+        leaveRequestId:
+          type: integer
+        approverEmployeeId:
+          type: integer
+        decision:
+          type: string
+          enum:
+          - APPROVED
+          - REJECTED
+        leaveComment:
+          type:
+          - string
+          - 'null'
+        decisionDatetime:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    LeaveLedgerEntry:
+      type: object
+      required:
+      - employeeId
+      - leaveTypeId
+      - changeAmountDays
+      - transactionType
+      properties:
+        leaveLedgerId:
+          type: integer
+          readOnly: true
+        employeeId:
+          type: integer
+        leaveTypeId:
+          type: integer
+        changeAmountDays:
+          type: number
+        transactionType:
+          type: string
+        referenceEntityType:
+          type:
+          - string
+          - 'null'
+        referenceEntityId:
+          type:
+          - integer
+          - 'null'
+        transactionDatetime:
+          type: string
+          format: date-time
+          readOnly: true
+      description: Immutable. Corrections are new entries with the opposite amount.
+    EmployeeLeaveOverview:
+      type: object
+      required:
+      - employeeId
+      - leaveRequestId
+      properties:
+        employeeId:
+          type: integer
+        employeeName:
+          type: string
+        leaveRequestId:
+          type: integer
+        leaveTypeName:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        requestStatus:
+          type: string
+        balanceDays:
+          type: number
+      description: Read-model document built by leave-query from leave.* and workforce.employee.* events.
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Role not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Business rule violated
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

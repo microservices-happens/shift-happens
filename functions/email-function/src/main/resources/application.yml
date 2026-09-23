@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: email-function
+  main:
+    web-application-type: none

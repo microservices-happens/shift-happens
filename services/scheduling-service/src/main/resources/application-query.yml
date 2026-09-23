@@ -1,0 +1,1 @@
+# Query role: MongoDB read model, fed by events. No Postgres, no outbox.

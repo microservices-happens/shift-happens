@@ -1,0 +1,20 @@
+# Local cluster (kind/minikube): images built locally and loaded into the cluster.
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/microservices-happens/identity-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/workforce-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/scheduling-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/leave-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/ai-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/notification-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/audit-service
+    newTag: dev
+  - name: ghcr.io/microservices-happens/email-function
+    newTag: dev

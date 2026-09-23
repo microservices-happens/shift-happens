@@ -1,0 +1,1794 @@
+# Generated; edit freely, this file is now the contract. See contracts/README.md.
+asyncapi: 3.1.0
+info:
+  title: Shift Happens events
+  version: 1.0.0
+  description: 'All asynchronous communication between Shift Happens services. Every message is published to the topic exchange
+    `shift-happens.events` with routing key = eventType, and its body is the envelope in events/envelope.schema.json. Each
+    consumer owns one durable queue (listed per receive operation) bound to the exact routing keys it handles, with dead-lettering
+    to `shift-happens.dlx` after 3 failed attempts. Human-readable overview: events/catalog.md.'
+defaultContentType: application/json
+servers:
+  local:
+    host: rabbitmq:5672
+    protocol: amqp
+    protocolVersion: 0-9-1
+    pathname: /shift-happens
+    description: RabbitMQ from docker-compose.microservices.yml
+channels:
+  workforceEmployeeCreatedV1:
+    address: workforce.employee.created.v1
+    description: Routing key workforce.employee.created.v1 on exchange shift-happens.events.
+    messages:
+      workforceEmployeeCreatedV1:
+        $ref: '#/components/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  workforceEmployeeUpdatedV1:
+    address: workforce.employee.updated.v1
+    description: Routing key workforce.employee.updated.v1 on exchange shift-happens.events.
+    messages:
+      workforceEmployeeUpdatedV1:
+        $ref: '#/components/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  workforceEmployeeDeletedV1:
+    address: workforce.employee.deleted.v1
+    description: Routing key workforce.employee.deleted.v1 on exchange shift-happens.events.
+    messages:
+      workforceEmployeeDeletedV1:
+        $ref: '#/components/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingShiftCreatedV1:
+    address: scheduling.shift.created.v1
+    description: Routing key scheduling.shift.created.v1 on exchange shift-happens.events.
+    messages:
+      schedulingShiftCreatedV1:
+        $ref: '#/components/messages/schedulingShiftCreatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingShiftUpdatedV1:
+    address: scheduling.shift.updated.v1
+    description: Routing key scheduling.shift.updated.v1 on exchange shift-happens.events.
+    messages:
+      schedulingShiftUpdatedV1:
+        $ref: '#/components/messages/schedulingShiftUpdatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingShiftDeletedV1:
+    address: scheduling.shift.deleted.v1
+    description: Routing key scheduling.shift.deleted.v1 on exchange shift-happens.events.
+    messages:
+      schedulingShiftDeletedV1:
+        $ref: '#/components/messages/schedulingShiftDeletedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingShiftUnderstaffedV1:
+    address: scheduling.shift.understaffed.v1
+    description: Routing key scheduling.shift.understaffed.v1 on exchange shift-happens.events.
+    messages:
+      schedulingShiftUnderstaffedV1:
+        $ref: '#/components/messages/schedulingShiftUnderstaffedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingAssignmentCreatedV1:
+    address: scheduling.assignment.created.v1
+    description: Routing key scheduling.assignment.created.v1 on exchange shift-happens.events.
+    messages:
+      schedulingAssignmentCreatedV1:
+        $ref: '#/components/messages/schedulingAssignmentCreatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingAssignmentUpdatedV1:
+    address: scheduling.assignment.updated.v1
+    description: Routing key scheduling.assignment.updated.v1 on exchange shift-happens.events.
+    messages:
+      schedulingAssignmentUpdatedV1:
+        $ref: '#/components/messages/schedulingAssignmentUpdatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingAssignmentDeletedV1:
+    address: scheduling.assignment.deleted.v1
+    description: Routing key scheduling.assignment.deleted.v1 on exchange shift-happens.events.
+    messages:
+      schedulingAssignmentDeletedV1:
+        $ref: '#/components/messages/schedulingAssignmentDeletedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingSwapRequestedV1:
+    address: scheduling.swap.requested.v1
+    description: Routing key scheduling.swap.requested.v1 on exchange shift-happens.events.
+    messages:
+      schedulingSwapRequestedV1:
+        $ref: '#/components/messages/schedulingSwapRequestedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingSwapApprovedV1:
+    address: scheduling.swap.approved.v1
+    description: Routing key scheduling.swap.approved.v1 on exchange shift-happens.events.
+    messages:
+      schedulingSwapApprovedV1:
+        $ref: '#/components/messages/schedulingSwapApprovedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingSwapRejectedV1:
+    address: scheduling.swap.rejected.v1
+    description: Routing key scheduling.swap.rejected.v1 on exchange shift-happens.events.
+    messages:
+      schedulingSwapRejectedV1:
+        $ref: '#/components/messages/schedulingSwapRejectedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingLeaveReleaseCompletedV1:
+    address: scheduling.leave-release.completed.v1
+    description: Routing key scheduling.leave-release.completed.v1 on exchange shift-happens.events.
+    messages:
+      schedulingLeaveReleaseCompletedV1:
+        $ref: '#/components/messages/schedulingLeaveReleaseCompletedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  schedulingLeaveReleaseRejectedV1:
+    address: scheduling.leave-release.rejected.v1
+    description: Routing key scheduling.leave-release.rejected.v1 on exchange shift-happens.events.
+    messages:
+      schedulingLeaveReleaseRejectedV1:
+        $ref: '#/components/messages/schedulingLeaveReleaseRejectedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveRequestSubmittedV1:
+    address: leave.request.submitted.v1
+    description: Routing key leave.request.submitted.v1 on exchange shift-happens.events.
+    messages:
+      leaveRequestSubmittedV1:
+        $ref: '#/components/messages/leaveRequestSubmittedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveRequestApprovalStartedV1:
+    address: leave.request.approval-started.v1
+    description: Routing key leave.request.approval-started.v1 on exchange shift-happens.events.
+    messages:
+      leaveRequestApprovalStartedV1:
+        $ref: '#/components/messages/leaveRequestApprovalStartedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveRequestApprovedV1:
+    address: leave.request.approved.v1
+    description: Routing key leave.request.approved.v1 on exchange shift-happens.events.
+    messages:
+      leaveRequestApprovedV1:
+        $ref: '#/components/messages/leaveRequestApprovedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveRequestRejectedV1:
+    address: leave.request.rejected.v1
+    description: Routing key leave.request.rejected.v1 on exchange shift-happens.events.
+    messages:
+      leaveRequestRejectedV1:
+        $ref: '#/components/messages/leaveRequestRejectedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveLedgerEntryRecordedV1:
+    address: leave.ledger.entry-recorded.v1
+    description: Routing key leave.ledger.entry-recorded.v1 on exchange shift-happens.events.
+    messages:
+      leaveLedgerEntryRecordedV1:
+        $ref: '#/components/messages/leaveLedgerEntryRecordedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  aiReplacementSuggestedV1:
+    address: ai.replacement.suggested.v1
+    description: Routing key ai.replacement.suggested.v1 on exchange shift-happens.events.
+    messages:
+      aiReplacementSuggestedV1:
+        $ref: '#/components/messages/aiReplacementSuggestedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  notificationEmailRequestedV1:
+    address: notification.email.requested.v1
+    description: Routing key notification.email.requested.v1 on exchange shift-happens.events.
+    messages:
+      notificationEmailRequestedV1:
+        $ref: '#/components/messages/notificationEmailRequestedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+operations:
+  publish_workforceEmployeeCreatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: workforce-service publishes (via transactional outbox)
+    tags:
+    - name: workforce-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+  identity_accounts__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: identity-service consumes from queue identity.accounts
+    tags:
+    - name: identity-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_command__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_projection__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_command__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: leave-command consumes from queue leave.command
+    tags:
+    - name: leave-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_projection__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__workforceEmployeeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeCreatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeCreatedV1/messages/workforceEmployeeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_workforceEmployeeUpdatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: workforce-service publishes (via transactional outbox)
+    tags:
+    - name: workforce-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+  identity_accounts__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: identity-service consumes from queue identity.accounts
+    tags:
+    - name: identity-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_command__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_projection__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_command__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: leave-command consumes from queue leave.command
+    tags:
+    - name: leave-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_projection__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__workforceEmployeeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeUpdatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeUpdatedV1/messages/workforceEmployeeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_workforceEmployeeDeletedV1:
+    action: send
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: workforce-service publishes (via transactional outbox)
+    tags:
+    - name: workforce-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+  identity_accounts__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: identity-service consumes from queue identity.accounts
+    tags:
+    - name: identity-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_command__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  scheduling_projection__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_command__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: leave-command consumes from queue leave.command
+    tags:
+    - name: leave-command
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_projection__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__workforceEmployeeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/workforceEmployeeDeletedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/workforceEmployeeDeletedV1/messages/workforceEmployeeDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingShiftCreatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingShiftCreatedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingShiftCreatedV1/messages/schedulingShiftCreatedV1'
+  scheduling_projection__schedulingShiftCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftCreatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingShiftCreatedV1/messages/schedulingShiftCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingShiftCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftCreatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingShiftCreatedV1/messages/schedulingShiftCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingShiftUpdatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingShiftUpdatedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUpdatedV1/messages/schedulingShiftUpdatedV1'
+  scheduling_projection__schedulingShiftUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUpdatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingShiftUpdatedV1/messages/schedulingShiftUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingShiftUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUpdatedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUpdatedV1/messages/schedulingShiftUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingShiftUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUpdatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUpdatedV1/messages/schedulingShiftUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingShiftDeletedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingShiftDeletedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingShiftDeletedV1/messages/schedulingShiftDeletedV1'
+  scheduling_projection__schedulingShiftDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftDeletedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingShiftDeletedV1/messages/schedulingShiftDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingShiftDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftDeletedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingShiftDeletedV1/messages/schedulingShiftDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingShiftUnderstaffedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingShiftUnderstaffedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUnderstaffedV1/messages/schedulingShiftUnderstaffedV1'
+  ai_suggestions__schedulingShiftUnderstaffedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUnderstaffedV1'
+    summary: ai-service consumes from queue ai.suggestions
+    tags:
+    - name: ai-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUnderstaffedV1/messages/schedulingShiftUnderstaffedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingShiftUnderstaffedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUnderstaffedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUnderstaffedV1/messages/schedulingShiftUnderstaffedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingShiftUnderstaffedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingShiftUnderstaffedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingShiftUnderstaffedV1/messages/schedulingShiftUnderstaffedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingAssignmentCreatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingAssignmentCreatedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentCreatedV1/messages/schedulingAssignmentCreatedV1'
+  scheduling_projection__schedulingAssignmentCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentCreatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingAssignmentCreatedV1/messages/schedulingAssignmentCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingAssignmentCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentCreatedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentCreatedV1/messages/schedulingAssignmentCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingAssignmentCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentCreatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentCreatedV1/messages/schedulingAssignmentCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingAssignmentUpdatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingAssignmentUpdatedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentUpdatedV1/messages/schedulingAssignmentUpdatedV1'
+  scheduling_projection__schedulingAssignmentUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentUpdatedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingAssignmentUpdatedV1/messages/schedulingAssignmentUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingAssignmentUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentUpdatedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentUpdatedV1/messages/schedulingAssignmentUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingAssignmentUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentUpdatedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentUpdatedV1/messages/schedulingAssignmentUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingAssignmentDeletedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingAssignmentDeletedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentDeletedV1/messages/schedulingAssignmentDeletedV1'
+  scheduling_projection__schedulingAssignmentDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentDeletedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingAssignmentDeletedV1/messages/schedulingAssignmentDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingAssignmentDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingAssignmentDeletedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingAssignmentDeletedV1/messages/schedulingAssignmentDeletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingSwapRequestedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingSwapRequestedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRequestedV1/messages/schedulingSwapRequestedV1'
+  scheduling_projection__schedulingSwapRequestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRequestedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingSwapRequestedV1/messages/schedulingSwapRequestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingSwapRequestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRequestedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRequestedV1/messages/schedulingSwapRequestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingSwapRequestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRequestedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRequestedV1/messages/schedulingSwapRequestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingSwapApprovedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingSwapApprovedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingSwapApprovedV1/messages/schedulingSwapApprovedV1'
+  scheduling_projection__schedulingSwapApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapApprovedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingSwapApprovedV1/messages/schedulingSwapApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingSwapApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapApprovedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingSwapApprovedV1/messages/schedulingSwapApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingSwapApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapApprovedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingSwapApprovedV1/messages/schedulingSwapApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingSwapRejectedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingSwapRejectedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRejectedV1/messages/schedulingSwapRejectedV1'
+  scheduling_projection__schedulingSwapRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRejectedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/schedulingSwapRejectedV1/messages/schedulingSwapRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__schedulingSwapRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRejectedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRejectedV1/messages/schedulingSwapRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingSwapRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingSwapRejectedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingSwapRejectedV1/messages/schedulingSwapRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingLeaveReleaseCompletedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseCompletedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseCompletedV1/messages/schedulingLeaveReleaseCompletedV1'
+  leave_command__schedulingLeaveReleaseCompletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseCompletedV1'
+    summary: leave-command consumes from queue leave.command
+    tags:
+    - name: leave-command
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseCompletedV1/messages/schedulingLeaveReleaseCompletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingLeaveReleaseCompletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseCompletedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseCompletedV1/messages/schedulingLeaveReleaseCompletedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_schedulingLeaveReleaseRejectedV1:
+    action: send
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseRejectedV1'
+    summary: scheduling-service publishes (via transactional outbox)
+    tags:
+    - name: scheduling-service
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseRejectedV1/messages/schedulingLeaveReleaseRejectedV1'
+  leave_command__schedulingLeaveReleaseRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseRejectedV1'
+    summary: leave-command consumes from queue leave.command
+    tags:
+    - name: leave-command
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseRejectedV1/messages/schedulingLeaveReleaseRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__schedulingLeaveReleaseRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/schedulingLeaveReleaseRejectedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/schedulingLeaveReleaseRejectedV1/messages/schedulingLeaveReleaseRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveRequestSubmittedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveRequestSubmittedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveRequestSubmittedV1/messages/leaveRequestSubmittedV1'
+  leave_projection__leaveRequestSubmittedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestSubmittedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveRequestSubmittedV1/messages/leaveRequestSubmittedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__leaveRequestSubmittedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestSubmittedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/leaveRequestSubmittedV1/messages/leaveRequestSubmittedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveRequestSubmittedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestSubmittedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveRequestSubmittedV1/messages/leaveRequestSubmittedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveRequestApprovalStartedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveRequestApprovalStartedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveRequestApprovalStartedV1/messages/leaveRequestApprovalStartedV1'
+  scheduling_command__leaveRequestApprovalStartedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovalStartedV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/leaveRequestApprovalStartedV1/messages/leaveRequestApprovalStartedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  leave_projection__leaveRequestApprovalStartedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovalStartedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveRequestApprovalStartedV1/messages/leaveRequestApprovalStartedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveRequestApprovalStartedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovalStartedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveRequestApprovalStartedV1/messages/leaveRequestApprovalStartedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveRequestApprovedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveRequestApprovedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveRequestApprovedV1/messages/leaveRequestApprovedV1'
+  leave_projection__leaveRequestApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveRequestApprovedV1/messages/leaveRequestApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__leaveRequestApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/leaveRequestApprovedV1/messages/leaveRequestApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveRequestApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveRequestApprovedV1/messages/leaveRequestApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveRequestRejectedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveRequestRejectedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveRequestRejectedV1/messages/leaveRequestRejectedV1'
+  leave_projection__leaveRequestRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestRejectedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveRequestRejectedV1/messages/leaveRequestRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__leaveRequestRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestRejectedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/leaveRequestRejectedV1/messages/leaveRequestRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveRequestRejectedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestRejectedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveRequestRejectedV1/messages/leaveRequestRejectedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveLedgerEntryRecordedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveLedgerEntryRecordedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveLedgerEntryRecordedV1/messages/leaveLedgerEntryRecordedV1'
+  leave_projection__leaveLedgerEntryRecordedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveLedgerEntryRecordedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveLedgerEntryRecordedV1/messages/leaveLedgerEntryRecordedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveLedgerEntryRecordedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveLedgerEntryRecordedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveLedgerEntryRecordedV1/messages/leaveLedgerEntryRecordedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_aiReplacementSuggestedV1:
+    action: send
+    channel:
+      $ref: '#/channels/aiReplacementSuggestedV1'
+    summary: ai-service publishes (via transactional outbox)
+    tags:
+    - name: ai-service
+    messages:
+    - $ref: '#/channels/aiReplacementSuggestedV1/messages/aiReplacementSuggestedV1'
+  scheduling_projection__aiReplacementSuggestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/aiReplacementSuggestedV1'
+    summary: scheduling-query consumes from queue scheduling.projection
+    tags:
+    - name: scheduling-query
+    messages:
+    - $ref: '#/channels/aiReplacementSuggestedV1/messages/aiReplacementSuggestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  notification_events__aiReplacementSuggestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/aiReplacementSuggestedV1'
+    summary: notification-service consumes from queue notification.events
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/aiReplacementSuggestedV1/messages/aiReplacementSuggestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__aiReplacementSuggestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/aiReplacementSuggestedV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/aiReplacementSuggestedV1/messages/aiReplacementSuggestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_notificationEmailRequestedV1:
+    action: send
+    channel:
+      $ref: '#/channels/notificationEmailRequestedV1'
+    summary: notification-service publishes (via transactional outbox)
+    tags:
+    - name: notification-service
+    messages:
+    - $ref: '#/channels/notificationEmailRequestedV1/messages/notificationEmailRequestedV1'
+  email_send__notificationEmailRequestedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/notificationEmailRequestedV1'
+    summary: email-function consumes from queue email.send
+    tags:
+    - name: email-function
+    messages:
+    - $ref: '#/channels/notificationEmailRequestedV1/messages/notificationEmailRequestedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+components:
+  messages:
+    workforceEmployeeCreatedV1:
+      name: workforce.employee.created.v1
+      title: workforce.employee.created.v1
+      summary: Employee created
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: workforce.employee.created.v1
+            data:
+              $ref: ./events/payloads/employee.schema.json
+    workforceEmployeeUpdatedV1:
+      name: workforce.employee.updated.v1
+      title: workforce.employee.updated.v1
+      summary: Any employee field or job role changes
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: workforce.employee.updated.v1
+            data:
+              $ref: ./events/payloads/employee.schema.json
+    workforceEmployeeDeletedV1:
+      name: workforce.employee.deleted.v1
+      title: workforce.employee.deleted.v1
+      summary: Employee deleted (tombstone)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: workforce.employee.deleted.v1
+            data:
+              $ref: ./events/payloads/tombstone.schema.json
+    schedulingShiftCreatedV1:
+      name: scheduling.shift.created.v1
+      title: scheduling.shift.created.v1
+      summary: Shift created
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.shift.created.v1
+            data:
+              $ref: ./events/payloads/shift.schema.json
+    schedulingShiftUpdatedV1:
+      name: scheduling.shift.updated.v1
+      title: scheduling.shift.updated.v1
+      summary: Shift, its required roles or its status (incl. CANCELLED) changes
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.shift.updated.v1
+            data:
+              $ref: ./events/payloads/shift.schema.json
+    schedulingShiftDeletedV1:
+      name: scheduling.shift.deleted.v1
+      title: scheduling.shift.deleted.v1
+      summary: Shift deleted (tombstone)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.shift.deleted.v1
+            data:
+              $ref: ./events/payloads/tombstone.schema.json
+    schedulingShiftUnderstaffedV1:
+      name: scheduling.shift.understaffed.v1
+      title: scheduling.shift.understaffed.v1
+      summary: A released or cancelled assignment leaves a shift short of a job role
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.shift.understaffed.v1
+            data:
+              $ref: ./events/payloads/understaffed.schema.json
+    schedulingAssignmentCreatedV1:
+      name: scheduling.assignment.created.v1
+      title: scheduling.assignment.created.v1
+      summary: Employee assigned to a shift
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.assignment.created.v1
+            data:
+              $ref: ./events/payloads/assignment.schema.json
+    schedulingAssignmentUpdatedV1:
+      name: scheduling.assignment.updated.v1
+      title: scheduling.assignment.updated.v1
+      summary: Status, check-in/out, swap or leave release changes an assignment
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.assignment.updated.v1
+            data:
+              $ref: ./events/payloads/assignment.schema.json
+    schedulingAssignmentDeletedV1:
+      name: scheduling.assignment.deleted.v1
+      title: scheduling.assignment.deleted.v1
+      summary: Assignment deleted (tombstone)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.assignment.deleted.v1
+            data:
+              $ref: ./events/payloads/tombstone.schema.json
+    schedulingSwapRequestedV1:
+      name: scheduling.swap.requested.v1
+      title: scheduling.swap.requested.v1
+      summary: Employee asks to hand an assignment to a colleague
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.swap.requested.v1
+            data:
+              $ref: ./events/payloads/swap.schema.json
+    schedulingSwapApprovedV1:
+      name: scheduling.swap.approved.v1
+      title: scheduling.swap.approved.v1
+      summary: Manager approves; reassignment committed in the same local transaction
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.swap.approved.v1
+            data:
+              $ref: ./events/payloads/swap.schema.json
+    schedulingSwapRejectedV1:
+      name: scheduling.swap.rejected.v1
+      title: scheduling.swap.rejected.v1
+      summary: Manager rejects the swap
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.swap.rejected.v1
+            data:
+              $ref: ./events/payloads/swap.schema.json
+    schedulingLeaveReleaseCompletedV1:
+      name: scheduling.leave-release.completed.v1
+      title: scheduling.leave-release.completed.v1
+      summary: 'Saga reply: overlapping assignments released'
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.leave-release.completed.v1
+            data:
+              $ref: ./events/payloads/leave-release.schema.json
+    schedulingLeaveReleaseRejectedV1:
+      name: scheduling.leave-release.rejected.v1
+      title: scheduling.leave-release.rejected.v1
+      summary: 'Saga reply: release refused (e.g. a locked shift); nothing changed'
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: scheduling.leave-release.rejected.v1
+            data:
+              $ref: ./events/payloads/leave-release.schema.json
+    leaveRequestSubmittedV1:
+      name: leave.request.submitted.v1
+      title: leave.request.submitted.v1
+      summary: Employee submits a leave request
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.request.submitted.v1
+            data:
+              $ref: ./events/payloads/leave-request.schema.json
+    leaveRequestApprovalStartedV1:
+      name: leave.request.approval-started.v1
+      title: leave.request.approval-started.v1
+      summary: 'Saga start: manager approved, days reserved in the ledger'
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.request.approval-started.v1
+            data:
+              $ref: ./events/payloads/leave-request.schema.json
+    leaveRequestApprovedV1:
+      name: leave.request.approved.v1
+      title: leave.request.approved.v1
+      summary: Saga completed
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.request.approved.v1
+            data:
+              $ref: ./events/payloads/leave-request.schema.json
+    leaveRequestRejectedV1:
+      name: leave.request.rejected.v1
+      title: leave.request.rejected.v1
+      summary: Manager rejects, or saga compensated (reason in rejectionReason)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.request.rejected.v1
+            data:
+              $ref: ./events/payloads/leave-request.schema.json
+    leaveLedgerEntryRecordedV1:
+      name: leave.ledger.entry-recorded.v1
+      title: leave.ledger.entry-recorded.v1
+      summary: Any ledger entry appended (accrual, reservation, reversal, adjustment)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.ledger.entry-recorded.v1
+            data:
+              $ref: ./events/payloads/ledger-entry.schema.json
+    aiReplacementSuggestedV1:
+      name: ai.replacement.suggested.v1
+      title: ai.replacement.suggested.v1
+      summary: Ranked replacement candidates for an understaffed shift
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: ai.replacement.suggested.v1
+            data:
+              $ref: ./events/payloads/replacement-suggestion.schema.json
+    notificationEmailRequestedV1:
+      name: notification.email.requested.v1
+      title: notification.email.requested.v1
+      summary: A notification should also be emailed
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: notification.email.requested.v1
+            data:
+              $ref: ./events/payloads/email-request.schema.json

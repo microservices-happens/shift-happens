@@ -1,0 +1,684 @@
+# Target-state local environment for the Shift Happens microservice refactor.
+#
+# This is both a Compose template and an implementation checklist. Each
+# ./services/<name> folder holds a README scaffold describing what the service
+# owns and which contracts it provides/consumes. Add a Dockerfile there when the
+# service is extracted from the monolith. The existing docker-compose.yml
+# remains the runnable monolith during the migration.
+#
+# Communication (see contracts/README.md):
+#   Browser  -> services : REST /api/v1/* (contracts/openapi) and GraphQL /api/graphql
+#                          (contracts/graphql), both through the gateway.
+#   Service <-> service  : RabbitMQ events only (contracts/asyncapi.yaml). Services keep
+#                          local copies of the data they need instead of calling each other.
+#
+# Start infrastructure only:
+#   docker compose -f docker-compose.microservices.yml up -d
+# Start the completed target system:
+#   docker compose -f docker-compose.microservices.yml --profile app up --build
+# Add the local LLM for ai-service (first start pulls the model):
+#   docker compose -f docker-compose.microservices.yml --profile app --profile ai up --build
+
+name: shift-happens-microservices
+
+# All unfinished application containers are behind a profile, so databases and
+# RabbitMQ can be started before every service has been implemented.
+x-app: &app
+  profiles: [app]
+  restart: unless-stopped
+
+# Shared settings every business service uses: broker, JWT verification and
+# telemetry. Names match contracts/README.md.
+x-service-env: &service-env
+  HTTP_PORT: "8080"
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: ${RABBITMQ_USER:-shift}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-shift_dev}
+  RABBITMQ_VHOST: shift-happens
+  EVENT_EXCHANGE: shift-happens.events
+  DEAD_LETTER_EXCHANGE: shift-happens.dlx
+  JWT_ISSUER: shift-happens-identity
+  JWT_JWKS_URL: http://identity-service:8080/.well-known/jwks.json
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+
+# Every application exposes GET /health on port 8080 and its image contains
+# curl (or replaces this with an equivalent command).
+x-app-healthcheck: &app-healthcheck
+  test: [CMD-SHELL, "curl -fsS http://localhost:8080/health || exit 1"]
+  interval: 10s
+  timeout: 3s
+  retries: 10
+  start_period: 30s
+
+x-postgres: &postgres
+  image: postgres:17-alpine
+  restart: unless-stopped
+  healthcheck:
+    test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+
+x-mongo: &mongo
+  image: mongo:8.0
+  restart: unless-stopped
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - >-
+        mongosh --quiet --host 127.0.0.1
+        --username "$${MONGO_INITDB_ROOT_USERNAME}"
+        --password "$${MONGO_INITDB_ROOT_PASSWORD}"
+        --authenticationDatabase admin
+        --eval 'quit(db.adminCommand({ping: 1}).ok === 1 ? 0 : 1)'
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+
+services:
+  # API gateway: TLS termination and path-based routing to the owning service.
+  # It does not contain business logic; every service validates the JWT itself.
+  # Local stand-in for a Kubernetes Ingress / cloud load balancer.
+  api-gateway:
+    <<: *app
+    image: caddy:2-alpine
+    ports:
+      - "127.0.0.1:8443:443"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge, service-bus]
+    depends_on:
+      frontend:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      workforce-service:
+        condition: service_started
+      scheduling-command:
+        condition: service_started
+      scheduling-query:
+        condition: service_started
+      leave-command:
+        condition: service_started
+      leave-query:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      audit-service:
+        condition: service_started
+
+  # REST base URL is baked in at build time (see frontend/Dockerfile.microservices).
+  frontend:
+    <<: *app
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.microservices
+    image: ${FRONTEND_IMAGE:-shift-happens/frontend:dev}
+    expose: ["80"]
+    networks: [edge]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://localhost/health]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # Login (local password or Google/GitHub via OIDC), JWT signing. Keeps a login
+  # account per employee in sync by consuming workforce.employee.* events.
+  # Contract: contracts/openapi/identity.yaml
+  identity-service:
+    <<: *app
+    build: ./services/identity-service
+    image: ${IDENTITY_IMAGE:-shift-happens/identity-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: identity-db
+      DB_PORT: "5432"
+      DB_NAME: identity
+      DB_USER: identity
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev}
+      RABBITMQ_QUEUE: identity.accounts
+      # Third-party login (OAuth 2.0 / OpenID Connect). Register the redirect URI
+      # https://localhost:8443/api/v1/auth/oidc/{google|github}/callback with the provider.
+      OIDC_REDIRECT_BASE_URL: https://localhost:8443/api/v1/auth/oidc
+      OIDC_GOOGLE_CLIENT_ID: ${OIDC_GOOGLE_CLIENT_ID:-}
+      OIDC_GOOGLE_CLIENT_SECRET: ${OIDC_GOOGLE_CLIENT_SECRET:-}
+      OIDC_GITHUB_CLIENT_ID: ${OIDC_GITHUB_CLIENT_ID:-}
+      OIDC_GITHUB_CLIENT_SECRET: ${OIDC_GITHUB_CLIENT_SECRET:-}
+      FRONTEND_LOGIN_CALLBACK_URL: https://localhost:8443/login/callback
+    expose: ["8080"]
+    # egress: token and JWKS calls to the external identity providers.
+    networks: [service-bus, identity-data, egress]
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Employees, contracts, departments, job roles and work locations.
+  # Contract: contracts/openapi/workforce.yaml
+  workforce-service:
+    <<: *app
+    build: ./services/workforce-service
+    image: ${WORKFORCE_IMAGE:-shift-happens/workforce-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: workforce-db
+      DB_PORT: "5432"
+      DB_NAME: workforce
+      DB_USER: workforce
+      DB_PASSWORD: ${WORKFORCE_DB_PASSWORD:-workforce_dev}
+      OUTBOX_ENABLED: "true"
+    expose: ["8080"]
+    networks: [service-bus, workforce-data]
+    depends_on:
+      workforce-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Scheduling owns shifts, required roles, assignments, shift approvals and
+  # shift swaps. One codebase/image deployed in two CQRS roles:
+  #   command: REST writes (contracts/openapi/scheduling.yaml), Postgres + outbox,
+  #            leave-saga participant, local replica of employees for validation.
+  #   query:   GraphQL reads (contracts/graphql/scheduling.graphql), Mongo read model.
+  scheduling-command:
+    <<: *app
+    build: ./services/scheduling-service
+    image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
+    environment:
+      <<: *service-env
+      APP_ROLE: command
+      DB_HOST: scheduling-write-db
+      DB_PORT: "5432"
+      DB_NAME: scheduling
+      DB_USER: scheduling
+      DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_dev}
+      RABBITMQ_QUEUE: scheduling.command
+      OUTBOX_ENABLED: "true"
+    expose: ["8080"]
+    networks: [service-bus, scheduling-write-data]
+    depends_on:
+      scheduling-write-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  scheduling-query:
+    <<: *app
+    build: ./services/scheduling-service
+    image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
+    environment:
+      <<: *service-env
+      APP_ROLE: query
+      MONGO_HOST: scheduling-read-db
+      MONGO_PORT: "27017"
+      MONGO_DATABASE: scheduling_read
+      MONGO_USERNAME: scheduling
+      MONGO_PASSWORD: ${SCHEDULING_MONGO_PASSWORD:-scheduling_read_dev}
+      MONGO_AUTH_DATABASE: admin
+      RABBITMQ_QUEUE: scheduling.projection
+      GRAPHQL_PATH: /graphql
+    expose: ["8080"]
+    networks: [service-bus, scheduling-read-data]
+    depends_on:
+      scheduling-read-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Leave requests, types, approvals and the immutable leave ledger. Same CQRS
+  # split as Scheduling. leave-command orchestrates the leave-approval saga.
+  # Contract: contracts/openapi/leave.yaml
+  leave-command:
+    <<: *app
+    build: ./services/leave-service
+    image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
+    environment:
+      <<: *service-env
+      APP_ROLE: command
+      DB_HOST: leave-write-db
+      DB_PORT: "5432"
+      DB_NAME: leave
+      DB_USER: leave
+      DB_PASSWORD: ${LEAVE_DB_PASSWORD:-leave_dev}
+      RABBITMQ_QUEUE: leave.command
+      SAGA_TIMEOUT: PT5M
+      OUTBOX_ENABLED: "true"
+    expose: ["8080"]
+    networks: [service-bus, leave-write-data]
+    depends_on:
+      leave-write-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  leave-query:
+    <<: *app
+    build: ./services/leave-service
+    image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
+    environment:
+      <<: *service-env
+      APP_ROLE: query
+      MONGO_HOST: leave-read-db
+      MONGO_PORT: "27017"
+      MONGO_DATABASE: leave_read
+      MONGO_USERNAME: leave
+      MONGO_PASSWORD: ${LEAVE_MONGO_PASSWORD:-leave_read_dev}
+      MONGO_AUTH_DATABASE: admin
+      RABBITMQ_QUEUE: leave.projection
+    expose: ["8080"]
+    networks: [service-bus, leave-read-data]
+    depends_on:
+      leave-read-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Fan-out subscriber: its own queue receives a copy of every matching event.
+  # Stores in-app notifications (read over REST) and hands email off to
+  # email-function by publishing notification.email.requested.v1.
+  # Contract: contracts/openapi/notification.yaml
+  notification-service:
+    <<: *app
+    build: ./services/notification-service
+    image: ${NOTIFICATION_IMAGE:-shift-happens/notification-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: notification-db
+      DB_PORT: "5432"
+      DB_NAME: notification
+      DB_USER: notification
+      DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev}
+      RABBITMQ_QUEUE: notification.events
+      OUTBOX_ENABLED: "true"
+    expose: ["8080"]
+    networks: [service-bus, notification-data]
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Serverless function (not a microservice): sends one email per message on
+  # queue email.send, then exits when the queue is empty. In Kubernetes it runs as
+  # a KEDA ScaledJob on that queue's length (0 pods when idle); locally it is
+  # simply a long-running worker.
+  email-function:
+    <<: *app
+    build: ./functions/email-function
+    image: ${EMAIL_FUNCTION_IMAGE:-shift-happens/email-function:dev}
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER:-shift}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-shift_dev}
+      RABBITMQ_VHOST: shift-happens
+      RABBITMQ_QUEUE: email.send
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@shift-happens.local}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    # egress lets SMTP_HOST point at a real provider instead of Mailpit.
+    networks: [service-bus, egress]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  # Fan-out subscriber that appends every event to an append-only store.
+  # Idempotent by eventId. Contract: contracts/openapi/audit.yaml
+  audit-service:
+    <<: *app
+    build: ./services/audit-service
+    image: ${AUDIT_IMAGE:-shift-happens/audit-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: audit-db
+      DB_PORT: "5432"
+      DB_NAME: audit
+      DB_USER: audit
+      DB_PASSWORD: ${AUDIT_DB_PASSWORD:-audit_dev}
+      RABBITMQ_QUEUE: audit.events
+    expose: ["8080"]
+    networks: [service-bus, audit-data]
+    depends_on:
+      audit-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Consumes scheduling.shift.understaffed.v1 (which already lists qualified,
+  # available candidates), asks the LLM to rank them with a short reason and
+  # publishes ai.replacement.suggested.v1. Scheduling-query shows the suggestion
+  # in GraphQL; notification tells the manager. Never writes schedules itself.
+  ai-service:
+    <<: *app
+    build: ./services/ai-service
+    image: ${AI_IMAGE:-shift-happens/ai-service:dev}
+    environment:
+      <<: *service-env
+      DB_HOST: ai-db
+      DB_PORT: "5432"
+      DB_NAME: ai
+      DB_USER: ai
+      DB_PASSWORD: ${AI_DB_PASSWORD:-ai_dev}
+      RABBITMQ_QUEUE: ai.suggestions
+      OUTBOX_ENABLED: "true"
+      # Any OpenAI-compatible or Ollama endpoint. Local default: the ollama
+      # container (--profile ai). Without it, ai-service falls back to
+      # ranking candidates by a simple rule and marks the suggestion source "rule".
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
+      LLM_TIMEOUT: PT20S
+    expose: ["8080"]
+    networks: [service-bus, ai-data, llm]
+    depends_on:
+      ai-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+
+  # Local LLM (third-party service, not a microservice).
+  ollama:
+    profiles: [ai]
+    image: ollama/ollama:0.12.3
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    networks: [llm, egress]
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: downloads the model into the shared volume, then exits.
+  ollama-pull:
+    profiles: [ai]
+    image: ollama/ollama:0.12.3
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: [ollama, pull, "${LLM_MODEL:-llama3.2:1b}"]
+    networks: [llm, egress]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-shift}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-shift_dev}
+      RABBITMQ_DEFAULT_VHOST: shift-happens
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [service-bus, ops]
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  # Local email sink. Production should use a managed email provider.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks: [service-bus, ops]
+
+  identity-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev}
+    volumes: ["identity-data:/var/lib/postgresql/data"]
+    networks: [identity-data]
+
+  workforce-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: workforce
+      POSTGRES_USER: workforce
+      POSTGRES_PASSWORD: ${WORKFORCE_DB_PASSWORD:-workforce_dev}
+    volumes: ["workforce-data:/var/lib/postgresql/data"]
+    networks: [workforce-data]
+
+  scheduling-write-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: scheduling
+      POSTGRES_USER: scheduling
+      POSTGRES_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_dev}
+    volumes: ["scheduling-write-data:/var/lib/postgresql/data"]
+    networks: [scheduling-write-data]
+
+  scheduling-read-db:
+    <<: *mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: scheduling
+      MONGO_INITDB_ROOT_PASSWORD: ${SCHEDULING_MONGO_PASSWORD:-scheduling_read_dev}
+    volumes: ["scheduling-read-data:/data/db"]
+    networks: [scheduling-read-data]
+
+  leave-write-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: leave
+      POSTGRES_USER: leave
+      POSTGRES_PASSWORD: ${LEAVE_DB_PASSWORD:-leave_dev}
+    volumes: ["leave-write-data:/var/lib/postgresql/data"]
+    networks: [leave-write-data]
+
+  leave-read-db:
+    <<: *mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: leave
+      MONGO_INITDB_ROOT_PASSWORD: ${LEAVE_MONGO_PASSWORD:-leave_read_dev}
+    volumes: ["leave-read-data:/data/db"]
+    networks: [leave-read-data]
+
+  notification-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: notification
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_dev}
+    volumes: ["notification-data:/var/lib/postgresql/data"]
+    networks: [notification-data]
+
+  audit-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: audit
+      POSTGRES_USER: audit
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:-audit_dev}
+    volumes: ["audit-data:/var/lib/postgresql/data"]
+    networks: [audit-data]
+
+  ai-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ai
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ${AI_DB_PASSWORD:-ai_dev}
+    volumes: ["ai-data:/var/lib/postgresql/data"]
+    networks: [ai-data]
+
+  # Initial observability integration point. It accepts logs, metrics and traces;
+  # replace the debug exporter with Grafana/Jaeger/another backend later.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.136.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./docker/microservices/otel-collector.yml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    networks: [service-bus, ops]
+
+# Path-based routing. REST is versioned: /api/v1/<resource> -> <service>/v1/<resource>.
+# The gateway only strips /api and forwards; it has no business logic.
+configs:
+  caddyfile:
+    content: |
+      (upstream) {
+        health_uri /health
+        health_interval 10s
+        health_timeout 3s
+      }
+
+      https://localhost {
+        tls internal
+
+        @identity path /api/v1/auth /api/v1/auth/*
+        handle @identity {
+          uri strip_prefix /api
+          reverse_proxy identity-service:8080 {
+            import upstream
+          }
+        }
+
+        @workforce path /api/v1/employees* /api/v1/employeecontracts* /api/v1/employeejobroles* /api/v1/departments* /api/v1/jobroles* /api/v1/worklocations*
+        handle @workforce {
+          uri strip_prefix /api
+          reverse_proxy workforce-service:8080 {
+            import upstream
+          }
+        }
+
+        # Scheduling reads are GraphQL (query role); writes are REST (command role).
+        @schedulingGraphql path /api/graphql
+        handle @schedulingGraphql {
+          uri strip_prefix /api
+          reverse_proxy scheduling-query:8080 {
+            import upstream
+          }
+        }
+
+        @schedulingWrite path /api/v1/shifts* /api/v1/shiftassignments* /api/v1/shiftrequiredjobroles* /api/v1/shiftapprovals* /api/v1/shiftswaps* /api/v1/shiftswapapprovals*
+        handle @schedulingWrite {
+          uri strip_prefix /api
+          reverse_proxy scheduling-command:8080 {
+            import upstream
+          }
+        }
+
+        @leaveRead {
+          method GET
+          path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers* /api/v1/views/employee-leave-overview*
+        }
+        handle @leaveRead {
+          uri strip_prefix /api
+          reverse_proxy leave-query:8080 {
+            import upstream
+          }
+        }
+
+        @leaveWrite path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers*
+        handle @leaveWrite {
+          uri strip_prefix /api
+          reverse_proxy leave-command:8080 {
+            import upstream
+          }
+        }
+
+        @notification path /api/v1/notifications*
+        handle @notification {
+          uri strip_prefix /api
+          reverse_proxy notification-service:8080 {
+            import upstream
+          }
+        }
+
+        @audit path /api/v1/auditlogs*
+        handle @audit {
+          uri strip_prefix /api
+          reverse_proxy audit-service:8080 {
+            import upstream
+          }
+        }
+
+        # Named (not a bare path) so Caddy keeps it after the routes above.
+        @unknownApi path /api /api/*
+        handle @unknownApi {
+          respond "Unknown API route" 404
+        }
+
+        handle {
+          reverse_proxy frontend:80 {
+            import upstream
+          }
+        }
+      }
+
+networks:
+  edge: {}
+  ops: {}
+  # Outbound internet access for services that need an external provider.
+  egress: {}
+  service-bus:
+    internal: true
+  identity-data:
+    internal: true
+  workforce-data:
+    internal: true
+  scheduling-write-data:
+    internal: true
+  scheduling-read-data:
+    internal: true
+  leave-write-data:
+    internal: true
+  leave-read-data:
+    internal: true
+  notification-data:
+    internal: true
+  audit-data:
+    internal: true
+  ai-data:
+    internal: true
+  # ai-service <-> ollama only.
+  llm:
+    internal: true
+
+volumes:
+  rabbitmq-data: {}
+  identity-data: {}
+  workforce-data: {}
+  scheduling-write-data: {}
+  scheduling-read-data: {}
+  leave-write-data: {}
+  leave-read-data: {}
+  notification-data: {}
+  audit-data: {}
+  ai-data: {}
+  ollama-models: {}
+  caddy-data: {}
+  caddy-config: {}

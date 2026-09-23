@@ -1,0 +1,28 @@
+# Lints the contracts so a broken OpenAPI, AsyncAPI, GraphQL or JSON Schema file fails the PR.
+name: contracts
+
+on:
+  pull_request:
+    paths: ['contracts/**', '.github/workflows/contracts.yml']
+  push:
+    branches: [main]
+    paths: ['contracts/**']
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: OpenAPI
+        run: npx --yes @redocly/cli@latest lint --skip-rule operation-4xx-response --skip-rule info-license --skip-rule no-server-example.com contracts/openapi/*.yaml
+      - name: AsyncAPI
+        run: npx --yes @asyncapi/cli@latest validate contracts/asyncapi.yaml
+      - name: GraphQL
+        run: |
+          npm install --silent --no-save --prefix /tmp/gql graphql@16
+          NODE_PATH=/tmp/gql/node_modules node -e "require('graphql').buildSchema(require('fs').readFileSync('contracts/graphql/scheduling.graphql','utf8'))"
+      - name: JSON Schemas
+        run: npx --yes -p ajv-cli@5 -p ajv-formats ajv compile --spec=draft2020 -c ajv-formats -s "contracts/events/**/*.schema.json" --strict=false

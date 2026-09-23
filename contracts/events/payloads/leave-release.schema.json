@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shift-happens.local/contracts/events/payloads/leave-release.schema.json",
+  "title": "LeaveReleaseResult",
+  "description": "Saga reply from Scheduling to Leave. data of scheduling.leave-release.completed.v1 (releasedAssignmentIds filled) and scheduling.leave-release.rejected.v1 (reason filled, nothing changed). aggregateId = leaveRequestId.",
+  "type": "object",
+  "required": [
+    "leaveRequestId",
+    "employeeId",
+    "startDate",
+    "endDate",
+    "releasedAssignmentIds",
+    "reason"
+  ],
+  "properties": {
+    "leaveRequestId": {
+      "type": "integer"
+    },
+    "employeeId": {
+      "type": "integer"
+    },
+    "startDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "endDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "releasedAssignmentIds": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why the release was refused, e.g. an overlapping shift is LOCKED (starts within 24 h)."
+    }
+  }
+}
