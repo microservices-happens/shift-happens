@@ -39,8 +39,6 @@ From the very beginning of the project, you should set up a proper project manag
 
 - Production environment should be simulated using local Kubernetes cluster. It is not required to make a full cloud deployment, but it should be described in the report – especially how it will support properties like elasticity, high availability, and low latency.
 
-AAAAAAAAAAAAAAAAAA
-
 - Stock brokerage web app
 
 - Logistics & Package Tracking System
