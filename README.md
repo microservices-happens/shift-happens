@@ -7,11 +7,14 @@ A shift scheduling and leave management system built as a database course projec
 The current application remains the runnable monolith. The target microservice architecture (7 services, REST + GraphQL towards the frontend, RabbitMQ between services, CQRS, a leave-approval saga, and AI replacement suggestions) is described in [docs/architecture.md](docs/architecture.md).
 
 - `docs/architecture.md` — requirements, service decomposition, patterns, deployment, CI/CD, testing, monitoring, versioning.
+- `docs/implementation-plan.md` — the order in which the service skeletons are filled (phases, vertical slices, acceptance criteria).
+- `docs/ci-demo.md` — the pipeline set: per-service pipelines, the aggregate system-test pipeline, the scheduled shift-risk report, the OS/JDK matrix and the API-triggered run.
 - `docs/shift-happens-high-level-architecture.drawio` — editable high-level diagram.
 - `contracts/` — OpenAPI (REST), GraphQL SDL and AsyncAPI (events) contracts between the services.
 - `services/*/README.md`, `functions/*/README.md` — scaffold for each service.
 - `docker-compose.microservices.yml` — development environment for the target system.
 - `docs/project-plan.md` — work packages and tasks derived from the final project description.
+- `.clinerules/` — instructions for AI coding agents (architecture, Java conventions, testing, CI, docs).
 
 ### Repository layout
 

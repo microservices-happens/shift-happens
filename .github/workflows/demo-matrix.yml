@@ -1,0 +1,115 @@
+# Demonstration pipeline: one job matrix, four parallel cells, one fan-in job.
+#
+# The system must work on Linux and Windows, on the current JDK and on the next one, so the matrix
+# crosses OS x JDK and runs every cell in parallel (fail-fast is off, so one red cell does not cancel
+# the others). The JDK 25 cells are marked experimental and use `continue-on-error`, which is how a
+# team can try a new runtime without blocking the pipeline.
+#
+# What it demonstrates:
+#   * `strategy.matrix` fan-out and `fail-fast: false`,
+#   * `include` adding a key to selected cells and `continue-on-error` for experimental cells,
+#   * OS-specific steps (`if: runner.os == ...`),
+#   * per-cell artifacts and a fan-in job that collects all of them (`needs` + `if: always()`),
+#   * Maven caching per OS and JDK.
+name: demo-matrix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/demo-matrix.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / JDK ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java: ['21', '25']
+        include:
+          # Only the JDK 25 cells are allowed to fail; JDK 21 is the version the services ship with.
+          - java: '25'
+            experimental: true
+    continue-on-error: ${{ matrix.experimental == true }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Cache Maven repository for this OS and JDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-jdk${{ matrix.java }}-${{ hashFiles('services/identity-service/pom.xml') }}
+          restore-keys: |
+            m2-${{ runner.os }}-jdk${{ matrix.java }}-
+
+      - name: Linux only - show the toolchain
+        if: runner.os == 'Linux'
+        run: |
+          uname -a
+          java -version
+          mvn -v
+
+      - name: Windows only - show the toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion
+          java -version
+          mvn -v
+
+      # The same slice pipeline as everywhere else: build plus unit tests, no other service needed.
+      - name: Build and unit tests (identity-service)
+        working-directory: services/identity-service
+        run: mvn -B package
+
+      - name: Share this cell's reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-reports-${{ matrix.os }}-${{ matrix.java }}
+          path: services/identity-service/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 7
+
+  fan-in:
+    name: fan-in (collect every cell)
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the reports of every matrix cell
+        uses: actions/download-artifact@v4
+        with:
+          pattern: matrix-reports-*
+          merge-multiple: true
+          path: matrix-reports
+      - name: Write the fan-in summary
+        run: |
+          {
+            echo "### Matrix fan-in"
+            echo
+            echo "Matrix job result: **${{ needs.build.result }}**"
+            echo
+            echo "Report files collected from all cells:"
+            echo '```'
+            find matrix-reports -type f | sort || echo "(none)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "--- collected ---"
+          find matrix-reports -type f | sort || true
+      - name: Fail when the matrix job failed
+        if: needs.build.result == 'failure'
+        run: exit 1

@@ -1,5 +1,8 @@
-# Build, test and package every service that changed. One job per changed service (matrix),
-# so a failing service fails the pipeline without blocking unrelated work.
+# Per-service CI in three gates: unit tests -> integration tests -> container image.
+#
+# Path filters make sure a change only builds and tests the services it can affect. A change under
+# contracts/ rebuilds every service because every service either implements or consumes a
+# contract (contracts/README.md).
 name: services
 
 on:
@@ -11,8 +14,13 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: services-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
+    name: detect changed services
     runs-on: ubuntu-latest
     outputs:
       services: ${{ steps.filter.outputs.changes }}
@@ -21,7 +29,6 @@ jobs:
       - id: filter
         uses: dorny/paths-filter@v3
         with:
-          # A contract change rebuilds every service that implements or consumes it.
           filters: |
             identity-service: ['services/identity-service/**', 'contracts/**']
             workforce-service: ['services/workforce-service/**', 'contracts/**']
@@ -32,7 +39,8 @@ jobs:
             audit-service: ['services/audit-service/**', 'contracts/**']
             email-function: ['functions/email-function/**', 'contracts/**']
 
-  build:
+  unit-tests:
+    name: unit-tests (${{ matrix.service }})
     needs: changes
     if: needs.changes.outputs.services != '[]'
     runs-on: ubuntu-latest
@@ -40,33 +48,115 @@ jobs:
       fail-fast: false
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.service == 'email-function' && 'functions' || 'services' }}/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: '21'
           cache: maven
-      # Unit + integration tests (Testcontainers runs on the hosted runner's Docker).
-      - name: Test
-        run: mvn -B verify
-      # TODO: SonarQube Cloud quality gate once the project is created (needs SONAR_TOKEN).
-      # - name: Static analysis
-      #   run: mvn -B sonar:sonar -Dsonar.projectKey=microservices-happens_${{ matrix.service }}
+      # Surefire: *Test / *Tests. Fast domain tests, no containers.
+      - name: Unit tests
+        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+        run: mvn -B test
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ matrix.service }}
+          path: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  integration-tests:
+    name: integration-tests (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Detect *IT tests
+        shell: bash
+        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+        run: |
+          if [ -n "$(find src/test -name '*IT.java' -print -quit 2>/dev/null)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No integration tests::${{ matrix.service }} has no *IT.java yet. The job passes with zero tests; add API, messaging and database ITs as part of P6.2-P6.4."
+          fi
+      # Failsafe: *IT with Testcontainers (Docker is available on hosted runners).
+      # -Dskip.unit.tests=true is wired to Surefire in each pom, so unit tests are not repeated.
+      - name: Integration tests
+        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+        run: mvn -B verify -Dskip.unit.tests=true
+      - name: Upload Failsafe reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failsafe-${{ matrix.service }}
+          path: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}/target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  images:
+    name: image (${{ matrix.service }})
+    needs: [changes, unit-tests, integration-tests]
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Build image
-        run: docker build -t ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }} .
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
       - name: Scan image
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
           severity: CRITICAL,HIGH
-          exit-code: "1"
+          exit-code: '1'
           ignore-unfixed: true
       - name: Push image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker push ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+
+  # Always runs, even when a path filter skipped the other jobs. This is the single required
+  # status check on main (see docs/implementation-plan.md §3): a skipped job is fine, a failed or
+  # cancelled one fails the gate.
+  ci:
+    name: ci
+    needs: [changes, unit-tests, integration-tests, images]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a service gate failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Summary
+        run: |
+          echo "changed services: ${{ needs.changes.outputs.services }}"
+          echo "unit: ${{ needs.unit-tests.result }}"
+          echo "integration: ${{ needs.integration-tests.result }}"
+          echo "images: ${{ needs.images.result }}"
+

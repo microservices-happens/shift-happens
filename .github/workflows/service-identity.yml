@@ -1,0 +1,29 @@
+# Isolated pipeline for identity-service (owner slot B, see docs/implementation-plan.md §8).
+#
+# Runs on every push to a feature branch that touches this service or the contracts, and on demand
+# from the Actions tab ("Run workflow") or the API. Re-running this run touches only
+# identity-service. Pull requests are gated by the aggregate `services` workflow.
+#
+# The shared pipeline lives in _service-ci.yml; this file only declares when it runs.
+name: service-identity
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'services/identity-service/**'
+      - 'contracts/**'
+      - '.github/workflows/_service-ci.yml'
+      - '.github/workflows/service-identity.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: service-identity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/_service-ci.yml
+    with:
+      service: identity-service
+      directory: services/identity-service

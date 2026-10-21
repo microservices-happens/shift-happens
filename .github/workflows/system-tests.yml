@@ -1,0 +1,163 @@
+# Aggregate pipeline: cross-service system tests (tests/cooperation).
+#
+# This is the only pipeline that needs more than one service, which is why it is separate from the
+# per-service pipelines. It runs:
+#   * on demand (workflow_dispatch) with a service list,
+#   * nightly (schedule),
+#   * automatically when the aggregate `services` gate finished successfully on main (workflow_run).
+#
+# What it demonstrates:
+#   * parallel matrix jobs (one image build per service),
+#   * `needs` dependencies (the test job waits for every build),
+#   * data sharing between jobs: each build exports its Docker image as an artifact, and the test
+#     job loads all of them before starting the containers.
+#
+# Note: the services listed must include the ones the enabled cooperation tests need
+# (currently identity-service and workforce-service, see tests/cooperation/README.md).
+name: system-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: Space-separated services to build and start
+        required: false
+        default: 'identity-service workforce-service'
+  schedule:
+    - cron: '0 2 * * *' # nightly, one hour before the shift-risk report
+  workflow_run:
+    workflows: [services]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: system-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: plan
+    # For the workflow_run trigger only continue when the gate passed on main.
+    if: >-
+      github.event_name != 'workflow_run'
+      || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.plan.outputs.services }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Decide which services to build
+        id: plan
+        run: |
+          SERVICES="${{ inputs.services || 'identity-service workforce-service' }}"
+          MATRIX=$(printf '%s\n' $SERVICES | jq -R . | jq -sc .)
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          {
+            echo "### System tests will build and start"
+            echo
+            echo '```'
+            echo "$SERVICES"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-images:
+    name: build image (${{ matrix.service }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the service image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          load: true
+          tags: shift-happens/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+      - name: Export the image for the test job
+        run: docker save shift-happens/${{ matrix.service }}:ci | gzip > ${{ matrix.service }}.tgz
+      - name: Share the image with the test job
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ matrix.service }}.tgz
+          retention-days: 1
+
+  system-tests:
+    name: cooperation tests
+    needs: [plan, build-images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SERVICE_IMAGE_TAG: ci
+      # A missing image must fail, not silently skip, so a broken aggregate run cannot look green.
+      COOPERATION_REQUIRE_IMAGES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Data sharing: every image built in parallel by the matrix job arrives here.
+      - name: Download the images built in parallel
+        uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: images
+      - name: Load the images into the local Docker daemon
+        run: |
+          ls -lh images
+          for image in images/*.tgz; do gzip -dc "$image" | docker load; done
+          docker images
+
+      - name: Cooperation tests (two or more services + RabbitMQ)
+        run: mvn -B -f tests/cooperation/pom.xml verify
+
+      - name: Upload the cooperation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cooperation-reports
+          path: tests/cooperation/target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Container diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker images
+
+  summary:
+    name: summary
+    needs: [plan, build-images, system-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the run summary
+        run: |
+          {
+            echo "### System test pipeline"
+            echo
+            echo "| stage | result |"
+            echo "|---|---|"
+            echo "| plan | ${{ needs.plan.result }} |"
+            echo "| build images | ${{ needs.build-images.result }} |"
+            echo "| cooperation tests | ${{ needs.system-tests.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail when a stage failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

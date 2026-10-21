@@ -1,0 +1,30 @@
+# Isolated pipeline for workforce-service (owner slot A, see docs/implementation-plan.md §8).
+#
+# Runs on every push to a feature branch that touches this service or the contracts, and on demand
+# from the Actions tab ("Run workflow") or the API. Re-running this run touches only
+# workforce-service. Pull requests are gated by the aggregate `services` workflow.
+#
+# Everything this pipeline needs is in services/workforce-service, so it has no dependency on any
+# other service. The shared pipeline lives in _service-ci.yml.
+name: service-workforce
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'services/workforce-service/**'
+      - 'contracts/**'
+      - '.github/workflows/_service-ci.yml'
+      - '.github/workflows/service-workforce.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: service-workforce-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/_service-ci.yml
+    with:
+      service: workforce-service
+      directory: services/workforce-service

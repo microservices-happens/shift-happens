@@ -1,0 +1,107 @@
+# Demonstration pipeline triggered by a custom event type, callable through the GitHub API.
+#
+# Two triggers are accepted:
+#   * repository_dispatch with the event type `shift-happens-demo` (the API trigger used in the demo)
+#   * workflow_dispatch with typed inputs (the "Run workflow" button)
+#
+# Call it from a terminal (a personal access token with `repo`/`actions:write` scope):
+#
+#   curl -X POST \
+#     -H "Authorization: Bearer $GITHUB_TOKEN" \
+#     -H "Accept: application/vnd.github+json" \
+#     https://api.github.com/repos/microservices-happens/shift-happens/dispatches \
+#     -d '{"event_type":"shift-happens-demo","client_payload":{"service":"scheduling-service","reason":"live demo"}}'
+#
+# or with the GitHub CLI:
+#
+#   gh workflow run on-demand-demo -f service=scheduling-service -f reason="live demo"
+#
+# What it demonstrates: reading `github.event.client_payload`, mapping a payload field to a job
+# output, validating untrusted input, and reusing the same per-service pipeline through `uses`.
+name: on-demand-demo
+
+on:
+  repository_dispatch:
+    types: [shift-happens-demo]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service (or slice) to build and test
+        required: false
+        default: identity-service
+        type: choice
+        options:
+          - identity-service
+          - workforce-service
+          - scheduling-service
+          - leave-service
+          - ai-service
+          - notification-service
+          - audit-service
+          - email-function
+      reason:
+        description: Why this run was requested
+        required: false
+        default: manual demo
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: read the trigger payload
+    runs-on: ubuntu-latest
+    outputs:
+      service: ${{ steps.resolve.outputs.service }}
+      directory: ${{ steps.resolve.outputs.directory }}
+      reason: ${{ steps.resolve.outputs.reason }}
+    steps:
+      - name: Resolve service, directory and reason from either trigger
+        id: resolve
+        env:
+          INPUT_SERVICE: ${{ inputs.service }}
+          INPUT_REASON: ${{ inputs.reason }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          SERVICE="${INPUT_SERVICE:-}"
+          REASON="${INPUT_REASON:-}"
+          if [ -z "$SERVICE" ]; then
+            SERVICE=$(jq -r '.service // "identity-service"' <<< "$PAYLOAD")
+          fi
+          if [ -z "$REASON" ]; then
+            REASON=$(jq -r '.reason // "repository_dispatch"' <<< "$PAYLOAD")
+          fi
+          case "$SERVICE" in
+            email-function) DIRECTORY="functions/email-function" ;;
+            *-service)      DIRECTORY="services/$SERVICE" ;;
+            *) echo "::error::Unknown service '$SERVICE'"; exit 1 ;;
+          esac
+          echo "service=$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "directory=$DIRECTORY" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+          {
+            echo "### On-demand run"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| trigger | \`${{ github.event_name }}\` |"
+            echo "| service | \`$SERVICE\` |"
+            echo "| directory | \`$DIRECTORY\` |"
+            echo "| reason | $REASON |"
+            echo
+            echo "Raw \`client_payload\`:"
+            echo '```json'
+            echo "$PAYLOAD" | jq .
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  service-pipeline:
+    name: run the slice pipeline
+    needs: setup
+    uses: ./.github/workflows/_service-ci.yml
+    with:
+      service: ${{ needs.setup.outputs.service }}
+      directory: ${{ needs.setup.outputs.directory }}
+      # Fast demo: skip the Testcontainers stage and show only build + unit tests.
+      run-integration-tests: false
