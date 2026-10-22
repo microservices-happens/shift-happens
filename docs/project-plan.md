@@ -56,7 +56,7 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 - [x] P1.2 `docker-compose.microservices.yml` (infrastructure + all services)
 - [x] P1.3 CI skeleton: per-service unit/integration/image gates, contract lint, CodeQL, Dependabot, cooperation-test and frontend workflows
 - [ ] P1.4 GitHub Projects board, branch protection on `main` (green CI + 1 review, required checks listed in `implementation-plan.md` §3), CODEOWNERS filled in
-- [ ] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `services.yml`
+- [ ] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `ci.yml`
 - [ ] P1.6 Shared conventions in code (copied per service, no shared library): the event envelope class, the correlation-id filter, and the problem+json error handler. Write them once, then copy them
 - [ ] P1.7 Security baseline in every service: `spring-boot-starter-oauth2-resource-server` validating the JWT from `JWT_JWKS_URL`, and role rules per `contracts/README.md`
 - [ ] P1.8 Messaging baseline: Spring AMQP, exchange/queue/DLX declarations, transactional outbox table + relay, `processed_events` table for idempotent consumers

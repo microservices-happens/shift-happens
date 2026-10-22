@@ -66,11 +66,9 @@ on seed data; it exists for manual demos.
 
 ### P1.4 Repository settings (one person, 10 minutes)
 
-- Branch protection on `main`: require `services / ci` (the aggregate job always runs, even when no
-  service changed), plus `contracts / lint`, `system-tests / cooperation tests`,
-  `frontend / build`, `codeql` and `dependency-review`; require one review and block direct pushes.
-  The path-filtered workflows only appear when their paths change; `services / ci` is the one check
-  that can always be required.
+- Branch protection on `main`: require **`ci`** (the aggregate job in `ci.yml` always runs, even when
+  no service changed), plus one review and no direct pushes. `codeql`, `system-tests` and
+  `nightly-shift-risk` run on their own schedule/triggers and do not block a merge.
 - Fill in `.github/CODEOWNERS` from the ownership table in §8.
 
 ## 4. Phase 1 — vertical slices
@@ -296,20 +294,14 @@ split by page after Slice 11 starts (schedule/GraphQL, leave/REST, auth/shell).
 
 ## 9. CI map
 
-| Workflow | Trigger | Gates |
+| Workflow | Runs | What it proves |
 |---|---|---|
-| `contracts.yml` | `contracts/**` | OpenAPI, AsyncAPI, GraphQL SDL, JSON Schema parse |
-| `_service-ci.yml` + `service-<name>.yml` (8) | push to a branch touching that slice, manual | reusable slice pipeline: build → unit tests → optional integration tests → summary (Maven cache, jar artifact, fan-in reports) |
-| `services.yml` | PR + `main` | per changed service: unit → integration → image build → Trivy → push on `main`; `ci` aggregates and is the required check |
-| `system-tests.yml` | manual, nightly, `workflow_run` after `services` on `main` | builds service images in parallel, shares them as artifacts, runs `tests/cooperation` |
-| `nightly-shift-risk.yml` | cron 03:00 UTC + manual | scheduled shift-risk report from seed data (artifact, job summary, findings output, optional issue) |
-| `demo-matrix.yml` | manual / file push | Ubuntu + Windows × JDK 21 + 25, experimental cells, per-cell artifacts, fan-in |
-| `on-demand-demo.yml` | `repository_dispatch` / manual | API-triggered run that resolves a payload and reuses the slice pipeline |
-| `frontend.yml` | `frontend/**` | `npm ci`, typecheck, production build |
-| `codeql.yml` | PR, `main`, weekly | Java + TypeScript SAST |
-| `dependency-review.yml` | PR | fails on a high-severity vulnerable dependency |
+| `ci.yml` | PR, `main`, manual | `changes` → `tests` (matrix: `mvn verify` per changed service) → `images` (matrix: build + Trivy) → `ci` (the required aggregate check); `contracts` and `frontend` jobs appear when those paths change |
+| `system-tests.yml` | `main`, nightly, manual | cross-service cooperation tests: images built in parallel, shared as artifacts, then RabbitMQ + two services in containers |
+| `codeql.yml` | PR, `main`, weekly | static security analysis (Java compiled with `build-mode: manual`) |
+| `nightly-shift-risk.yml` | nightly, manual | scheduled shift-risk report from seed data (artifact, job summary, optional issue) |
 
-See `docs/ci-demo.md` for how to trigger each one and what to look for in the UI.
+See `docs/ci-demo.md` for triggers, the manual commands and troubleshooting.
 
 A red job blocks the merge; do not bypass it. When a service gains its first `*IT`, the integration
 job stops printing the "no integration tests yet" warning automatically.
@@ -335,7 +327,7 @@ job stops printing the "no integration tests yet" warning automatically.
    - Pair B: Identity `account` table + `POST /v1/auth/login` returning a signed JWT (JWKS next).
    - Pair C/D: Scheduling and Leave schemas (`V1__init.sql`) and the overlap/ledger unit rules.
    - Pair E: Audit consumer skeleton + `Notification`/`AI` issue breakdown.
-4. **30 min — prove the pipeline.** Open one PR per slice, watch `services.yml` and
+4. **30 min — prove the pipeline.** Open one PR per slice, watch `ci.yml` and
    `system-tests.yml`, fix the first failures together, and update the board.
 
 Do not start Kubernetes or the frontend wiring today; both depend on the services above.

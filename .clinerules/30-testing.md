@@ -5,7 +5,7 @@ Three levels; all of them run in CI and a failure must fail the pipeline.
 | Level | Location | Naming | Runner |
 |---|---|---|---|
 | Unit | `services/<svc>/src/test/java` | `*Test`, `*Tests` | Surefire: `mvn test` |
-| Integration | `services/<svc>/src/test/java` | `*IT` | Failsafe: `mvn verify "-Dskip.unit.tests=true"` |
+| Integration | `services/<svc>/src/test/java` | `*IT` | Failsafe: run by `mvn verify` |
 | Cooperation (system) | `tests/cooperation` | `*IT` | `mvn -f tests/cooperation/pom.xml verify` |
 
 ## Unit tests

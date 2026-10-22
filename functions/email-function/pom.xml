@@ -18,9 +18,6 @@
 
     <properties>
         <java.version>21</java.version>
-        <!-- CI runs unit tests (Surefire) and integration tests (Failsafe) as separate gates.
-             `mvn verify -Dskip.unit.tests=true` therefore skips only the unit tests. -->
-        <skip.unit.tests>false</skip.unit.tests>
     </properties>
 
     <!-- Walking skeleton: add starters as the service is implemented
@@ -44,14 +41,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <!-- Unit tests: *Test / *Tests. Skipped by -Dskip.unit.tests=true (CI integration gate). -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <skipTests>${skip.unit.tests}</skipTests>
-                </configuration>
             </plugin>
             <!-- Integration tests: *IT, usually with Testcontainers. Run by `mvn verify`. -->
             <plugin>

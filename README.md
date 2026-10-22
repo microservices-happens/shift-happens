@@ -8,7 +8,7 @@ The current application remains the runnable monolith. The target microservice a
 
 - `docs/architecture.md` — requirements, service decomposition, patterns, deployment, CI/CD, testing, monitoring, versioning.
 - `docs/implementation-plan.md` — the order in which the service skeletons are filled (phases, vertical slices, acceptance criteria).
-- `docs/ci-demo.md` — the pipeline set: per-service pipelines, the aggregate system-test pipeline, the scheduled shift-risk report, the OS/JDK matrix and the API-triggered run.
+- `docs/ci-demo.md` — the four CI workflows, what runs in parallel, how to run each one manually, and troubleshooting.
 - `docs/shift-happens-high-level-architecture.drawio` — editable high-level diagram.
 - `contracts/` — OpenAPI (REST), GraphQL SDL and AsyncAPI (events) contracts between the services.
 - `services/*/README.md`, `functions/*/README.md` — scaffold for each service.

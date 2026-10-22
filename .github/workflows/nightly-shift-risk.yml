@@ -1,19 +1,17 @@
-# Scheduled domain pipeline: nightly shift-risk report.
+# Scheduled domain pipeline: the nightly shift-risk report.
 #
-# Why this exists: a shift-planning system must answer three questions before the planners arrive in
-# the morning:
-#   1. which shifts in the coming days are short of staff (understaffed),
-#   2. which of them start within 24 hours (the window in which a shift is "locked" and cannot be
-#      released by the leave saga),
+# It answers the questions a shift planner asks every morning:
+#   1. which planned shifts in the coming days are short of staff,
+#   2. which of those start within 24 hours (the "locked" window, where the leave saga cannot release
+#      anyone, so a replacement is needed today),
 #   3. was anyone double-booked, and was approved leave actually released from the schedule?
 #
 # Data source today: the monolith schema and seed data (docker/init) loaded into a MySQL service
-# container. When Scheduling and Leave expose their read models, the same script can query those
-# instead - see tests/schedule-report/README.md.
+# container inside this job. When Scheduling and Leave expose their read models, the same script can
+# query those instead - see tests/schedule-report/README.md.
 #
-# What it demonstrates: a cron schedule, workflow_dispatch inputs, a service container, job outputs
-# consumed by a dependent job, artifacts, $GITHUB_STEP_SUMMARY and a GitHub issue created through
-# the API.
+# It demonstrates: a cron schedule, a service container, workflow_dispatch inputs, an artifact,
+# $GITHUB_STEP_SUMMARY and an issue created through the API.
 name: nightly-shift-risk
 
 on:
@@ -53,8 +51,6 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
-    outputs:
-      findings: ${{ steps.report.outputs.findings }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +82,6 @@ jobs:
             SELECT COUNT(*) AS assignments FROM shift_assignment;"
 
       - name: Build the report
-        id: report
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: '3306'
@@ -109,7 +104,7 @@ jobs:
           retention-days: 30
 
       - name: Open or update an issue when requested and findings exist
-        if: inputs.create_issue == true && steps.report.outputs.findings != '0'
+        if: inputs.create_issue == true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -119,24 +114,5 @@ jobs:
           if [ -n "$EXISTING" ]; then
             gh issue comment "$EXISTING" --body-file schedule-risk-report.md
           else
-            gh issue create \
-              --title "Nightly shift risk report: ${{ steps.report.outputs.findings }} findings" \
-              --body-file schedule-risk-report.md
+            gh issue create --title "Nightly shift risk report" --body-file schedule-risk-report.md
           fi
-
-  notify:
-    name: notify
-    needs: report
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Consume the findings count published by the report job
-        run: |
-          echo "Findings from the report job: ${{ needs.report.outputs.findings }}"
-          {
-            echo "### Nightly shift risk report"
-            echo
-            echo "Findings: **${{ needs.report.outputs.findings }}** (report job: ${{ needs.report.result }})"
-            echo
-            echo "Download the artifact \`schedule-risk-report\` for the details."
-          } >> "$GITHUB_STEP_SUMMARY"

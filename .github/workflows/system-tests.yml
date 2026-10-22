@@ -1,33 +1,24 @@
-# Aggregate pipeline: cross-service system tests (tests/cooperation).
+# Aggregate pipeline: the cross-service system tests (tests/cooperation).
 #
-# This is the only pipeline that needs more than one service, which is why it is separate from the
-# per-service pipelines. It runs:
-#   * on demand (workflow_dispatch) with a service list,
-#   * nightly (schedule),
-#   * automatically when the aggregate `services` gate finished successfully on main (workflow_run).
+# This is the only pipeline that needs more than one service, so it runs on main, nightly and on
+# demand instead of on every pull request.
 #
-# What it demonstrates:
-#   * parallel matrix jobs (one image build per service),
-#   * `needs` dependencies (the test job waits for every build),
-#   * data sharing between jobs: each build exports its Docker image as an artifact, and the test
-#     job loads all of them before starting the containers.
+#   build-images (matrix, parallel) ──► cooperation-tests (needs both builds)
 #
-# Note: the services listed must include the ones the enabled cooperation tests need
-# (currently identity-service and workforce-service, see tests/cooperation/README.md).
+# The images are passed between the jobs as artifacts: each build does `docker save` and uploads the
+# file, and the test job downloads all of them and `docker load`s them. That is also the data-sharing
+# demonstration described in docs/ci-demo.md.
+#
+# When the leave-approval saga test is enabled (P3.1), add leave-service and scheduling-service to
+# the matrix below; the test class documents the rest.
 name: system-tests
 
 on:
-  workflow_dispatch:
-    inputs:
-      services:
-        description: Space-separated services to build and start
-        required: false
-        default: 'identity-service workforce-service'
+  push:
+    branches: [main]
   schedule:
     - cron: '0 2 * * *' # nightly, one hour before the shift-risk report
-  workflow_run:
-    workflows: [services]
-    types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -37,49 +28,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  plan:
-    name: plan
-    # For the workflow_run trigger only continue when the gate passed on main.
-    if: >-
-      github.event_name != 'workflow_run'
-      || (github.event.workflow_run.conclusion == 'success'
-          && github.event.workflow_run.head_branch == 'main')
-    runs-on: ubuntu-latest
-    outputs:
-      services: ${{ steps.plan.outputs.services }}
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      - name: Decide which services to build
-        id: plan
-        run: |
-          SERVICES="${{ inputs.services || 'identity-service workforce-service' }}"
-          # Build the JSON matrix with bash: no jq/python dependency.
-          MATRIX="["
-          SEPARATOR=""
-          for service in $SERVICES; do
-            MATRIX="${MATRIX}${SEPARATOR}\"${service}\""
-            SEPARATOR=","
-          done
-          MATRIX="${MATRIX}]"
-          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          {
-            echo "### System tests will build and start"
-            echo
-            echo '```'
-            echo "$SERVICES"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   build-images:
     name: build image (${{ matrix.service }})
-    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        service: ${{ fromJSON(needs.plan.outputs.matrix) }}
+        service: [identity-service, workforce-service]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -100,14 +56,14 @@ jobs:
           path: ${{ matrix.service }}.tgz
           retention-days: 1
 
-  system-tests:
+  cooperation-tests:
     name: cooperation tests
-    needs: [plan, build-images]
+    needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       SERVICE_IMAGE_TAG: ci
-      # A missing image must fail, not silently skip, so a broken aggregate run cannot look green.
+      # A missing image must fail, not silently skip, so a broken run cannot look green.
       COOPERATION_REQUIRE_IMAGES: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -124,19 +80,16 @@ jobs:
           pattern: image-*
           merge-multiple: true
           path: images
-      - name: Load the images into the local Docker daemon
+      - name: Load the images into Docker
         run: |
           ls -lh images
           for image in images/*.tgz; do gzip -dc "$image" | docker load; done
           docker images
 
-      - name: Cooperation tests (two or more services + RabbitMQ)
-        uses: ./.github/actions/maven-build
-        with:
-          directory: tests/cooperation
-          goals: verify
+      - name: Cooperation tests (two services + RabbitMQ, in containers)
+        run: mvn -B -f tests/cooperation/pom.xml verify -Dmaven.wagon.http.retryHandler.count=3
 
-      - name: Upload the cooperation reports
+      - name: Upload the test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -144,30 +97,8 @@ jobs:
           path: tests/cooperation/target/failsafe-reports/
           if-no-files-found: ignore
           retention-days: 7
-
       - name: Container diagnostics on failure
         if: failure()
         run: |
           docker ps -a
           docker images
-
-  summary:
-    name: summary
-    needs: [plan, build-images, system-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Write the run summary
-        run: |
-          {
-            echo "### System test pipeline"
-            echo
-            echo "| stage | result |"
-            echo "|---|---|"
-            echo "| plan | ${{ needs.plan.result }} |"
-            echo "| build images | ${{ needs.build-images.result }} |"
-            echo "| cooperation tests | ${{ needs.system-tests.result }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Fail when a stage failed or was cancelled
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1

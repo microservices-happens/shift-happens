@@ -40,7 +40,7 @@ containers.
 
 ## Adding a cooperation test
 
-1. Add the service to the `services` input default in `.github/workflows/system-tests.yml` so CI
+1. Add the service to the `matrix.service` list in `.github/workflows/system-tests.yml` so CI
    builds its image.
 2. Start it with `ServiceContainer.create("<service>", network)` and any database container it
    needs (PostgreSQL/MongoDB) on the same `Network`.

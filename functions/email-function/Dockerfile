@@ -2,19 +2,12 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /src
 COPY pom.xml .
-# Maven Central occasionally answers a transient 403 to shared CI IPs (docs/ci-demo.md section 6).
-# The second and third attempt force an update instead of failing the whole image build.
+# Tests run in CI (ci.yml), not in the image build.
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline \
- || mvn -B -q -U -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline \
- || mvn -B -q -U -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline
+    mvn -B -q -DskipTests -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline
 COPY src ./src
-# -Dskip.unit.tests=true (not -DskipTests) skips the unit tests: the service pom configures
-# Surefire's skipTests from that property, so it takes precedence over -DskipTests.
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q -Dskip.unit.tests=true -Dmaven.wagon.http.retryHandler.count=3 package \
- || mvn -B -q -U -Dskip.unit.tests=true -Dmaven.wagon.http.retryHandler.count=3 package \
- || mvn -B -q -U -Dskip.unit.tests=true -Dmaven.wagon.http.retryHandler.count=3 package
+    mvn -B -q -DskipTests -Dmaven.wagon.http.retryHandler.count=3 package
 
 FROM eclipse-temurin:21-jre
 RUN useradd --system --uid 10001 app

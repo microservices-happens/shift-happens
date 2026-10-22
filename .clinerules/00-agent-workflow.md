@@ -26,9 +26,8 @@ These rules apply to every task in this repository unless the user explicitly ov
 
 | Task | Command |
 |---|---|
-| Unit tests for one service | `mvn -B -f services/<svc>/pom.xml test` |
-| Integration tests only | `mvn -B -f services/<svc>/pom.xml verify "-Dskip.unit.tests=true"` |
-| Everything for one service | `mvn -B -f services/<svc>/pom.xml verify` |
+| Unit tests only (one service) | `mvn -B -f services/<svc>/pom.xml test` |
+| Unit + integration tests (one service) | `mvn -B -f services/<svc>/pom.xml verify` |
 | Cooperation (system) tests | `mvn -B -f tests/cooperation/pom.xml verify` |
 | Frontend checks | `npm --prefix frontend ci` then `npm --prefix frontend run typecheck` and `npm --prefix frontend run build` |
 | Infrastructure only | `docker compose -f docker-compose.microservices.yml up -d` |
@@ -36,9 +35,6 @@ These rules apply to every task in this repository unless the user explicitly ov
 
 The repository wrapper works too: `.\mvnw.cmd -B -f services/identity-service/pom.xml test`
 (and `./mvnw ...` on Linux/macOS).
-
-> PowerShell splits the property `-Dskip.unit.tests=true` into two arguments. Always quote it in
-> PowerShell (`"-Dskip.unit.tests=true"`); bash in CI does not need the quotes.
 
 ## Definition of a finished change
 

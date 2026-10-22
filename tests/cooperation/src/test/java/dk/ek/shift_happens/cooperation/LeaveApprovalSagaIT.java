@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  * <p>Enable when leave-service and scheduling-service implement the saga:
  * <ol>
  *   <li>build both images and add {@code leave-service} and {@code scheduling-service} to
- *       {@code services} input of {@code .github/workflows/system-tests.yml};</li>
+ *       matrix.service list in {@code .github/workflows/system-tests.yml};</li>
  *   <li>start leave-command, scheduling-command, their PostgreSQL databases and RabbitMQ;</li>
  *   <li>submit and approve a leave request through the Leave REST API;</li>
  *   <li>assert the completed path: overlapping assignments are released and

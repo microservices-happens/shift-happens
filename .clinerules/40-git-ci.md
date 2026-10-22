@@ -19,33 +19,26 @@ owners must review. An event change is one PR that updates all of:
 
 ## CI gates (all required)
 
-| Workflow / job | What it proves |
+| Workflow | What it proves |
 |---|---|
-| `services.yml` → `ci` | Aggregate gate for all service jobs (always runs, so it is safe to require) |
-| `service-<name>.yml` (8) | Isolated slice pipeline per service; re-runnable on its own |
-| `system-tests.yml` | Aggregate cross-service cooperation tests |
-| `nightly-shift-risk.yml` | Scheduled domain report (see `docs/ci-demo.md`) |
-| `demo-matrix.yml`, `on-demand-demo.yml` | Matrix and API-triggered demonstrations |
-| `contracts.yml` | OpenAPI, AsyncAPI, GraphQL SDL and JSON Schemas parse |
-| `services.yml` → `unit-tests` | Surefire unit tests for each changed service |
-| `services.yml` → `integration-tests` | Failsafe + Testcontainers for each changed service |
-| `services.yml` → `images` | Image builds; Trivy scans and reports (blocking when the repository variable `TRIVY_EXIT_CODE=1`) |
-| `system-tests.yml` | Aggregate cross-service cooperation tests |
-| `frontend.yml` | TypeScript typecheck and production build |
-| `codeql.yml` | CodeQL static security analysis |
-| `dependency-review.yml` | A PR cannot introduce a high-severity vulnerable dependency |
+| `ci.yml` → `tests` | Surefire unit tests + Failsafe integration tests for every changed service (Testcontainers for the `*IT`) |
+| `ci.yml` → `images` | Every changed service builds an image; Trivy scans it (blocking only when the repository variable `TRIVY_EXIT_CODE=1`) |
+| `ci.yml` → `contracts` / `frontend` | Contracts parse; the frontend typechecks and builds |
+| `ci.yml` → `ci` | Aggregate gate. Always runs, so it is the one check to require on `main` |
+| `system-tests.yml` | Two or more services plus RabbitMQ cooperate in containers |
+| `codeql.yml` | Static security analysis (findings in the Security tab) |
+| `nightly-shift-risk.yml` | Scheduled domain report (`docs/ci-demo.md`) |
 
 Path filters are intentional: a change to one service does not rebuild the others, but a change
 under `contracts/` rebuilds every service because it implements or consumes a contract.
 
 ## Maven steps
 
-Never call `mvn` directly in a workflow step. Use the composite action
-`.github/actions/maven-build` (`with: directory: ...` and `goals: ...`): it retries a transient
-Maven Central failure (we have hit `status code: 403` on `windows-latest`), forces an update and
-falls back to the alternate Central host, and it deliberately does not retry a compile or test
-failure. Keep the shared Maven cache key (`m2-<os>-jdk<java>-v1`) so the eight pipelines do not each
-download Spring Boot again.
+Use plain `mvn -B ...` steps with `-Dmaven.wagon.http.retryHandler.count=3` (Maven Central
+occasionally answers a transient `403` to shared runner IPs) and the shared cache key
+`m2-<os>-jdk21-v1`. `mvn verify` runs the unit tests (Surefire) and then the integration tests
+(Failsafe); `mvn test` runs only the unit tests. Do not reintroduce a per-service workflow: one
+matrix row in `ci.yml` is enough, and it keeps the required-check story to a single `ci` job.
 
 Do not weaken a workflow to make a PR green. Fix the code, or open a task and explain the gate in
 the PR description.
