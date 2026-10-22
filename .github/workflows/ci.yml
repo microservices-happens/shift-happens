@@ -1,0 +1,252 @@
+# The CI gate for every pull request and for main. One workflow, one required check: `ci`.
+#
+#   changes ──┬─► tests     (matrix: every changed service, unit + integration tests)
+#             ├─► images    (matrix: every changed service, build + Trivy scan)
+#             ├─► contracts (only when contracts/ changed)
+#             └─► frontend  (only when frontend/ changed)
+#                    │
+#                    └─► ci    (aggregate; always runs, so require THIS check on main)
+#
+# A contract change affects every service, because every service implements or consumes a contract.
+#
+# Manual run: Actions -> ci -> Run workflow with `services` = all | auto | "<space separated list>".
+# The manual run skips the path filter, so you can build and scan any image on demand.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: '"all", "auto" (detect from the commit) or a space-separated list of services'
+        required: false
+        default: all
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.plan.outputs.services }}
+      contracts: ${{ steps.paths.outputs.contracts }}
+      frontend: ${{ steps.paths.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Which services does this change affect?
+      - id: services
+        if: inputs.services == '' || inputs.services == 'auto'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            identity-service: ['services/identity-service/**', 'contracts/**']
+            workforce-service: ['services/workforce-service/**', 'contracts/**']
+            scheduling-service: ['services/scheduling-service/**', 'contracts/**']
+            leave-service: ['services/leave-service/**', 'contracts/**']
+            ai-service: ['services/ai-service/**', 'contracts/**']
+            notification-service: ['services/notification-service/**', 'contracts/**']
+            audit-service: ['services/audit-service/**', 'contracts/**']
+            email-function: ['functions/email-function/**', 'contracts/**']
+
+      # Separate filter, so "contracts"/"frontend" never end up in the service matrix.
+      - id: paths
+        if: inputs.services == '' || inputs.services == 'auto'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            contracts: ['contracts/**']
+            frontend: ['frontend/**']
+
+      # Manual run: turn the input into the JSON array the matrix needs (plain bash, no jq).
+      - id: requested
+        if: inputs.services != '' && inputs.services != 'auto'
+        run: |
+          requested="${{ inputs.services }}"
+          if [ "$requested" = "all" ]; then
+            requested="identity-service workforce-service scheduling-service leave-service ai-service notification-service audit-service email-function"
+          fi
+          matrix="["
+          separator=""
+          for service in $requested; do
+            matrix="${matrix}${separator}\"${service}\""
+            separator=","
+          done
+          echo "services=${matrix}]" >> "$GITHUB_OUTPUT"
+
+      - id: plan
+        run: |
+          requested='${{ steps.requested.outputs.services }}'
+          filtered='${{ steps.services.outputs.changes }}'
+          if [ -n "$requested" ]; then
+            services="$requested"
+          elif [ -n "$filtered" ]; then
+            services="$filtered"
+          else
+            services='[]'
+          fi
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "Selected services: $services" >> "$GITHUB_STEP_SUMMARY"
+
+  # One matrix row per changed service: build, unit tests and integration tests, in parallel.
+  tests:
+    name: tests (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # One Maven cache per OS + JDK, shared by every service, so the eight pipelines do not each
+      # download Spring Boot. Bump the -v1 suffix to invalidate every cache on purpose.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-jdk21-v1
+          restore-keys: m2-${{ runner.os }}-jdk21-
+
+      # `verify` runs the unit tests (Surefire: *Test, *Tests) and then the integration tests
+      # (Failsafe: *IT, which use Testcontainers).
+      - name: Unit and integration tests
+        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+        run: mvn -B verify -Dmaven.wagon.http.retryHandler.count=3
+
+      - name: Upload the test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.service }}
+          path: |
+            ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}/target/surefire-reports/
+            ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}/target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # One matrix row per changed service: build the container image and scan it, in parallel.
+  images:
+    name: image (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          load: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+      - name: Scan the image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          hide-progress: true
+          token-setup-trivy: ${{ github.token }}
+          # Report-only while the services are skeletons, so base-image CVEs do not fail the demo.
+          # Set the repository variable TRIVY_EXIT_CODE=1 to make the scan blocking (P6.7).
+          exit-code: ${{ vars.TRIVY_EXIT_CODE || '0' }}
+
+      - name: Push the image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+
+  # The contracts are the source of truth for the APIs and events, so they are linted when they change.
+  contracts:
+    name: contracts
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: OpenAPI
+        run: npx --yes @redocly/cli@latest lint --skip-rule operation-4xx-response --skip-rule info-license --skip-rule no-server-example.com contracts/openapi/*.yaml
+      - name: AsyncAPI
+        run: npx --yes @asyncapi/cli@latest validate contracts/asyncapi.yaml
+      - name: GraphQL
+        run: |
+          npm install --silent --no-save --prefix /tmp/gql graphql@16
+          NODE_PATH=/tmp/gql/node_modules node -e "require('graphql').buildSchema(require('fs').readFileSync('contracts/graphql/scheduling.graphql','utf8'))"
+      - name: JSON Schemas
+        run: npx --yes -p ajv-cli@5 -p ajv-formats ajv compile --spec=draft2020 -c ajv-formats -s "contracts/events/**/*.schema.json" --strict=false
+
+  frontend:
+    name: frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  # Always runs, even when a path filter skipped the other jobs. This is the single required check on
+  # main (docs/implementation-plan.md section 3): a skipped job is fine, a failed one fails the gate.
+  ci:
+    name: ci
+    needs: [changes, tests, images, contracts, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a gate failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Summary
+        run: |
+          {
+            echo "### CI"
+            echo
+            echo "| job | result |"
+            echo "|---|---|"
+            echo "| tests | ${{ needs.tests.result }} |"
+            echo "| images | ${{ needs.images.result }} |"
+            echo "| contracts | ${{ needs.contracts.result }} |"
+            echo "| frontend | ${{ needs.frontend.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

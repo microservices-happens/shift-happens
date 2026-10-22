@@ -1,0 +1,104 @@
+# Aggregate pipeline: the cross-service system tests (tests/cooperation).
+#
+# This is the only pipeline that needs more than one service, so it runs on main, nightly and on
+# demand instead of on every pull request.
+#
+#   build-images (matrix, parallel) ──► cooperation-tests (needs both builds)
+#
+# The images are passed between the jobs as artifacts: each build does `docker save` and uploads the
+# file, and the test job downloads all of them and `docker load`s them. That is also the data-sharing
+# demonstration described in docs/ci-demo.md.
+#
+# When the leave-approval saga test is enabled (P3.1), add leave-service and scheduling-service to
+# the matrix below; the test class documents the rest.
+name: system-tests
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *' # nightly, one hour before the shift-risk report
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: system-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    name: build image (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [identity-service, workforce-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the service image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          load: true
+          tags: shift-happens/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+      - name: Export the image for the test job
+        run: docker save shift-happens/${{ matrix.service }}:ci | gzip > ${{ matrix.service }}.tgz
+      - name: Share the image with the test job
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ matrix.service }}.tgz
+          retention-days: 1
+
+  cooperation-tests:
+    name: cooperation tests
+    needs: build-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SERVICE_IMAGE_TAG: ci
+      # A missing image must fail, not silently skip, so a broken run cannot look green.
+      COOPERATION_REQUIRE_IMAGES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Data sharing: every image built in parallel by the matrix job arrives here.
+      - name: Download the images built in parallel
+        uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: images
+      - name: Load the images into Docker
+        run: |
+          ls -lh images
+          for image in images/*.tgz; do gzip -dc "$image" | docker load; done
+          docker images
+
+      - name: Cooperation tests (two services + RabbitMQ, in containers)
+        run: mvn -B -f tests/cooperation/pom.xml verify -Dmaven.wagon.http.retryHandler.count=3
+
+      - name: Upload the test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cooperation-reports
+          path: tests/cooperation/target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Container diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker images
