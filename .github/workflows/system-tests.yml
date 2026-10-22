@@ -53,7 +53,14 @@ jobs:
         id: plan
         run: |
           SERVICES="${{ inputs.services || 'identity-service workforce-service' }}"
-          MATRIX=$(printf '%s\n' $SERVICES | jq -R . | jq -sc .)
+          # Build the JSON matrix with bash: no jq/python dependency.
+          MATRIX="["
+          SEPARATOR=""
+          for service in $SERVICES; do
+            MATRIX="${MATRIX}${SEPARATOR}\"${service}\""
+            SEPARATOR=","
+          done
+          MATRIX="${MATRIX}]"
           echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           {
@@ -124,7 +131,10 @@ jobs:
           docker images
 
       - name: Cooperation tests (two or more services + RabbitMQ)
-        run: mvn -B -f tests/cooperation/pom.xml verify
+        uses: ./.github/actions/maven-build
+        with:
+          directory: tests/cooperation
+          goals: verify
 
       - name: Upload the cooperation reports
         if: always()

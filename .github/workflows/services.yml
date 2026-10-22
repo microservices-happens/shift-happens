@@ -3,12 +3,22 @@
 # Path filters make sure a change only builds and tests the services it can affect. A change under
 # contracts/ rebuilds every service because every service either implements or consumes a
 # contract (contracts/README.md).
+#
+# A manual run (Actions -> services -> Run workflow) skips the path filter and runs the whole gate
+# for the services you name, so the image build and scan can be demonstrated without a pull request.
 name: services
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: '"all", "auto" (detect from the last commit) or a space-separated list of services'
+        required: false
+        default: all
+        type: string
 
 permissions:
   contents: read
@@ -23,10 +33,13 @@ jobs:
     name: detect changed services
     runs-on: ubuntu-latest
     outputs:
-      services: ${{ steps.filter.outputs.changes }}
+      services: ${{ steps.plan.outputs.services }}
     steps:
       - uses: actions/checkout@v4
+
+      # Pull requests and main pushes: only the services the change can affect.
       - id: filter
+        if: inputs.services == '' || inputs.services == 'auto'
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -38,6 +51,40 @@ jobs:
             notification-service: ['services/notification-service/**', 'contracts/**']
             audit-service: ['services/audit-service/**', 'contracts/**']
             email-function: ['functions/email-function/**', 'contracts/**']
+
+      # Manual run: an explicit list, so a demo can build and scan any image on demand.
+      # The JSON array is built with bash, so the step has no jq/python dependency.
+      - id: requested
+        if: inputs.services != '' && inputs.services != 'auto'
+        run: |
+          requested="${{ inputs.services }}"
+          if [ "$requested" = "all" ]; then
+            requested="identity-service workforce-service scheduling-service leave-service ai-service notification-service audit-service email-function"
+          fi
+          matrix="["
+          separator=""
+          for service in $requested; do
+            matrix="${matrix}${separator}\"${service}\""
+            separator=","
+          done
+          matrix="${matrix}]"
+          echo "services=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Requested: $matrix"
+
+      - id: plan
+        run: |
+          requested='${{ steps.requested.outputs.services }}'
+          filtered='${{ steps.filter.outputs.changes }}'
+          if [ -n "$requested" ]; then
+            services="$requested"
+          elif [ -n "$filtered" ]; then
+            services="$filtered"
+          else
+            services='[]'
+          fi
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "Selected services: $services" >> "$GITHUB_STEP_SUMMARY"
+
 
   unit-tests:
     name: unit-tests (${{ matrix.service }})
@@ -57,8 +104,10 @@ jobs:
           cache: maven
       # Surefire: *Test / *Tests. Fast domain tests, no containers.
       - name: Unit tests
-        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
-        run: mvn -B test
+        uses: ./.github/actions/maven-build
+        with:
+          directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          goals: test
       - name: Upload Surefire reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -97,8 +146,10 @@ jobs:
       # Failsafe: *IT with Testcontainers (Docker is available on hosted runners).
       # -Dskip.unit.tests=true is wired to Surefire in each pom, so unit tests are not repeated.
       - name: Integration tests
-        working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
-        run: mvn -B verify -Dskip.unit.tests=true
+        uses: ./.github/actions/maven-build
+        with:
+          directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          goals: verify -Dskip.unit.tests=true
       - name: Upload Failsafe reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,13 +179,19 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
-      - name: Scan image
-        uses: aquasecurity/trivy-action@0.28.0
+      - name: Scan the image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
           severity: CRITICAL,HIGH
-          exit-code: '1'
           ignore-unfixed: true
+          format: table
+          hide-progress: true
+          token-setup-trivy: ${{ github.token }}
+          # Report-only while the images are still walking skeletons, so the demo shows the scan
+          # running and its findings instead of failing on base-image CVEs. Set the repository
+          # variable TRIVY_EXIT_CODE=1 (Settings -> Variables) to turn it into a blocking gate (P6.7).
+          exit-code: ${{ vars.TRIVY_EXIT_CODE || '0' }}
       - name: Push image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

@@ -51,7 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-${{ runner.os }}-jdk${{ matrix.java }}-${{ hashFiles('services/identity-service/pom.xml') }}
+          key: m2-${{ runner.os }}-jdk${{ matrix.java }}-v1
           restore-keys: |
             m2-${{ runner.os }}-jdk${{ matrix.java }}-
 
@@ -71,9 +71,13 @@ jobs:
           mvn -v
 
       # The same slice pipeline as everywhere else: build plus unit tests, no other service needed.
+      # It runs through the maven-build action, which retries a transient Maven Central failure
+      # (that is what failed the first windows-latest / JDK 21 run with "status code: 403").
       - name: Build and unit tests (identity-service)
-        working-directory: services/identity-service
-        run: mvn -B package
+        uses: ./.github/actions/maven-build
+        with:
+          directory: services/identity-service
+          goals: package
 
       - name: Share this cell's reports
         if: always()

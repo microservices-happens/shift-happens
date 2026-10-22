@@ -67,10 +67,10 @@ jobs:
           SERVICE="${INPUT_SERVICE:-}"
           REASON="${INPUT_REASON:-}"
           if [ -z "$SERVICE" ]; then
-            SERVICE=$(jq -r '.service // "identity-service"' <<< "$PAYLOAD")
+            SERVICE=$(printf '%s' "$PAYLOAD" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("service") or "identity-service")')
           fi
           if [ -z "$REASON" ]; then
-            REASON=$(jq -r '.reason // "repository_dispatch"' <<< "$PAYLOAD")
+            REASON=$(printf '%s' "$PAYLOAD" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason") or "repository_dispatch")')
           fi
           case "$SERVICE" in
             email-function) DIRECTORY="functions/email-function" ;;

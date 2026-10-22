@@ -10,7 +10,7 @@ to run.
 |---|---|---|
 | `_service-ci.yml` | called by the workflows below | The reusable slice pipeline: build → unit tests → (optional) integration tests → summary. Maven cache, jar artifact shared with the next job, reports collected in a fan-in job |
 | `service-<name>.yml` (8 files) | push to a feature branch touching that service or `contracts/`, or manual | One isolated run per service, so a member can run and **re-run only their slice**. No other service is needed |
-| `services.yml` | every PR, push to `main` | The PR gate: detects changed services, runs the slice pipeline for each in a matrix, builds+scans images, and a `ci` job aggregates everything into one required check |
+| `services.yml` | every PR, push to `main`, or manual (`services` input) | The PR gate: detects changed services, runs the slice pipeline for each in a matrix, builds+scans images, and a `ci` job aggregates everything into one required check. A manual run skips the path filter, so the image build and scan can be demonstrated on demand |
 | `system-tests.yml` | manual, nightly, and after `services` succeeds on `main` | The **aggregate** pipeline: builds several service images in parallel, shares them as artifacts, loads them and runs the cross-service cooperation tests (`tests/cooperation`) |
 | `nightly-shift-risk.yml` | cron 03:00 UTC + manual | A **scheduled domain pipeline**: MySQL service container + seed data → shift-risk report → artifact, run summary, job output, optional GitHub issue |
 | `demo-matrix.yml` | manual, or a push touching the file | `strategy.matrix` fan-out: Ubuntu + Windows × JDK 21 + 25, `continue-on-error` for experimental cells, OS-specific steps, per-cell artifacts, fan-in job |
@@ -110,6 +110,22 @@ outputs, validated it, and that the run then called the same reusable slice pipe
 `repository_dispatch` needs a token with `actions:write` (fine-grained) or `repo` (classic), and the
 workflow file must exist on the default branch.
 
+### 3.7 The whole gate on demand, including the image build and scan (3 min)
+
+The PR gate is the only pipeline that builds and scans images, so it can be triggered without a pull
+request:
+
+```bash
+gh workflow run services -f services=all                       # every service
+gh workflow run services -f services="identity-service"        # one slice
+gh workflow run services -f services=auto                      # detect from the last commit
+```
+
+Show the job graph `changes -> unit-tests / integration-tests -> images -> ci`, the parallel matrix
+rows, the Trivy table in the `image (...)` job log, and the `ci` job that turns any red row into a
+red gate. This is the pipeline to show when someone asks "does the image actually build?".
+
+
 ## 4. Data sharing summary
 
 | Mechanism | Where | What travels |
@@ -134,4 +150,77 @@ workflow file must exist on the default branch.
   pipeline.
 * The image scan fails on fixable HIGH/CRITICAL findings; while the services are skeletons, the base
   images are the only thing being scanned.
+
+## 6. Troubleshooting
+
+### `status code: 403, reason phrase: Forbidden` from Maven Central
+
+Symptom: a job fails while resolving the parent POM, for example on `windows-latest / JDK 21`:
+
+```
+[FATAL] Non-resolvable parent POM for dk.ek.shift_happens:identity-service:0.1.0-SNAPSHOT:
+  Could not transfer artifact org.springframework.boot:spring-boot-starter-parent:pom:3.5.10
+  from/to central (https://repo.maven.apache.org/maven2): status code: 403, reason phrase: Forbidden
+```
+
+The 403 comes from Maven Central's CDN, not from the POM: many jobs (we start up to 28 at once)
+download the same artifacts from a shared runner IP. Every Maven step in every workflow therefore
+goes through `.github/actions/maven-build`, which:
+
+1. runs Maven once against the default Central host;
+2. if the failure looks like a transfer problem, retries up to three times with `-U`, deletes the
+   `*.lastUpdated` markers a failed transfer leaves behind (they make Maven treat the artifact as
+   "absent" until the update interval has elapsed) and switches to the alternate Central hostname
+   through `.github/maven/settings-fallback.xml`;
+3. does **not** retry a compile or test failure, so a real break stays visible instead of being
+   hidden behind three attempts.
+
+The Maven cache key is also shared per OS + JDK (`m2-<os>-jdk<java>-v1`) instead of per service, so
+only one job per OS/JDK downloads Spring Boot and the rest restore it. Bump the `-v1` suffix to
+invalidate every Maven cache on purpose.
+
+If it still fails after three attempts, re-run just the failed jobs:
+`gh run rerun <run-id> --failed`.
+
+### `Unable to resolve action ... unable to find version 0.28.0`
+
+Symptom: every `image (...)` job fails before running a single step:
+
+```
+Unable to resolve action `aquasecurity/trivy-action@0.28.0`, unable to find version `0.28.0`
+```
+
+The tags of `aquasecurity/trivy-action` carry a `v` prefix (`v0.28.0`, `v0.33.1`, `v0.36.0`), so
+`0.28.0` never resolves. The scan is now pinned to `aquasecurity/trivy-action@v0.36.0`.
+
+Rule for every action in this repo: check the tag on the repository (or with
+`curl https://api.github.com/repos/<owner>/<repo>/tags`) before pinning, and prefer the `vX` or
+`vX.Y.Z` form the project publishes. All references currently used are verified to resolve:
+`actions/checkout@v4`, `actions/setup-java@v4`, `actions/setup-node@v4`, `actions/cache@v4`,
+`actions/upload-artifact@v4`, `actions/download-artifact@v4`,
+`actions/dependency-review-action@v4`, `dorny/paths-filter@v3`, `docker/setup-buildx-action@v3`,
+`docker/build-push-action@v6`, `github/codeql-action@v3`, `aquasecurity/trivy-action@v0.36.0`.
+
+### The image scan is report-only by default
+
+`aquasecurity/trivy-action` is given `exit-code: ${{ vars.TRIVY_EXIT_CODE || '0' }}`. While the
+images are still walking skeletons, the only thing being scanned is the `eclipse-temurin` base
+image, and failing the pipeline on base-image CVEs would make the demo red for no reason. The scan
+still runs and prints its table in the `image (...)` job log. To make it a blocking gate
+(P6.7): repository **Settings → Secrets and variables → Actions → Variables → New variable**,
+name `TRIVY_EXIT_CODE`, value `1`.
+
+### The Dockerfile build retries too
+
+`services/<name>/Dockerfile` runs Maven twice (`dependency:go-offline`, then `package`). Each of
+those lines is an `||` chain of three attempts, and the retries add `-U`, so a transient Central
+failure inside a Docker build does not fail the image either. If all three attempts fail, the build
+fails as before.
+
+### A red `windows-latest / JDK 25` cell
+
+JDK 25 cells in `demo-matrix.yml` are marked `experimental` and use `continue-on-error`, so they may
+go red without failing the run. JDK 21 is the version the services ship with and must stay green.
+
+
 

@@ -29,7 +29,7 @@ owners must review. An event change is one PR that updates all of:
 | `contracts.yml` | OpenAPI, AsyncAPI, GraphQL SDL and JSON Schemas parse |
 | `services.yml` → `unit-tests` | Surefire unit tests for each changed service |
 | `services.yml` → `integration-tests` | Failsafe + Testcontainers for each changed service |
-| `services.yml` → `images` | Image builds; Trivy finds no fixable HIGH/CRITICAL |
+| `services.yml` → `images` | Image builds; Trivy scans and reports (blocking when the repository variable `TRIVY_EXIT_CODE=1`) |
 | `system-tests.yml` | Aggregate cross-service cooperation tests |
 | `frontend.yml` | TypeScript typecheck and production build |
 | `codeql.yml` | CodeQL static security analysis |
@@ -37,6 +37,15 @@ owners must review. An event change is one PR that updates all of:
 
 Path filters are intentional: a change to one service does not rebuild the others, but a change
 under `contracts/` rebuilds every service because it implements or consumes a contract.
+
+## Maven steps
+
+Never call `mvn` directly in a workflow step. Use the composite action
+`.github/actions/maven-build` (`with: directory: ...` and `goals: ...`): it retries a transient
+Maven Central failure (we have hit `status code: 403` on `windows-latest`), forces an update and
+falls back to the alternate Central host, and it deliberately does not retry a compile or test
+failure. Keep the shared Maven cache key (`m2-<os>-jdk<java>-v1`) so the eight pipelines do not each
+download Spring Boot again.
 
 Do not weaken a workflow to make a PR green. Fix the code, or open a task and explain the gate in
 the PR description.

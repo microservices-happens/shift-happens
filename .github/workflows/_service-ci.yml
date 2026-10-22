@@ -48,22 +48,25 @@ jobs:
           distribution: temurin
           java-version: ${{ inputs.java-version }}
 
-      # Explicit cache instead of setup-java's implicit one, so the key names the service and two
-      # services never evict each other's dependencies. restore-keys gives a partial hit when only
-      # the pom changed.
+      # One cache per OS + JDK, shared by every service: the dependencies are the same, so this
+      # avoids each of the eight pipelines downloading Spring Boot from Maven Central again (which is
+      # also what triggered the transient 403 we saw on windows-latest). Bump the -v1 suffix to
+      # invalidate every cache on purpose.
       - name: Cache Maven repository
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-${{ runner.os }}-jdk${{ inputs.java-version }}-${{ hashFiles(format('{0}/pom.xml', inputs.directory)) }}
+          key: m2-${{ runner.os }}-jdk${{ inputs.java-version }}-v1
           restore-keys: |
             m2-${{ runner.os }}-jdk${{ inputs.java-version }}-
 
       # `package` runs the unit tests (Surefire) and produces the jar. Failsafe is bound to the
       # later integration-test phase, so no containers are started here.
       - name: Build and unit tests
-        working-directory: ${{ inputs.directory }}
-        run: mvn -B package
+        uses: ./.github/actions/maven-build
+        with:
+          directory: ${{ inputs.directory }}
+          goals: package
 
       - name: Share the jar with the next job
         uses: actions/upload-artifact@v4
@@ -98,7 +101,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-${{ runner.os }}-jdk${{ inputs.java-version }}-${{ hashFiles(format('{0}/pom.xml', inputs.directory)) }}
+          key: m2-${{ runner.os }}-jdk${{ inputs.java-version }}-v1
           restore-keys: |
             m2-${{ runner.os }}-jdk${{ inputs.java-version }}-
 
@@ -114,8 +117,10 @@ jobs:
       # Failsafe runs *IT (Testcontainers). -Dskip.unit.tests=true is wired to Surefire in the pom
       # so the unit tests are not repeated (quote it in PowerShell).
       - name: Integration tests
-        working-directory: ${{ inputs.directory }}
-        run: mvn -B verify -Dskip.unit.tests=true
+        uses: ./.github/actions/maven-build
+        with:
+          directory: ${{ inputs.directory }}
+          goals: verify -Dskip.unit.tests=true
 
       - name: Share the integration-test reports
         if: always()

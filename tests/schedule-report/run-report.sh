@@ -31,16 +31,26 @@ HORIZON_DAYS="${HORIZON_DAYS:-7}"
 REPORT_FILE="${REPORT_FILE:-schedule-risk-report.md}"
 MAX_ROWS_PER_CHECK="${MAX_ROWS_PER_CHECK:-8}"
 
+# The seed data contains Danish characters, so pin the client charset: without it the client may
+# fall back to latin1 and write "Reng°ring" instead of "Rengøring" into the report.
 if command -v mysql >/dev/null 2>&1; then
   mysql_query() {
-    MYSQL_PWD="$MYSQL_PASSWORD" mysql --batch --raw \
+    MYSQL_PWD="$MYSQL_PASSWORD" mysql --batch --raw --default-character-set=utf8mb4 \
       -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" "$MYSQL_DATABASE" "$@"
   }
 else
-  # Fallback for machines without a MySQL client: use the client from the official image.
+  # Fallback for machines without a MySQL client: run the client from the official image and reach
+  # the server through the Docker host gateway. This also works on Windows and macOS, where
+  # --network host is not available, so the script behaves the same everywhere.
+  fallback_host="$MYSQL_HOST"
+  case "$fallback_host" in
+    127.0.0.1 | localhost) fallback_host="host.docker.internal" ;;
+  esac
   mysql_query() {
-    docker run --rm -i --network host -e MYSQL_PWD="$MYSQL_PASSWORD" mysql:8.0 \
-      mysql --batch --raw -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" "$MYSQL_DATABASE" "$@"
+    docker run --rm -i --add-host host.docker.internal:host-gateway \
+      -e MYSQL_PWD="$MYSQL_PASSWORD" mysql:8.0 \
+      mysql --batch --raw --default-character-set=utf8mb4 \
+      -h "$fallback_host" -P "$MYSQL_PORT" -u "$MYSQL_USER" "$MYSQL_DATABASE" "$@"
   }
 fi
 
