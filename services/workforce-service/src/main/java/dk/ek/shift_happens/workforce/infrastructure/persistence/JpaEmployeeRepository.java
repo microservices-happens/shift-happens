@@ -4,6 +4,7 @@ import dk.ek.shift_happens.workforce.domain.Employee;
 import dk.ek.shift_happens.workforce.domain.EmployeeRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /** Adapter: implements the domain port on top of Spring Data JPA. */
@@ -24,5 +25,10 @@ class JpaEmployeeRepository implements EmployeeRepository {
     @Override
     public Optional<Employee> findById(long employeeId) {
         return jpa.findById(employeeId).map(EmployeeEntity::toDomain);
+    }
+
+    @Override
+    public List<Employee> findAll() {
+        return jpa.findAll().stream().map(EmployeeEntity::toDomain).toList();
     }
 }

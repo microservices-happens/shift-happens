@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Use cases for employees. Transaction boundaries live here, nowhere else. */
@@ -53,5 +54,10 @@ public class EmployeeService {
     @Transactional(readOnly = true)
     public Employee get(long employeeId) {
         return employees.findById(employeeId).orElseThrow(() -> new EmployeeNotFoundException(employeeId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Employee> findAll() {
+        return employees.findAll();
     }
 }

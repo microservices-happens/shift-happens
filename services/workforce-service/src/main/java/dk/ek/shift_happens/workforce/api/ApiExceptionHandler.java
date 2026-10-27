@@ -1,10 +1,12 @@
 package dk.ek.shift_happens.workforce.api;
 
 import dk.ek.shift_happens.workforce.application.EmployeeNotFoundException;
+import dk.ek.shift_happens.workforce.application.IdempotencyConflictException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -30,6 +32,23 @@ class ApiExceptionHandler {
                 "employeeNumber or email already exists");
         problem.setTitle("Employee already exists");
         problem.setType(URI.create("https://shift-happens.local/problems/duplicate-employee"));
+        return problem;
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    ProblemDetail idempotencyConflict(IdempotencyConflictException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Idempotency-Key reused with a different request");
+        problem.setType(URI.create("https://shift-happens.local/problems/idempotency-conflict"));
+        return problem;
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    ProblemDetail missingHeader(MissingRequestHeaderException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                exception.getHeaderName() + " header is required");
+        problem.setTitle("Required header is missing");
+        problem.setType(URI.create("https://shift-happens.local/problems/missing-header"));
         return problem;
     }
 

@@ -136,6 +136,8 @@ class EmployeeReplicationIT {
                 + service.getMappedPort(ServiceContainer.HTTP_PORT) + path);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", "application/json")
+                // Every POST requires a per-action key (contracts/README.md, Idempotency).
+                .header("Idempotency-Key", UUID.randomUUID().toString())
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
         return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());

@@ -105,10 +105,10 @@ role is rejected (unit test); the event validates against
 `contracts/events/payloads/employee.schema.json` (IT); a late update cannot resurrect a deleted
 employee (unit test).
 
-**Status (2026-10-27):** `POST /v1/employees`, `GET /v1/employees/{id}`, the `employee` and
-`outbox_event` tables and `workforce.employee.created.v1` (outbox + relay) are implemented and
-covered by `WorkforceApplicationIT`. Remaining: the other resources, `updated`/`deleted` events and
-security.
+**Status (2026-10-27):** `POST /v1/employees`, `GET /v1/employees`, `GET /v1/employees/{id}`, the
+`employee`, `outbox_event` and `idempotency_record` tables, `workforce.employee.created.v1` (outbox +
+relay) and idempotent commands (`Idempotency-Key` replay / `409`) are implemented and covered by
+`WorkforceApplicationIT`. Remaining: the other resources, `updated`/`deleted` events and security.
 
 ### Slice 2 — Identity (P2.1–P2.4)
 
