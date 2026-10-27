@@ -105,6 +105,11 @@ role is rejected (unit test); the event validates against
 `contracts/events/payloads/employee.schema.json` (IT); a late update cannot resurrect a deleted
 employee (unit test).
 
+**Status (2026-10-27):** `POST /v1/employees`, `GET /v1/employees/{id}`, the `employee` and
+`outbox_event` tables and `workforce.employee.created.v1` (outbox + relay) are implemented and
+covered by `WorkforceApplicationIT`. Remaining: the other resources, `updated`/`deleted` events and
+security.
+
 ### Slice 2 — Identity (P2.1–P2.4)
 
 Can start in parallel with a seeded accounts table; consuming workforce events comes second.
@@ -122,6 +127,11 @@ Can start in parallel with a seeded accounts table; consuming workforce events c
 **Acceptance:** local login and one OIDC provider work end to end; a deactivated employee gets 401;
 an unknown e-mail is refused; another service validates the issued token through the JWKS cache;
 401/403 tests cover missing, expired and forged tokens.
+
+**Status (2026-10-27):** the employee-replica consumer is implemented (`created`/`updated`/`deleted`,
+idempotent on `eventId`, highest `aggregateVersion` wins, tombstone kept) and covered by
+`IdentityApplicationIT` and the system test `tests/cooperation/EmployeeReplicationIT`. Remaining:
+login, OIDC, JWKS and the security tests — until then no service validates JWTs.
 
 ### Slice 3 — Scheduling command (P2.7–P2.9, P2.12)
 
