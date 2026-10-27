@@ -40,7 +40,9 @@ The current application remains the runnable monolith. The target microservice a
 └── .github/                    # CI workflows, PR/issue templates, CODEOWNERS, Dependabot
 ```
 
-Each service currently is a **walking skeleton**: it builds, passes its test, and serves `GET /health`. Build one with `cd services/<name> && mvn verify`.
+`identity-service` and `workforce-service` already contain their first vertical slice (employee
+replication over RabbitMQ); the other five are still **walking skeletons** that build, pass their
+test and serve `GET /health`. Build one with `cd services/<name> && mvn verify`.
 
 ---
 

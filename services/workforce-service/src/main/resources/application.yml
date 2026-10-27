@@ -1,9 +1,39 @@
 spring:
   application:
     name: workforce-service
+
+  # Environment variables match docker-compose.microservices.yml / contracts/README.md.
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workforce}
+    username: ${DB_USER:workforce}
+    password: ${DB_PASSWORD:workforce_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The schema is owned by Flyway; validate catches entity/migration drift at startup.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:shift}
+    password: ${RABBITMQ_PASSWORD:shift_dev}
+    virtual-host: ${RABBITMQ_VHOST:shift-happens}
+
 server:
   port: ${HTTP_PORT:8080}
   shutdown: graceful
+
+app:
+  events:
+    # Routing key == eventType == <context>.<entity>.<event>.vN (contracts/README.md).
+    exchange: ${EVENT_EXCHANGE:shift-happens.events}
+    dead-letter-exchange: ${DEAD_LETTER_EXCHANGE:shift-happens.dlx}
+    producer: workforce-service
+  outbox:
+    # How often the relay looks for unpublished events.
+    relay-delay: ${OUTBOX_RELAY_DELAY:2000}
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

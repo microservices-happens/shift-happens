@@ -1,9 +1,36 @@
 spring:
   application:
     name: identity-service
+
+  # Environment variables match docker-compose.microservices.yml / contracts/README.md.
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:identity}
+    username: ${DB_USER:identity}
+    password: ${DB_PASSWORD:identity_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:shift}
+    password: ${RABBITMQ_PASSWORD:shift_dev}
+    virtual-host: ${RABBITMQ_VHOST:shift-happens}
+
 server:
   port: ${HTTP_PORT:8080}
   shutdown: graceful
+
+app:
+  events:
+    exchange: ${EVENT_EXCHANGE:shift-happens.events}
+    dead-letter-exchange: ${DEAD_LETTER_EXCHANGE:shift-happens.dlx}
+  rabbit:
+    # One durable queue per consumer (contracts/README.md).
+    queue: ${RABBITMQ_QUEUE:identity.accounts}
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

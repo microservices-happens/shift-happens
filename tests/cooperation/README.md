@@ -11,12 +11,17 @@ tests/cooperation/
 ├── pom.xml                                  # JUnit 5, Testcontainers, AssertJ, Awaitility
 └── src/test/java/dk/ek/shift_happens/cooperation/
     ├── support/ServiceContainer.java        # starts services/<name> images on a shared network
-    ├── ServiceStartupSmokeIT.java           # harness check: images, DNS, /health, broker (enabled)
-    └── LeaveApprovalSagaIT.java             # required saga test (disabled until P3.1)
+    ├── EmployeeReplicationIT.java           # workforce → RabbitMQ → identity (enabled)
+    └── LeaveApprovalSagaIT.java             # leave saga (disabled until P3.1)
 ```
 
-The minimum required by the course is one test: `LeaveApprovalSagaIT`, covering both saga outcomes
-(release completed and compensation). It is disabled with a task reference until the saga exists.
+`EmployeeReplicationIT` is the first system-level cooperation test: it posts an employee to
+workforce-service, and asserts that identity-service consumed `workforce.employee.created.v1` and
+created the account. It starts RabbitMQ and one PostgreSQL per service, and reads each service's own
+database for the assertions — no mocks and no non-contract endpoints.
+
+`LeaveApprovalSagaIT` is the second one (both saga outcomes) and stays disabled until the saga
+exists (P3.1).
 
 ## Run it
 
@@ -33,7 +38,6 @@ mvn -B -f tests/cooperation/pom.xml verify
 |---|---|
 | `SERVICE_IMAGE_TAG` | Image tag to run (default `ci`) |
 | `COOPERATION_REQUIRE_IMAGES` | `true` makes a missing image fail instead of skip. CI sets this; without it the test is skipped locally so a fresh clone does not fail. |
-| `COOPERATION_REQUIRE_IMAGES=false` | Local default: missing images produce a skip with the build command in the message. |
 
 Failsafe only runs `*IT` classes, so `mvn test` is a fast compile check while `mvn verify` runs the
 containers.
