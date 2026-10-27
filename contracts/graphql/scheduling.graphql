@@ -86,11 +86,12 @@ type ReplacementSuggestion {
   source: SuggestionSource!
   model: String
   suggestedAt: DateTime!
+  "One explanation for the whole ranking (at most 100 words)."
+  reason: String!
   candidates: [RankedCandidate!]!
 }
 
 type RankedCandidate {
   rank: Int!
   employee: Employee!
-  reason: String!
 }

@@ -69,7 +69,7 @@ Consistency across Leave and Scheduling uses compensating actions, not a distrib
 ## Flow: AI replacement suggestion
 
 1. scheduling-command publishes `scheduling.shift.understaffed.v1` (after a leave release or a cancelled assignment). The event already lists qualified, active candidates who are free at that time.
-2. ai-service (queue `ai.suggestions`) sends the shift and candidates to the LLM (Ollama locally) and asks for a ranking with a one-line reason per candidate. If the LLM is slow or down, it ranks by fewest hours this week and marks `source: rule`.
+2. ai-service (queue `ai.suggestions`) sends the shift and candidates to the LLM (Ollama locally) and asks for a ranking with one overall reason of at most 100 words. If the LLM is slow or down, it ranks by fewest hours this week and marks `source: rule`.
 3. ai-service publishes `ai.replacement.suggested.v1`.
 4. scheduling-query stores it on the shift, so the frontend sees it in GraphQL (`Shift.replacementSuggestions`). notification-service alerts the manager.
 5. The manager picks someone with `POST /api/v1/shiftassignments`. The AI only advises; it never writes the schedule.

@@ -387,7 +387,7 @@ services:
       # ranking candidates by a simple rule and marks the suggestion source "rule".
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
       LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
-      LLM_TIMEOUT: PT20S
+      LLM_TIMEOUT: PT90S
     expose: ["8080"]
     networks: [service-bus, ai-data, llm]
     depends_on:
