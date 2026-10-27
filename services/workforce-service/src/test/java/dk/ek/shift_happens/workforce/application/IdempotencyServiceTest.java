@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,12 +23,13 @@ class IdempotencyServiceTest {
     @Test
     void replaysTheStoredResponseWithoutRunningTheActionAgain() {
         AtomicInteger executions = new AtomicInteger();
+        String idempotencyKey = UUID.randomUUID().toString();
 
-        ResponseEntity<?> first = service.execute("key-1", Map.of("email", "ada@shift.dk"), () -> {
+        ResponseEntity<?> first = service.execute(idempotencyKey, Map.of("email", "ada@shift.dk"), () -> {
             executions.incrementAndGet();
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("employeeId", 7));
         });
-        ResponseEntity<?> replay = service.execute("key-1", Map.of("email", "ada@shift.dk"), () -> {
+        ResponseEntity<?> replay = service.execute(idempotencyKey, Map.of("email", "ada@shift.dk"), () -> {
             executions.incrementAndGet();
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("employeeId", 8));
         });
@@ -40,12 +42,20 @@ class IdempotencyServiceTest {
 
     @Test
     void theSameKeyWithADifferentBodyIsAConflict() {
-        service.execute("key-2", Map.of("email", "ada@shift.dk"),
+        String idempotencyKey = UUID.randomUUID().toString();
+        service.execute(idempotencyKey, Map.of("email", "ada@shift.dk"),
                 () -> ResponseEntity.status(HttpStatus.CREATED).body(Map.of("employeeId", 1)));
 
-        assertThatThrownBy(() -> service.execute("key-2", Map.of("email", "grace@shift.dk"),
+        assertThatThrownBy(() -> service.execute(idempotencyKey, Map.of("email", "grace@shift.dk"),
                 () -> ResponseEntity.status(HttpStatus.CREATED).body(Map.of("employeeId", 2))))
                 .isInstanceOf(IdempotencyConflictException.class);
+    }
+
+    @Test
+    void aKeyThatIsNotAUuidIsRejected() {
+        assertThatThrownBy(() -> service.execute("not-a-uuid", Map.of("email", "ada@shift.dk"),
+                () -> ResponseEntity.status(HttpStatus.CREATED).body(Map.of("employeeId", 1))))
+                .isInstanceOf(InvalidIdempotencyKeyException.class);
     }
 
     private static final class InMemoryIdempotencyStore implements IdempotencyStore {

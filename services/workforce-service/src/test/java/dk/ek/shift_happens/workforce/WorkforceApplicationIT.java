@@ -220,6 +220,18 @@ class WorkforceApplicationIT {
         assertThat(countEmployeesWithEmail("frances@shift.dk")).isZero();
     }
 
+    @Test
+    void anIdempotencyKeyThatIsNotAUuidIsRejected() {
+        CreateEmployeeRequest request = new CreateEmployeeRequest("EMP-1009", "Employee", "Mary", "Keller",
+                "mary@shift.dk", null, null, "ACTIVE", null);
+
+        ResponseEntity<String> response = postEmployee(request, "not-a-uuid");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).contains("Idempotency-Key must be a UUID");
+        assertThat(countEmployeesWithEmail("mary@shift.dk")).isZero();
+    }
+
     private ResponseEntity<EmployeeResponse> createEmployee(CreateEmployeeRequest request) {
         return createEmployee(request, UUID.randomUUID().toString());
     }

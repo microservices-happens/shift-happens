@@ -6,11 +6,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -32,6 +32,7 @@ public class IdempotencyService {
     }
 
     public ResponseEntity<?> execute(String idempotencyKey, Object requestBody, Supplier<ResponseEntity<?>> action) {
+        requireUuid(idempotencyKey);
         String requestHash = hash(requestBody);
 
         Optional<IdempotencyStore.StoredResponse> stored = store.find(idempotencyKey);
@@ -47,6 +48,14 @@ public class IdempotencyService {
         ResponseEntity<?> response = action.get();
         store.save(idempotencyKey, requestHash, response.getStatusCode().value(), json(response.getBody()));
         return response;
+    }
+
+    private void requireUuid(String idempotencyKey) {
+        try {
+            UUID.fromString(idempotencyKey);
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidIdempotencyKeyException(idempotencyKey);
+        }
     }
 
     private String hash(Object requestBody) {

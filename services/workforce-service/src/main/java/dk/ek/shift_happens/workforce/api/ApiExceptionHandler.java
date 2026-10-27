@@ -2,6 +2,7 @@ package dk.ek.shift_happens.workforce.api;
 
 import dk.ek.shift_happens.workforce.application.EmployeeNotFoundException;
 import dk.ek.shift_happens.workforce.application.IdempotencyConflictException;
+import dk.ek.shift_happens.workforce.application.InvalidIdempotencyKeyException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -40,6 +41,14 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
         problem.setTitle("Idempotency-Key reused with a different request");
         problem.setType(URI.create("https://shift-happens.local/problems/idempotency-conflict"));
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidIdempotencyKeyException.class)
+    ProblemDetail invalidIdempotencyKey(InvalidIdempotencyKeyException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setTitle("Invalid Idempotency-Key");
+        problem.setType(URI.create("https://shift-happens.local/problems/invalid-idempotency-key"));
         return problem;
     }
 
