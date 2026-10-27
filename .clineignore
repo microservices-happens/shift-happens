@@ -1,0 +1,35 @@
+# Keep build output, binaries and archives out of the model context.
+# Same syntax as .gitignore. Documentation under docs/ is intentionally NOT ignored.
+
+.git/
+target/
+**/target/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.mvn/wrapper/maven-wrapper.jar
+
+# Local-only data and secrets
+backups/
+certs/
+.env
+*.pem
+*.p12
+
+# Binaries and archives
+*.pdf
+*.jar
+*.war
+*.zip
+*.log
+
+# Superseded monolith-era files (kept for reference, not for new work)
+docs/old/
+scripts_old/
+docker-compose_old.yml
+docker-compose.test_old.yml
+Makefile.old
+MIGRATION_RECAP_old.md

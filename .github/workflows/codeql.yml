@@ -1,4 +1,7 @@
-# Static security analysis (SAST) for all Java services and the frontend.
+# Static security analysis (SAST) for the service code. Findings appear under Security -> Code scanning.
+#
+# Java is a compiled language, so `build-mode: manual` is used: the step between init and analyze
+# compiles every service and the serverless function, which is exactly what CodeQL then analyses.
 name: codeql
 
 on:
@@ -6,7 +9,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 5 * * 1"
+    - cron: '0 5 * * 1' # weekly, Monday 05:00 UTC
 
 permissions:
   security-events: write
@@ -14,15 +17,32 @@ permissions:
 
 jobs:
   analyze:
+    name: analyze java
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [java-kotlin, javascript-typescript]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-jdk21-v1
+          restore-keys: m2-${{ runner.os }}-jdk21-
+
       - uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
-          build-mode: none
+          languages: java-kotlin
+          build-mode: manual
+
+      - name: Compile every service for analysis
+        run: |
+          for pom in services/*/pom.xml functions/*/pom.xml; do
+            echo "::group::compile $pom"
+            mvn -B -q -f "$pom" -DskipTests compile
+            echo "::endgroup::"
+          done
+
       - uses: github/codeql-action/analyze@v3

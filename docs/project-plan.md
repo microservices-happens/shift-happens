@@ -1,6 +1,6 @@
 # Project Plan: Shift Happens (Development of Large Systems)
 
-This plan breaks the final-project description into work packages and tasks. The architecture it implements is in [`architecture.md`](architecture.md), and the contracts are in [`../contracts/`](../contracts/README.md).
+This plan breaks the final-project description into work packages and tasks. The architecture it implements is in [`architecture.md`](architecture.md), the contracts are in [`../contracts/`](../contracts/README.md), and the order in which the service skeletons are filled is in [`implementation-plan.md`](implementation-plan.md).
 
 **How to use it:**
 - Every task has an ID (e.g. `P3.4`). Create one GitHub issue per task using the *Task* template, put it on the Projects board, and reference the ID in its PR.
@@ -54,9 +54,9 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 ### P1: Foundation (unblocks everyone)
 - [x] P1.1 Monorepo layout, service skeletons that build and serve `/health`, Dockerfiles
 - [x] P1.2 `docker-compose.microservices.yml` (infrastructure + all services)
-- [x] P1.3 CI skeleton: per-service build/test/image/scan, contract lint, CodeQL, Dependabot
-- [ ] P1.4 GitHub Projects board, branch protection on `main` (green CI + 1 review), CODEOWNERS filled in
-- [ ] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `services.yml`
+- [x] P1.3 CI skeleton: per-service unit/integration/image gates, contract lint, CodeQL, Dependabot, cooperation-test and frontend workflows
+- [ ] P1.4 GitHub Projects board, branch protection on `main` (green CI + 1 review, required checks listed in `implementation-plan.md` §3), CODEOWNERS filled in
+- [ ] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `ci.yml`
 - [ ] P1.6 Shared conventions in code (copied per service, no shared library): the event envelope class, the correlation-id filter, and the problem+json error handler. Write them once, then copy them
 - [ ] P1.7 Security baseline in every service: `spring-boot-starter-oauth2-resource-server` validating the JWT from `JWT_JWKS_URL`, and role rules per `contracts/README.md`
 - [ ] P1.8 Messaging baseline: Spring AMQP, exchange/queue/DLX declarations, transactional outbox table + relay, `processed_events` table for idempotent consumers
@@ -117,7 +117,7 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 - [ ] P6.5 **Cooperation test** (`tests/cooperation`): Leave + Scheduling + RabbitMQ in containers, both saga outcomes; optionally Scheduling → AI (stub LLM)
 - [ ] P6.6 Security tests: 401 (missing/expired/forged JWT), 403 (wrong role), OIDC with an unknown email refused, idempotency replay
 - [ ] P6.7 Static analysis in CI: SonarQube Cloud quality gate, CodeQL, Trivy (images), ESLint (frontend)
-- [ ] P6.8 Add the cooperation-test job to CI (after the images are built)
+- [x] P6.8 Add the cooperation-test job to CI (harness + `ServiceStartupSmokeIT` run; `LeaveApprovalSagaIT` is enabled by P3.1)
 
 ### P7: Kubernetes, CI/CD and operations
 - [ ] P7.1 Local cluster (kind or minikube) + Helm infrastructure (`k8s/infrastructure/README.md`): ingress-nginx, KEDA, RabbitMQ, Postgres, Mongo, Ollama
