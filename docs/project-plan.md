@@ -13,17 +13,17 @@ This plan breaks the final-project description into work packages and tasks. The
 
 Each service has one owner, who reviews every PR touching it and its contracts, and one backup.
 
-| Area | Owner | Backup |
-|---|---|---|
-| identity-service + security tests | | |
-| workforce-service | | |
-| scheduling-service (command + GraphQL query) | | |
-| leave-service + saga | | |
-| ai-service + Ollama | | |
-| notification-service, audit-service, email-function | | |
-| frontend (REST + GraphQL + OIDC login) | | |
-| CI/CD, Kubernetes, observability | | |
-| Report + presentation coordination | | |
+| Area | Owner |
+|---|---|
+| identity-service + security tests | |
+| workforce-service | |
+| scheduling-service (command + GraphQL query) |`jarrald`|
+| leave-service + saga |`Luke3520`|
+| ai-service + Ollama |`drummdurum`|
+| notification-service, audit-service, email-function |`Jafarr1`|
+| frontend (REST + GraphQL + OIDC login) | |
+| CI/CD, Kubernetes, observability | |
+| Report + presentation coordination | |
 
 Team: `Luke3520`, `jarrald`, `Jafarr1`, `drummdurum`, `ViggoBeck`. With 5 people and 7 services, some owners take two small services (for example notification + audit). **Everyone must have commits in the history**; the course checks this.
 
