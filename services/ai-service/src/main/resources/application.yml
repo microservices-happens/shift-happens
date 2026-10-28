@@ -1,6 +1,26 @@
 spring:
   application:
     name: ai-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ai}
+    username: ${DB_USER:ai}
+    password: ${DB_PASSWORD:ai_dev}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:shift}
+    password: ${RABBITMQ_PASSWORD:shift_dev}
+    virtual-host: ${RABBITMQ_VHOST:shift-happens}
+app:
+  events:
+    exchange: ${EVENT_EXCHANGE:shift-happens.events}
+    dead-letter-exchange: ${DEAD_LETTER_EXCHANGE:shift-happens.dlx}
+  rabbit:
+    queue: ${RABBITMQ_QUEUE:ai.suggestions}
+  llm:
+    base-url: ${LLM_BASE_URL:http://localhost:11434}
+    model: ${LLM_MODEL:llama3.2:1b}
+    timeout: ${LLM_TIMEOUT:PT20S}
 server:
   port: ${HTTP_PORT:8080}
   shutdown: graceful

@@ -130,7 +130,7 @@ All contracts are in [`contracts/`](../contracts/README.md).
 
 **Replacement suggestions for understaffed shifts.**
 1. When approved leave or a cancellation leaves a shift short, Scheduling publishes `scheduling.shift.understaffed.v1` with the qualified, available candidates.
-2. The AI Service asks a local LLM (Ollama) to rank them with a one-line reason each, and publishes `ai.replacement.suggested.v1`.
+2. The AI Service asks a local LLM (Ollama) to rank them with one overall reason (at most 100 words), and publishes `ai.replacement.suggested.v1`.
 3. The manager sees the ranking in the schedule (GraphQL) and gets a notification, then assigns with one REST call.
 
 Integration approach:
