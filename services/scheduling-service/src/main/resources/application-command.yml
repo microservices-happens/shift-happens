@@ -12,3 +12,8 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+app:
+  rabbit:
+    # One durable queue per consumer (contracts/README.md); P3.1 adds the saga reply key.
+    queue: ${RABBITMQ_QUEUE:scheduling.command}

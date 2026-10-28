@@ -2,15 +2,15 @@ package dk.ek.shift_happens.scheduling.infrastructure.persistence;
 
 import dk.ek.shift_happens.scheduling.domain.Shift;
 import dk.ek.shift_happens.scheduling.domain.ShiftStatus;
-import jakarta.persistence.CollectionTable;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * JPA mapping for shift and shift_required_job_role (V1__init.sql).
+ * JPA mapping for shift and its shift_required_job_role rows (V1__init.sql).
  * The domain type stays framework-free; this class only translates.
  */
 @Entity
@@ -55,10 +55,10 @@ public class ShiftEntity {
     @Column(name = "deleted", nullable = false)
     private boolean deleted;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "shift_required_job_role", joinColumns = @JoinColumn(name = "shift_id"))
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "shift_id", nullable = false)
     @OrderBy("jobRoleId ASC")
-    private List<RequiredJobRoleEmbeddable> requiredJobRoles = new ArrayList<>();
+    private List<ShiftRequiredJobRoleEntity> requiredJobRoles = new ArrayList<>();
 
     protected ShiftEntity() {
         // for JPA
@@ -74,9 +74,9 @@ public class ShiftEntity {
         entity.endDatetime = shift.endDatetime();
         entity.shiftStatus = shift.status().name();
         entity.aggregateVersion = shift.aggregateVersion();
-        entity.deleted = false;
+        entity.deleted = shift.deleted();
         entity.requiredJobRoles = new ArrayList<>(shift.requiredJobRoles().stream()
-                .map(RequiredJobRoleEmbeddable::from)
+                .map(ShiftRequiredJobRoleEntity::from)
                 .toList());
         return entity;
     }
@@ -84,7 +84,7 @@ public class ShiftEntity {
     Shift toDomain() {
         return new Shift(shiftId, departmentId, workLocationId, shiftName, startDatetime, endDatetime,
                 ShiftStatus.valueOf(shiftStatus),
-                requiredJobRoles.stream().map(RequiredJobRoleEmbeddable::toDomain).toList(),
-                aggregateVersion);
+                requiredJobRoles.stream().map(ShiftRequiredJobRoleEntity::toDomain).toList(),
+                aggregateVersion, deleted);
     }
 }

@@ -3,10 +3,12 @@ package dk.ek.shift_happens.scheduling.domain;
 /**
  * How many employees a shift needs for one job role (shift_required_job_role).
  *
- * <p>jobRoleId is a Workforce id: Scheduling validates it against its local employee replica once
- * that replica exists (P2.8). It is not a foreign key, because the two services own their own data.
+ * <p>{@code shiftRequiredJobRoleId} is null until the row is stored: the contract addresses a row by
+ * that id (PUT/DELETE /v1/shiftrequiredjobroles/{id}) and returns it, so it belongs to the model.
+ * jobRoleId is a Workforce id: Scheduling checks it against its local employee replica (P2.8) and it
+ * is never a foreign key across services.
  */
-public record RequiredJobRole(long jobRoleId, int requiredEmployeeCount) {
+public record RequiredJobRole(Long shiftRequiredJobRoleId, long jobRoleId, int requiredEmployeeCount) {
 
     public RequiredJobRole {
         if (jobRoleId <= 0) {
@@ -15,5 +17,10 @@ public record RequiredJobRole(long jobRoleId, int requiredEmployeeCount) {
         if (requiredEmployeeCount < 1) {
             throw new IllegalArgumentException("requiredEmployeeCount must be at least 1");
         }
+    }
+
+    /** A row that has not been stored yet. */
+    public RequiredJobRole(long jobRoleId, int requiredEmployeeCount) {
+        this(null, jobRoleId, requiredEmployeeCount);
     }
 }
