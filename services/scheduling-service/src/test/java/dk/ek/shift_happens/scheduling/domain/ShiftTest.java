@@ -21,18 +21,17 @@ class ShiftTest {
         assertThat(shift.shiftId()).isNull();
         assertThat(shift.aggregateVersion()).isEqualTo(1);
         assertThat(shift.status()).isEqualTo(ShiftStatus.PLANNED);
+        assertThat(shift.deleted()).isFalse();
     }
 
     @Test
     void theSnapshotCarriesTheStatusAsTextForTheEventPayload() {
         // A snapshot is only published for a saved shift, so it always carries the assigned id.
-        Shift shift = new Shift(42L, 2, 3, "Morning", START, END, ShiftStatus.PUBLISHED,
-                List.of(new RequiredJobRole(7, 2)), 1);
+        Shift shift = savedShift(ShiftStatus.PUBLISHED, 1, false);
 
         ShiftSnapshot snapshot = shift.snapshot();
 
         assertThat(snapshot.shiftId()).isEqualTo(42L);
-
         assertThat(snapshot.shiftStatus()).isEqualTo("PUBLISHED");
         assertThat(snapshot.requiredJobRoles()).containsExactly(new RequiredJobRole(7, 2));
     }
@@ -92,6 +91,69 @@ class ShiftTest {
         assertThatThrownBy(() -> Shift.create(newShift(START, END, ShiftStatus.PLANNED)).snapshot())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("must be saved before");
+    }
+
+    @Test
+    void anUpdateBumpsTheAggregateVersionAndKeepsTheId() {
+        Shift updated = savedShift(ShiftStatus.PLANNED, 1, false)
+                .updated(new NewShift(5, 6, "Late shift", START, END, ShiftStatus.PLANNED, List.of()));
+
+        assertThat(updated.shiftId()).isEqualTo(42L);
+        assertThat(updated.aggregateVersion()).isEqualTo(2);
+        assertThat(updated.shiftName()).isEqualTo("Late shift");
+        assertThat(updated.departmentId()).isEqualTo(5);
+        assertThat(updated.deleted()).isFalse();
+    }
+
+    @Test
+    void aPlanCanBePublished() {
+        assertThat(savedShift(ShiftStatus.PLANNED, 1, false)
+                .updated(newShift(START, END, ShiftStatus.PUBLISHED)).status())
+                .isEqualTo(ShiftStatus.PUBLISHED);
+    }
+
+    @Test
+    void anUpdateCannotMoveTheStatusBackwards() {
+        assertThatThrownBy(() -> savedShift(ShiftStatus.PUBLISHED, 1, false)
+                .updated(newShift(START, END, ShiftStatus.PLANNED)))
+                .isInstanceOf(ShiftNotEditableException.class)
+                .hasMessageContaining("cannot change status from PUBLISHED to PLANNED");
+    }
+
+    @Test
+    void aCancelledShiftCannotBeChanged() {
+        assertThatThrownBy(() -> savedShift(ShiftStatus.CANCELLED, 2, false)
+                .updated(newShift(START, END, ShiftStatus.PLANNED)))
+                .isInstanceOf(ShiftNotEditableException.class);
+    }
+
+    @Test
+    void anUpdateWithoutJobRolesKeepsTheExistingOnes() {
+        Shift updated = savedShift(ShiftStatus.PLANNED, 1, false)
+                .updated(new NewShift(2, 3, "Morning", START, END, ShiftStatus.PLANNED, null));
+
+        assertThat(updated.requiredJobRoles()).containsExactly(new RequiredJobRole(7, 2));
+    }
+
+    @Test
+    void deletingMarksTheShiftAndBumpsTheVersion() {
+        Shift deleted = savedShift(ShiftStatus.PUBLISHED, 3, false).markedDeleted();
+
+        assertThat(deleted.deleted()).isTrue();
+        assertThat(deleted.aggregateVersion()).isEqualTo(4);
+    }
+
+    @Test
+    void aDeletedShiftCannotBeUpdated() {
+        assertThatThrownBy(() -> savedShift(ShiftStatus.PUBLISHED, 3, true)
+                .updated(newShift(START, END, ShiftStatus.PUBLISHED)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("a deleted shift cannot be changed");
+    }
+
+    private static Shift savedShift(ShiftStatus status, long version, boolean deleted) {
+        return new Shift(42L, 2, 3, "Morning", START, END, status,
+                List.of(new RequiredJobRole(7, 2)), version, deleted);
     }
 
     private static NewShift newShift(Instant start, Instant end, ShiftStatus status) {

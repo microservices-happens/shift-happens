@@ -74,7 +74,7 @@ public class ShiftEntity {
         entity.endDatetime = shift.endDatetime();
         entity.shiftStatus = shift.status().name();
         entity.aggregateVersion = shift.aggregateVersion();
-        entity.deleted = false;
+        entity.deleted = shift.deleted();
         entity.requiredJobRoles = new ArrayList<>(shift.requiredJobRoles().stream()
                 .map(RequiredJobRoleEmbeddable::from)
                 .toList());
@@ -85,6 +85,6 @@ public class ShiftEntity {
         return new Shift(shiftId, departmentId, workLocationId, shiftName, startDatetime, endDatetime,
                 ShiftStatus.valueOf(shiftStatus),
                 requiredJobRoles.stream().map(RequiredJobRoleEmbeddable::toDomain).toList(),
-                aggregateVersion);
+                aggregateVersion, deleted);
     }
 }

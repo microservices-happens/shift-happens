@@ -1,6 +1,8 @@
 package dk.ek.shift_happens.scheduling.api;
 
 import dk.ek.shift_happens.scheduling.application.InvalidIdempotencyKeyException;
+import dk.ek.shift_happens.scheduling.application.ShiftNotFoundException;
+import dk.ek.shift_happens.scheduling.domain.ShiftNotEditableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -29,6 +31,22 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid Idempotency-Key");
         problem.setType(URI.create("https://shift-happens.local/problems/invalid-idempotency-key"));
+        return problem;
+    }
+
+    @ExceptionHandler(ShiftNotFoundException.class)
+    ProblemDetail notFound(ShiftNotFoundException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setTitle("Shift not found");
+        problem.setType(URI.create("https://shift-happens.local/problems/shift-not-found"));
+        return problem;
+    }
+
+    @ExceptionHandler(ShiftNotEditableException.class)
+    ProblemDetail notEditable(ShiftNotEditableException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Shift cannot be changed");
+        problem.setType(URI.create("https://shift-happens.local/problems/shift-not-editable"));
         return problem;
     }
 
