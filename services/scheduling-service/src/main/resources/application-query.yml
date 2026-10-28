@@ -1,1 +1,10 @@
-# Query role: MongoDB read model, fed by events. No Postgres, no outbox.
+# Query role: MongoDB read model, fed by events. No Postgres, no outbox, no JPA.
+# The role itself is P2.10; these exclusions guarantee the command-only infrastructure can never
+# start here, which is what keeps the CQRS split honest.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration

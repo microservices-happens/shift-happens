@@ -1,1 +1,14 @@
-# Command role: Postgres write model + transactional outbox; handles REST writes and saga messages.
+# Command role: Postgres write model + transactional outbox; serves the REST writes of
+# contracts/openapi/scheduling.yaml and (later) the leave-approval saga message.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scheduling}
+    username: ${DB_USER:scheduling}
+    password: ${DB_PASSWORD:scheduling_dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The schema is owned by Flyway; validate catches entity/migration drift at startup.
+      ddl-auto: validate
+  flyway:
+    enabled: true
