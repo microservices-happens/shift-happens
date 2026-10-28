@@ -16,5 +16,5 @@ public record ShiftSnapshot(
         Instant startDatetime,
         Instant endDatetime,
         String shiftStatus,
-        List<RequiredJobRole> requiredJobRoles) {
+        List<RequiredJobRoleSnapshot> requiredJobRoles) {
 }

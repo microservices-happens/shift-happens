@@ -33,7 +33,7 @@ class ShiftTest {
 
         assertThat(snapshot.shiftId()).isEqualTo(42L);
         assertThat(snapshot.shiftStatus()).isEqualTo("PUBLISHED");
-        assertThat(snapshot.requiredJobRoles()).containsExactly(new RequiredJobRole(7, 2));
+        assertThat(snapshot.requiredJobRoles()).containsExactly(new RequiredJobRoleSnapshot(7, 2));
     }
 
     @Test

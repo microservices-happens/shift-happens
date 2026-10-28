@@ -3,7 +3,6 @@ package dk.ek.shift_happens.scheduling.api;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftResponse;
 import dk.ek.shift_happens.scheduling.api.dto.UpdateShiftRequest;
-import dk.ek.shift_happens.scheduling.application.InvalidIdempotencyKeyException;
 import dk.ek.shift_happens.scheduling.application.ShiftService;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
@@ -17,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.UUID;
 
 /**
  * Write API of contracts/openapi/scheduling.yaml, served by the command role.
@@ -51,10 +48,7 @@ public class ShiftController {
             @Valid @RequestBody CreateShiftRequest request,
             @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
 
-        if (!isUuid(idempotencyKey)) {
-            throw new InvalidIdempotencyKeyException(idempotencyKey);
-        }
-
+        IdempotencyKeys.requireUuid(idempotencyKey);
         ShiftResponse created = ShiftResponse.from(shifts.create(request.toNewShift(), correlationId));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(created);
     }
@@ -76,14 +70,5 @@ public class ShiftController {
 
         shifts.delete(id, correlationId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
-    }
-
-    private static boolean isUuid(String value) {
-        try {
-            UUID.fromString(value);
-            return true;
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
     }
 }

@@ -27,4 +27,10 @@ class JpaShiftRepository implements ShiftRepository {
     public Optional<Shift> findById(long shiftId) {
         return jpa.findById(shiftId).map(ShiftEntity::toDomain);
     }
+
+    @Override
+    public Optional<Shift> findByRequiredJobRoleId(long shiftRequiredJobRoleId) {
+        return jpa.findByRequiredJobRoles_ShiftRequiredJobRoleId(shiftRequiredJobRoleId)
+                .map(ShiftEntity::toDomain);
+    }
 }

@@ -23,7 +23,7 @@
 | Queue | Role | Routing keys | Handling |
 |---|---|---|---|
 | `scheduling.command` | command | `workforce.employee.*` | Upsert the local employee replica (version-based, tombstones win) |
-| | | `leave.request.approval-started.v1` | **Saga step.** Release the overlapping assignments and reply `completed`. If any overlapping shift is `LOCKED`, reply `rejected` and change nothing |
+| | | `leave.request.approval-started.v1` | **Saga step (P3.1).** Release the overlapping assignments and reply `completed`. If any overlapping shift is `LOCKED`, reply `rejected` and change nothing |
 | `scheduling.projection` | query | `scheduling.*`, `workforce.employee.*`, `ai.replacement.suggested.v1` | Upsert read-model documents (highest `aggregateVersion` wins) |
 
 ## Extract from monolith
@@ -36,32 +36,22 @@
 
 ## Status (2026-10-27)
 
-The shift aggregate is complete on the command side and covered by tests:
+| Area | Done |
+|---|---|
+| Shifts | `POST`/`PUT`/`DELETE /v1/shifts`; the status only moves forward (`PLANNED → PUBLISHED → LOCKED`, anything → `CANCELLED`); delete is soft and publishes a tombstone |
+| Required job roles | `POST`/`PUT`/`DELETE /v1/shiftrequiredjobroles`; the role rows are part of the shift aggregate, so every change bumps its version and republishes `scheduling.shift.updated.v1` |
+| Employee replica | consumes `workforce.employee.*` from `scheduling.command` into `employee_replica`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared |
+| Assignments | `POST`/`PUT`/`DELETE /v1/shiftassignments`; an employee must be active and qualified **in the replica** and must not already work an overlapping shift (half-open `[start, end)`); delete publishes a tombstone |
+| Approvals | `POST`/`PUT`/`DELETE /v1/shiftapprovals`; one decision per assignment, and `APPROVED` moves the assignment in the same transaction |
 
-| Endpoint | Result | Event written in the same transaction, then relayed |
-|---|---|---|
-| `POST /v1/shifts` | `202` + the shift | `scheduling.shift.created.v1` (snapshot) |
-| `PUT /v1/shifts/{id}` | `202` + the shift | `scheduling.shift.updated.v1` (snapshot) |
-| `DELETE /v1/shifts/{id}` | `202` | `scheduling.shift.deleted.v1` (tombstone) |
+- Events match `contracts/events/payloads/{shift,assignment,tombstone}.schema.json`; `assignment.*` copies the shift window in so a consumer never looks the shift up.
+- Every write commits its event through the outbox in the same transaction, and the relay publishes with routing key = `eventType`.
+- Migrations: `V1__init.sql` (shift, job roles, outbox), `V2__employee_replica.sql`, `V3__assignments.sql`.
+- Tests: `ShiftTest`, `RequiredJobRoleTest`, `EmployeeReplicaTest`, `AssignmentsTest` (38 unit) and `ShiftCommandIT`, `RequiredJobRoleCommandIT`, `EmployeeReplicaIT`, `AssignmentCommandIT` (27 integration, one shared PostgreSQL + RabbitMQ).
 
-- PostgreSQL via Flyway (`V1__init.sql`): `shift`, `shift_required_job_role`, `outbox_event`. The payloads
-  match `contracts/events/payloads/shift.schema.json` and `tombstone.schema.json`; the routing key is the
-  `eventType`, so a consumer only has to bind a queue to `scheduling.shift.#`.
-- The rules live in the domain, not in the controller: a positive duration, one row per job role, a new shift is
-  `PLANNED` or `PUBLISHED`, the status only moves forward (`PLANNED → PUBLISHED → LOCKED`, anything →
-  `CANCELLED`), `CANCELLED` is terminal, and `aggregateVersion` increments on every change. An illegal
-  transition is `409 Conflict` in `problem+json`.
-- DELETE is a **soft delete**: the row stays with `deleted = true` and a bumped version, and the event is a
-  tombstone. A second `PUT` or `DELETE` is `404`, so a late update can never resurrect the shift.
-- `Idempotency-Key` is required on POST and must be a UUID (`400` otherwise); the 24-hour replay store is P3.2.
-- `ShiftTest` covers the domain rules; `ShiftCommandIT` covers REST → PostgreSQL → outbox → RabbitMQ against
-  real engines in Testcontainers, including the tombstone and the `409`/`404` paths.
-- The command role is `@Profile("command")` throughout, and `application-query.yml` excludes the
-  Postgres/JPA/Flyway autoconfiguration, so the two CQRS roles cannot leak into each other.
+**Mocked boundary (deliberate):** Workforce currently publishes only `workforce.employee.created.v1`, so the tests publish `created`, `updated` and `deleted` envelopes built from the contracts. The consumer treats them exactly as production events, so the day P2.6 ships the other two, nothing here changes.
 
-Not implemented yet: `/v1/shiftrequiredjobroles`, assignments, approvals, swaps, the employee replica
-(`workforce.employee.*` — mocked in tests until Workforce publishes `updated`/`deleted`), `shift.understaffed.v1`,
-the query role with GraphQL, the leave-release saga reply, and JWT security (P1.7).
+Not implemented yet: `/v1/shiftswaps` and `/v1/shiftswapapprovals` (P2.9), the `leave-release` saga reply (P3.1), `shift.understaffed.v1` with candidates (P2.12), the idempotency replay store (P3.2), the query role with GraphQL (P2.10/P2.11) and JWT security (P1.7).
 
 ```bash
 mvn -B -f services/scheduling-service/pom.xml verify   # Docker must be running (Testcontainers)
