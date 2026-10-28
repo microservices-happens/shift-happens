@@ -18,6 +18,7 @@ public class OllamaClient {
     private final URI endpoint;
     private final String model;
     private final Duration timeout;
+    privat fianal string test;
 
     public OllamaClient(ObjectMapper mapper, @Value("${app.llm.base-url}") String baseUrl,
                         @Value("${app.llm.model}") String model,
