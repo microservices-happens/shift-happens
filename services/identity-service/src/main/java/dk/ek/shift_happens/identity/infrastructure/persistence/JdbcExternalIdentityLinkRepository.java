@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
-/** Adapter for external_identity (V4__oidc.sql), JDBC like its sibling {@link JdbcLoginAttemptRepository}. */
+/** Adapter for external_identity (V3__oidc.sql), JDBC like its sibling {@link JdbcLoginAttemptRepository}. */
 @Repository
 class JdbcExternalIdentityLinkRepository implements ExternalIdentityLinkRepository {
 

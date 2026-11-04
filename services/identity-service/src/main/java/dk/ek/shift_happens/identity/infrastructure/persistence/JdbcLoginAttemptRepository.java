@@ -12,7 +12,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 /**
- * Adapter for oidc_login_attempt (V4__oidc.sql). Plain JDBC instead of JPA because single use needs
+ * Adapter for oidc_login_attempt (V3__oidc.sql). Plain JDBC instead of JPA because single use needs
  * {@code DELETE ... RETURNING}: one statement that both reads and removes the row, so when two
  * callbacks race with the same state, Postgres lets exactly one of them get it.
  */
