@@ -2,6 +2,7 @@ package dk.ek.shift_happens.scheduling.api;
 
 import dk.ek.shift_happens.scheduling.application.ApprovalNotFoundException;
 import dk.ek.shift_happens.scheduling.application.AssignmentNotFoundException;
+import dk.ek.shift_happens.scheduling.application.IdempotencyConflictException;
 import dk.ek.shift_happens.scheduling.application.InvalidIdempotencyKeyException;
 import dk.ek.shift_happens.scheduling.application.ShiftNotFoundException;
 import dk.ek.shift_happens.scheduling.domain.AssignmentRejectedException;
@@ -36,6 +37,14 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid Idempotency-Key");
         problem.setType(URI.create("https://shift-happens.local/problems/invalid-idempotency-key"));
+        return problem;
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    ProblemDetail idempotencyConflict(IdempotencyConflictException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Idempotency-Key reused with a different request");
+        problem.setType(URI.create("https://shift-happens.local/problems/idempotency-conflict"));
         return problem;
     }
 

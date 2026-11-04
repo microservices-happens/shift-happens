@@ -3,6 +3,7 @@ package dk.ek.shift_happens.scheduling.api;
 import dk.ek.shift_happens.scheduling.api.dto.CreateRequiredJobRoleRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftRequiredJobRoleResponse;
 import dk.ek.shift_happens.scheduling.api.dto.UpdateRequiredJobRoleRequest;
+import dk.ek.shift_happens.scheduling.application.IdempotencyService;
 import dk.ek.shift_happens.scheduling.application.ShiftService;
 import dk.ek.shift_happens.scheduling.domain.RequiredJobRole;
 import dk.ek.shift_happens.scheduling.domain.Shift;
@@ -32,21 +33,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShiftRequiredJobRoleController {
 
     private final ShiftService shifts;
+    private final IdempotencyService idempotency;
 
-    ShiftRequiredJobRoleController(ShiftService shifts) {
+    ShiftRequiredJobRoleController(ShiftService shifts, IdempotencyService idempotency) {
         this.shifts = shifts;
+        this.idempotency = idempotency;
     }
 
     @PostMapping
-    public ResponseEntity<ShiftRequiredJobRoleResponse> create(
+    public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateRequiredJobRoleRequest request,
             @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
 
-        IdempotencyKeys.requireUuid(idempotencyKey);
-        Shift shift = shifts.addRequiredJobRole(request.shiftId(), request.toRequiredJobRole(), correlationId);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ShiftRequiredJobRoleResponse.from(
-                shift.shiftId(), rowWithJobRole(shift, request.jobRoleId())));
+        return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ShiftRequiredJobRoleResponse.from(
+                        request.shiftId(), shifts.addRequiredJobRole(request.shiftId(),
+                                        request.toRequiredJobRole(), correlationId)
+                                .requiredJobRoles().stream()
+                                .filter(role -> role.jobRoleId() == request.jobRoleId())
+                                .findFirst()
+                                .orElseThrow())));
     }
 
     @PutMapping("/{id}")
@@ -68,13 +75,6 @@ public class ShiftRequiredJobRoleController {
 
         shifts.removeRequiredJobRole(id, correlationId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
-    }
-
-    private static RequiredJobRole rowWithJobRole(Shift shift, long jobRoleId) {
-        return shift.requiredJobRoles().stream()
-                .filter(role -> role.jobRoleId() == jobRoleId)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("the shift does not have job role " + jobRoleId));
     }
 
     private static RequiredJobRole rowWithId(Shift shift, long shiftRequiredJobRoleId) {
