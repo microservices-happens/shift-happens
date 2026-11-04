@@ -28,7 +28,7 @@ public class EmployeeReplicaEntity {
     @Column(name = "employment_status", length = 50)
     private String employmentStatus;
 
-    @Convert(converter = JobRoleIdsConverter.class)
+    @Convert(converter = LongListConverter.class)
     @Column(name = "job_role_ids", columnDefinition = "text")
     private List<Long> jobRoleIds;
 
