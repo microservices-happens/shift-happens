@@ -4,6 +4,7 @@ import dk.ek.shift_happens.identity.application.AccountNotFoundException;
 import dk.ek.shift_happens.identity.application.InvalidCredentialsException;
 import dk.ek.shift_happens.identity.application.InvalidPasswordException;
 import dk.ek.shift_happens.identity.application.NotAllowedException;
+import dk.ek.shift_happens.identity.application.OidcProviderUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -48,6 +49,14 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid request body");
         problem.setType(URI.create("https://shift-happens.local/problems/validation"));
+        return problem;
+    }
+
+    @ExceptionHandler(OidcProviderUnavailableException.class)
+    ProblemDetail oidcProviderUnavailable(OidcProviderUnavailableException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setTitle("Unknown or disabled login provider");
+        problem.setType(URI.create("https://shift-happens.local/problems/oidc-provider-unavailable"));
         return problem;
     }
 

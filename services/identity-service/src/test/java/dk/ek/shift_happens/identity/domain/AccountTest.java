@@ -77,6 +77,17 @@ class AccountTest {
         assertThat(deleted.canLogInWithPassword()).isFalse();
     }
 
+    @Test
+    void providerLoginNeedsAnActiveAccountButNoPassword() {
+        // Google/GitHub prove the person, so a password is not required; deactivation still cuts access.
+        Account noPassword = Account.fromSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 1);
+        Account deactivated = Account.fromSnapshot(snapshot("ada@shift.dk", "INACTIVE"), 1);
+
+        assertThat(noPassword.canLogInWithProvider()).isTrue();
+        assertThat(deactivated.canLogInWithProvider()).isFalse();
+        assertThat(noPassword.deleted(2).canLogInWithProvider()).isFalse();
+    }
+
     private static Account withPassword(Account a, String hash) {
         return new Account(a.accountId(), a.employeeId(), a.employeeNumber(), a.email(), a.firstName(),
                 a.lastName(), a.role(), a.active(), a.aggregateVersion(), hash);
