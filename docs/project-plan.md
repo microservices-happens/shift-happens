@@ -15,7 +15,7 @@ Each service has one owner, who reviews every PR touching it and its contracts, 
 
 | Area | Owner |
 |---|---|
-| identity-service + security tests | |
+| identity-service + security tests |`ViggoBeck`|
 | workforce-service | |
 | scheduling-service (command + GraphQL query) |`jarrald`|
 | leave-service + saga |`Luke3520`|
