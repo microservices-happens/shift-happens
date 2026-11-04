@@ -8,6 +8,7 @@
     "shiftId",
     "jobRoleId",
     "rankedCandidates",
+    "reason",
     "source",
     "model"
   ],
@@ -24,8 +25,7 @@
         "type": "object",
         "required": [
           "employeeId",
-          "rank",
-          "reason"
+          "rank"
         ],
         "properties": {
           "employeeId": {
@@ -34,12 +34,14 @@
           "rank": {
             "type": "integer",
             "minimum": 1
-          },
-          "reason": {
-            "type": "string"
           }
         }
       }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One explanation for the complete ranking, at most 100 whitespace-separated words."
     },
     "source": {
       "type": "string",
