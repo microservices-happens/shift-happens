@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://shift-happens.local/contracts/events/payloads/understaffed.schema.json",
   "title": "ShiftUnderstaffed",
-  "description": "data of scheduling.shift.understaffed.v1. Published when an assignment is released or cancelled and the shift no longer has enough staff for a job role. Scheduling already filters candidates (qualified, active, not on leave, no overlapping shift), so ai-service needs no other data. aggregateId = shiftId.",
+  "description": "data of scheduling.shift.understaffed.v1. Published when an assignment is released or cancelled and the shift no longer has enough staff for a job role. aggregateId = shiftId. Scheduling already filters the candidates (qualified and active per its employee replica, free at that time, not on approved leave) and copies hoursThisWeek and weeklyContractHours into the event, so ai-service needs no other data and nothing is called synchronously.",
   "type": "object",
   "required": [
     "shiftId",
