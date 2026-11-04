@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: workforce-service
-          image: luke3520/workforce-service:v1
+          image: ghcr.io/microservices-happens/workforce-service:main
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

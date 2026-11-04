@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: leave-command
-          image: luke3520/leave-service:v1
+          image: ghcr.io/microservices-happens/leave-service:main
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

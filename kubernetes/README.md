@@ -14,8 +14,8 @@ kubernetes/
   otel-collector/    + configmap.yaml (copy of docker/microservices/otel-collector.yml)
 ```
 
-Our images are `luke3520/<service>:v1` (multi-platform: linux/amd64 + linux/arm64),
-pulled with `imagePullPolicy: Always`.
+Our images are `ghcr.io/microservices-happens/<service>:main`, built and pushed by CI on every
+merge to `main` (multi-platform: linux/amd64 + linux/arm64), pulled with `imagePullPolicy: Always`.
 
 ## Prerequisites
 
@@ -49,56 +49,46 @@ kubectl logs deployment/leave-command --previous   # logs of the crashed contain
 kubectl describe pod -l app=leave-command      # events: pull errors, probe failures, OOM
 ```
 
-## Rebuild, push and restart one service
+## How images get updated (team workflow)
 
-Example: leave-service, which backs both `leave-command` and `leave-query`.
+Nobody builds or pushes images by hand. The flow is:
 
-```bash
-# once per machine: a builder that can do multi-platform builds
-docker buildx create --name multi --driver docker-container --use
-
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t luke3520/leave-service:v1 --push ./services/leave-service
-
-kubectl rollout restart deployment/leave-command deployment/leave-query
-```
-
-The frontend uses its own Dockerfile:
+1. Change code on a branch and open a PR. CI (`.github/workflows/ci.yml`) runs the tests and builds and scans
+   the image of every changed service. Nothing is pushed from a PR.
+2. Merge to `main`. CI builds the changed services (and the frontend if `frontend/` changed) for
+   amd64 + arm64 and pushes them to GitHub Container Registry as
+   `ghcr.io/microservices-happens/<service>:<commit-sha>` and `:main`.
+3. Pick up the new image in your local cluster:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t luke3520/frontend:v1 -f frontend/Dockerfile.microservices --push ./frontend
-kubectl rollout restart deployment/frontend
+kubectl rollout restart deployment/leave-command deployment/leave-query   # leave-service backs both
 ```
+
+`imagePullPolicy: Always` makes the restarted pod pull the newest `:main`.
+The Actions tab shows when the `ci` run on main has finished pushing.
+
+**Republish everything** (first setup, or after a base-image update): Actions → `ci` → Run workflow,
+branch `main`, `services` = `all`.
 
 ## Where the images come from (read this before changing code)
 
-- `kubectl apply` makes the cluster **pull every image from Docker Hub**. Our images are public,
-  so no `docker login` is needed to pull, and Docker picks the right CPU architecture
-  (amd64 on Windows, arm64 on Apple Silicon).
-- `imagePullPolicy: Always` makes the cluster check Docker Hub for the newest `:v1` on every pod start.
+- `kubectl apply` makes the cluster **pull our images from GHCR** and the public ones (postgres, mongo,
+  rabbitmq, ...) from Docker Hub. Our GHCR packages are public, so pulling needs no login, and Docker picks
+  the right CPU architecture (amd64 on Windows, arm64 on Apple Silicon).
 - **Docker Compose does not use these images.** `docker compose -f docker-compose.microservices.yml
   --profile app up --build` still builds from your local source.
-- **The images are frozen at the code they were built from** (main, 2026-11-04). If you change a service,
-  `kubectl apply` alone still runs the old image: rebuild + push + restart (section above).
-- **Only the `luke3520` account can push** to `luke3520/*`. Teammates can pull, not push.
-  See "Next step: images from CI" below.
-- Docker Hub limits anonymous pulls to about 100 per 6 hours per IP. One full start pulls about 20 images.
-  If several people on the same network hit the limit, `docker login` raises it.
+- **Your local code changes are not in the cluster** until they are merged and CI has pushed them.
+  Use Compose (or run the service from your IDE) to try out unmerged changes.
+- Docker Hub limits anonymous pulls to about 100 per 6 hours per IP. One full start pulls about 11 public
+  images from Docker Hub. If several people on the same network hit the limit, `docker login` raises it.
 
-### Next step: images from CI
+### One-time setup (org admin)
 
-`.github/workflows/ci.yml` already builds every changed service and, on a merge to `main`, pushes
-`ghcr.io/microservices-happens/<service>:<commit-sha>` to GitHub Container Registry. To use those
-images here instead of `luke3520/*`:
-
-1. Build multi-platform in CI: `platforms: linux/amd64,linux/arm64` with `push: true`
-   (`load: true` only supports a single platform).
-2. Also push a moving tag such as `:main`, and add the frontend to the image matrix.
-3. Make the GHCR packages public (org → Packages → package settings), or add an `imagePullSecret`.
-4. Change the `image:` lines in `kubernetes/*/deployment.yaml` to `ghcr.io/microservices-happens/<service>:main`.
-
-Then nobody pushes images by hand: merge to main → CI pushes → `kubectl rollout restart deployment/<name>`.
+1. After the first `ci` run on main has pushed (or a manual run with `services` = `all`), make each
+   package public: github.com/orgs/microservices-happens/packages → package → Package settings →
+   Change visibility → Public. There are 9 packages: the 7 services, `email-function` and `frontend`.
+2. In each package's settings, under "Manage Actions access", check that the `shift-happens` repository
+   has write access. A package that CI created is normally linked to the repo already.
 
 ## Teardown
 

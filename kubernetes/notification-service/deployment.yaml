@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: luke3520/notification-service:v1
+          image: ghcr.io/microservices-happens/notification-service:main
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

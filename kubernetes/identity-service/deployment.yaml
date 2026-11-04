@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: identity-service
-          image: luke3520/identity-service:v1
+          image: ghcr.io/microservices-happens/identity-service:main
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

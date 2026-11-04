@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: email-function
-          image: luke3520/email-function:v1
+          image: ghcr.io/microservices-happens/email-function:main
           imagePullPolicy: Always
           env:
             - name: RABBITMQ_HOST

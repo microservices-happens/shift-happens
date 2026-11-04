@@ -1,7 +1,7 @@
 # The CI gate for every pull request and for main. One workflow, one required check: `ci`.
 #
 #   changes ──┬─► tests     (matrix: every changed service, unit + integration tests)
-#             ├─► images    (matrix: every changed service, build + Trivy scan)
+#             ├─► images    (matrix: every changed service, build + Trivy scan; on main: push to GHCR)
 #             ├─► contracts (only when contracts/ changed)
 #             └─► frontend  (only when frontend/ changed)
 #                    │
@@ -147,13 +147,16 @@ jobs:
     needs: changes
     if: needs.changes.outputs.services != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The arm64 half of the push on main runs under QEMU, which is slower than the PR build.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
       - uses: docker/setup-buildx-action@v3
       - name: Build the image
         uses: docker/build-push-action@v6
@@ -177,11 +180,28 @@ jobs:
           # Set the repository variable TRIVY_EXIT_CODE=1 to make the scan blocking (P6.7).
           exit-code: ${{ vars.TRIVY_EXIT_CODE || '0' }}
 
-      - name: Push the image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker push ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+      # Only main publishes (push or manual run). Multi-platform so the same image runs on the
+      # Windows (amd64) and Apple Silicon (arm64) Kubernetes clusters. kubernetes/ deploys :main.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the image (amd64 + arm64)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:main
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
   # The contracts are the source of truth for the APIs and events, so they are linted when they change.
   contracts:
@@ -208,7 +228,8 @@ jobs:
   frontend:
     name: frontend
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    # A manual run with services=all also (re)publishes the frontend image.
+    if: needs.changes.outputs.frontend == 'true' || inputs.services == 'all'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -226,6 +247,32 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+
+      # Same publishing rule as the services: main only, amd64 + arm64, tagged :<sha> and :main.
+      - uses: docker/setup-qemu-action@v3
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - uses: docker/setup-buildx-action@v3
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push the image (amd64 + arm64)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile.microservices
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/frontend:main
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
   # Always runs, even when a path filter skipped the other jobs. This is the single required check on
   # main (docs/implementation-plan.md section 3): a skipped job is fine, a failed one fails the gate.
