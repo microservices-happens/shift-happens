@@ -2,12 +2,15 @@ package dk.ek.shift_happens.scheduling.api;
 
 import dk.ek.shift_happens.scheduling.application.ApprovalNotFoundException;
 import dk.ek.shift_happens.scheduling.application.AssignmentNotFoundException;
+import dk.ek.shift_happens.scheduling.application.IdempotencyConflictException;
 import dk.ek.shift_happens.scheduling.application.InvalidIdempotencyKeyException;
 import dk.ek.shift_happens.scheduling.application.ShiftNotFoundException;
+import dk.ek.shift_happens.scheduling.application.SwapNotFoundException;
 import dk.ek.shift_happens.scheduling.domain.AssignmentRejectedException;
 import dk.ek.shift_happens.scheduling.domain.DuplicateRequiredJobRoleException;
 import dk.ek.shift_happens.scheduling.domain.RequiredJobRoleNotFoundException;
 import dk.ek.shift_happens.scheduling.domain.ShiftNotEditableException;
+import dk.ek.shift_happens.scheduling.domain.SwapRejectedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -39,6 +42,14 @@ class ApiExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(IdempotencyConflictException.class)
+    ProblemDetail idempotencyConflict(IdempotencyConflictException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Idempotency-Key reused with a different request");
+        problem.setType(URI.create("https://shift-happens.local/problems/idempotency-conflict"));
+        return problem;
+    }
+
     @ExceptionHandler(AssignmentNotFoundException.class)
     ProblemDetail assignmentNotFound(AssignmentNotFoundException exception) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
@@ -60,6 +71,22 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
         problem.setTitle("Assignment rejected");
         problem.setType(URI.create("https://shift-happens.local/problems/assignment-rejected"));
+        return problem;
+    }
+
+    @ExceptionHandler(SwapNotFoundException.class)
+    ProblemDetail swapNotFound(SwapNotFoundException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setTitle("Swap not found");
+        problem.setType(URI.create("https://shift-happens.local/problems/swap-not-found"));
+        return problem;
+    }
+
+    @ExceptionHandler(SwapRejectedException.class)
+    ProblemDetail swapRejected(SwapRejectedException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Swap rejected");
+        problem.setType(URI.create("https://shift-happens.local/problems/swap-rejected"));
         return problem;
     }
 

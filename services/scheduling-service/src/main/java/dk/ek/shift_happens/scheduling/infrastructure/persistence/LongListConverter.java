@@ -8,18 +8,18 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Stores the replica's job role ids as a comma-separated string: the replica only needs membership
- * tests, and this avoids a second table (or a Postgres array mapping) for a copy of Workforce's data.
+ * Stores a small list of ids as a comma-separated string. Used by the employee replica's job roles
+ * and by the ids an answer to the leave saga released: both are only ever read as a whole list.
  */
 @Converter
-public class JobRoleIdsConverter implements AttributeConverter<List<Long>, String> {
+public class LongListConverter implements AttributeConverter<List<Long>, String> {
 
     @Override
-    public String convertToDatabaseColumn(List<Long> jobRoleIds) {
-        if (jobRoleIds == null || jobRoleIds.isEmpty()) {
+    public String convertToDatabaseColumn(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
             return "";
         }
-        return jobRoleIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
     }
 
     @Override

@@ -23,7 +23,7 @@
 | Queue | Role | Routing keys | Handling |
 |---|---|---|---|
 | `scheduling.command` | command | `workforce.employee.*` | Upsert the local employee replica (version-based, tombstones win) |
-| | | `leave.request.approval-started.v1` | **Saga step (P3.1).** Release the overlapping assignments and reply `completed`. If any overlapping shift is `LOCKED`, reply `rejected` and change nothing |
+| | | `leave.request.approval-started.v1` | **Saga step.** Release the overlapping assignments and reply `completed`. If any overlapping shift is `LOCKED`, reply `rejected` and change nothing |
 | `scheduling.projection` | query | `scheduling.*`, `workforce.employee.*`, `ai.replacement.suggested.v1` | Upsert read-model documents (highest `aggregateVersion` wins) |
 
 ## Extract from monolith
@@ -36,22 +36,35 @@
 
 ## Status (2026-10-27)
 
+The command role is feature-complete for the contract surface it can implement today.
+
 | Area | Done |
 |---|---|
 | Shifts | `POST`/`PUT`/`DELETE /v1/shifts`; the status only moves forward (`PLANNED → PUBLISHED → LOCKED`, anything → `CANCELLED`); delete is soft and publishes a tombstone |
-| Required job roles | `POST`/`PUT`/`DELETE /v1/shiftrequiredjobroles`; the role rows are part of the shift aggregate, so every change bumps its version and republishes `scheduling.shift.updated.v1` |
-| Employee replica | consumes `workforce.employee.*` from `scheduling.command` into `employee_replica`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared |
-| Assignments | `POST`/`PUT`/`DELETE /v1/shiftassignments`; an employee must be active and qualified **in the replica** and must not already work an overlapping shift (half-open `[start, end)`); delete publishes a tombstone |
+| Required job roles | `POST`/`PUT`/`DELETE /v1/shiftrequiredjobroles`; the rows are part of the shift aggregate, so every change bumps its version and republishes `scheduling.shift.updated.v1` |
+| Employee replica | consumes `workforce.employee.*`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared |
+| Assignments | `POST`/`PUT`/`DELETE /v1/shiftassignments`; the employee must be active and qualified **in the replica** and must not already work an overlapping shift (half-open `[start, end)`) |
 | Approvals | `POST`/`PUT`/`DELETE /v1/shiftapprovals`; one decision per assignment, and `APPROVED` moves the assignment in the same transaction |
+| Swaps | `POST`/`PUT`/`DELETE /v1/shiftswaps` and `POST /v1/shiftswapapprovals`; an approval hands the assignment over (`employeeId` changes, status `SWAPPED`) and publishes `assignment.updated.v1` + `swap.approved.v1` from one commit. The colleague goes through the same rules as a direct assignment |
+| Idempotency | every `POST` stores its response for 24 h: a replay returns it, a different body on the same key is `409` |
+| Leave saga | consumes `leave.request.approval-started.v1`, releases the overlapping assignments, and replies `completed` or - if any of those shifts starts within 24 h, is `LOCKED` or was checked into - `rejected` with nothing changed. The answer is stored per leave request, so a redelivered request republishes the same reply instead of releasing twice |
 
-- Events match `contracts/events/payloads/{shift,assignment,tombstone}.schema.json`; `assignment.*` copies the shift window in so a consumer never looks the shift up.
-- Every write commits its event through the outbox in the same transaction, and the relay publishes with routing key = `eventType`.
-- Migrations: `V1__init.sql` (shift, job roles, outbox), `V2__employee_replica.sql`, `V3__assignments.sql`.
-- Tests: `ShiftTest`, `RequiredJobRoleTest`, `EmployeeReplicaTest`, `AssignmentsTest` (38 unit) and `ShiftCommandIT`, `RequiredJobRoleCommandIT`, `EmployeeReplicaIT`, `AssignmentCommandIT` (27 integration, one shared PostgreSQL + RabbitMQ).
+- Events match `contracts/events/payloads/{shift,assignment,swap,tombstone,leave-release}.schema.json`; saga replies also set `causationId` to the event that triggered them.
+- Every write commits its event through the outbox in the same transaction; the relay publishes with routing key = `eventType`.
+- Migrations: `V1__init.sql` (shift, job roles, outbox), `V2__employee_replica.sql`, `V3__assignments.sql`, `V4__idempotency.sql`, `V5__swaps.sql`, `V6__leave_release.sql`.
+- The queue has **one** listener that dispatches on `eventType`: two listeners on one queue would be competing consumers.
+- Tests: 54 unit and 39 integration (`*IT` against real PostgreSQL and RabbitMQ, one shared pair of containers).
 
-**Mocked boundary (deliberate):** Workforce currently publishes only `workforce.employee.created.v1`, so the tests publish `created`, `updated` and `deleted` envelopes built from the contracts. The consumer treats them exactly as production events, so the day P2.6 ships the other two, nothing here changes.
+**Mocked boundaries (deliberate).** Workforce publishes only `workforce.employee.created.v1` today and Leave does not publish yet, so the integration tests publish `created`/`updated`/`deleted` and `approval-started` envelopes built from the contracts. The consumers treat them exactly as production events.
 
-Not implemented yet: `/v1/shiftswaps` and `/v1/shiftswapapprovals` (P2.9), the `leave-release` saga reply (P3.1), `shift.understaffed.v1` with candidates (P2.12), the idempotency replay store (P3.2), the query role with GraphQL (P2.10/P2.11) and JWT security (P1.7).
+## Not implemented, and why
+
+| Gap | Reason |
+|---|---|
+| `PUT`/`DELETE /v1/shiftswapapprovals` | The event catalog has no reversal flow (no `swap.updated`, no `swap.reverted`), so a decision is one-shot. Implementing an undo would mean inventing an event; left until the contract defines one |
+| `scheduling.shift.understaffed.v1` (P2.12) | Its payload requires `weeklyContractHours` per candidate, and `workforce.employee.*` carries no contract hours. Nothing to derive it from without a synchronous call, so this waits for that contract change (Workforce owner) |
+| Query role, Mongo read model and GraphQL (P2.10/P2.11) | Next slice; the events it needs are all being published now |
+| JWT + role rules (P1.7) | Needs Identity's JWKS (P2.1). The claim shape is already fixed in `contracts/README.md`, so it is wiring once that service publishes `/.well-known/jwks.json` |
 
 ```bash
 mvn -B -f services/scheduling-service/pom.xml verify   # Docker must be running (Testcontainers)

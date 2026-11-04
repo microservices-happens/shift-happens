@@ -180,6 +180,37 @@ class ShiftCommandIT extends AbstractCommandIT {
         assertThat(deleteRaw("/v1/shifts/9999999").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void replayingAnIdempotencyKeyReturnsTheStoredResponse() {
+        String key = UUID.randomUUID().toString();
+
+        ResponseEntity<ShiftResponse> first = http.postForEntity("/v1/shifts",
+                new HttpEntity<>(morningShift(), headersFor(key, null)), ShiftResponse.class);
+        ResponseEntity<ShiftResponse> replay = http.postForEntity("/v1/shifts",
+                new HttpEntity<>(morningShift(), headersFor(key, null)), ShiftResponse.class);
+
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(replay.getBody()).isNotNull();
+        assertThat(replay.getBody().shiftId()).isEqualTo(first.getBody().shiftId());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM shift WHERE shift_id = ?", Integer.class,
+                first.getBody().shiftId())).isEqualTo(1);
+    }
+
+    @Test
+    void theSameIdempotencyKeyWithADifferentBodyIsAConflict() {
+        String key = UUID.randomUUID().toString();
+        http.postForEntity("/v1/shifts", new HttpEntity<>(morningShift(), headersFor(key, null)),
+                ShiftResponse.class);
+
+        ResponseEntity<String> response = http.postForEntity("/v1/shifts", new HttpEntity<>(
+                new CreateShiftRequest(2, 3, "Different", START, END, "PLANNED",
+                        List.of(new RequiredJobRoleRequest(7, 2))), headersFor(key, null)), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).contains("different request body");
+    }
+
     private ResponseEntity<ShiftResponse> createMorningShift() {
         return post("/v1/shifts", morningShift(), ShiftResponse.class);
     }

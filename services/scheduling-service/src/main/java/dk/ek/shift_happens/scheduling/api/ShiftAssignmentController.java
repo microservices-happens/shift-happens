@@ -3,6 +3,7 @@ package dk.ek.shift_happens.scheduling.api;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftAssignmentRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftAssignmentResponse;
 import dk.ek.shift_happens.scheduling.api.dto.UpdateShiftAssignmentRequest;
+import dk.ek.shift_happens.scheduling.application.IdempotencyService;
 import dk.ek.shift_happens.scheduling.application.ShiftAssignmentService;
 import dk.ek.shift_happens.scheduling.domain.AssignmentStatus;
 import jakarta.validation.Valid;
@@ -24,7 +25,7 @@ import java.time.Instant;
  * Who works which shift (contracts/openapi/scheduling.yaml).
  *
  * <p>The write itself is validated against local data only: the employee replica (active, qualified)
- * and this service'"'"'s own assignments (no overlap).
+ * and this service's own assignments (no overlap).
  */
 @RestController
 @RequestMapping("/v1/shiftassignments")
@@ -32,21 +33,22 @@ import java.time.Instant;
 public class ShiftAssignmentController {
 
     private final ShiftAssignmentService assignments;
+    private final IdempotencyService idempotency;
 
-    ShiftAssignmentController(ShiftAssignmentService assignments) {
+    ShiftAssignmentController(ShiftAssignmentService assignments, IdempotencyService idempotency) {
         this.assignments = assignments;
+        this.idempotency = idempotency;
     }
 
     @PostMapping
-    public ResponseEntity<ShiftAssignmentResponse> create(
+    public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateShiftAssignmentRequest request,
             @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
 
-        IdempotencyKeys.requireUuid(idempotencyKey);
-        ShiftAssignmentResponse created = ShiftAssignmentResponse.from(assignments.create(
-                request.shiftId(), request.employeeId(), Instant.now(), correlationId));
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(created);
+        return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ShiftAssignmentResponse.from(assignments.create(request.shiftId(),
+                        request.employeeId(), Instant.now(), correlationId))));
     }
 
     @PutMapping("/{id}")

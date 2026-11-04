@@ -3,6 +3,7 @@ package dk.ek.shift_happens.scheduling.api;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftApprovalRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftApprovalResponse;
 import dk.ek.shift_happens.scheduling.api.dto.UpdateShiftApprovalRequest;
+import dk.ek.shift_happens.scheduling.application.IdempotencyService;
 import dk.ek.shift_happens.scheduling.application.ShiftApprovalService;
 import dk.ek.shift_happens.scheduling.domain.ApprovalDecision;
 import jakarta.validation.Valid;
@@ -25,22 +26,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShiftApprovalController {
 
     private final ShiftApprovalService approvals;
+    private final IdempotencyService idempotency;
 
-    ShiftApprovalController(ShiftApprovalService approvals) {
+    ShiftApprovalController(ShiftApprovalService approvals, IdempotencyService idempotency) {
         this.approvals = approvals;
+        this.idempotency = idempotency;
     }
 
     @PostMapping
-    public ResponseEntity<ShiftApprovalResponse> create(
+    public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateShiftApprovalRequest request,
             @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
 
-        IdempotencyKeys.requireUuid(idempotencyKey);
-        ShiftApprovalResponse created = ShiftApprovalResponse.from(approvals.decide(
-                request.shiftAssignmentId(), request.approverEmployeeId(),
-                ApprovalDecision.valueOf(request.decision()), request.approvalComment(), correlationId));
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(created);
+        return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ShiftApprovalResponse.from(approvals.decide(request.shiftAssignmentId(),
+                        request.approverEmployeeId(), ApprovalDecision.valueOf(request.decision()),
+                        request.approvalComment(), correlationId))));
     }
 
     @PutMapping("/{id}")

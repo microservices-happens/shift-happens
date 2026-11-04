@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Profile;
  *   <li>no infinite requeue.</li>
  * </ul>
  *
- * <p>P3.1 adds leave.request.approval-started.v1 to the same queue.
+ * <p>The queue also carries leave.request.approval-started.v1 for the saga of P3.1.
  */
 @Configuration
 @Profile("command")
@@ -44,6 +44,13 @@ public class SchedulingCommandTopology {
     @Bean
     Binding schedulingCommandBinding(Queue schedulingCommandQueue, TopicExchange eventsExchange) {
         return BindingBuilder.bind(schedulingCommandQueue).to(eventsExchange).with(EMPLOYEE_EVENTS);
+    }
+
+    /** leave.request.approval-started.v1: the saga step of P3.1, handled from the same queue. */
+    @Bean
+    Binding schedulingCommandLeaveBinding(Queue schedulingCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(schedulingCommandQueue).to(eventsExchange)
+                .with("leave.request.approval-started.v1");
     }
 
     @Bean
