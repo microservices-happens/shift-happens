@@ -39,6 +39,28 @@ app:
   password:
     # Required: startup fails if it is missing, so hashes are never made without the pepper.
     pepper: ${PASSWORD_PEPPER:}
+  # Google/GitHub login (P2.3). A provider with an empty client id is disabled.
+  oidc:
+    # Browser-facing base of the callbacks; register <base>/{google|github}/callback with each provider.
+    redirect-base-url: ${OIDC_REDIRECT_BASE_URL:https://localhost:8443/api/v1/auth/oidc}
+    # The frontend page that receives #token=<jwt> or #error=<code>.
+    frontend-callback-url: ${FRONTEND_LOGIN_CALLBACK_URL:https://localhost:8443/login/callback}
+    # How long a started login (state + PKCE verifier) can be finished.
+    state-ttl: PT10M
+    google:
+      client-id: ${OIDC_GOOGLE_CLIENT_ID:}
+      client-secret: ${OIDC_GOOGLE_CLIENT_SECRET:}
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+      issuer: https://accounts.google.com
+    github:
+      client-id: ${OIDC_GITHUB_CLIENT_ID:}
+      client-secret: ${OIDC_GITHUB_CLIENT_SECRET:}
+      authorization-uri: https://github.com/login/oauth/authorize
+      token-uri: https://github.com/login/oauth/access_token
+      user-uri: https://api.github.com/user
+      emails-uri: https://api.github.com/user/emails
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

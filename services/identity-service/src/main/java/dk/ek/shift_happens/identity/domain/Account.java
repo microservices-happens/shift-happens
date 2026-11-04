@@ -52,6 +52,14 @@ public record Account(
         return active && passwordHash != null;
     }
 
+    /**
+     * Google/GitHub login (P2.3): being active is enough. The provider has proven the person, so no
+     * password is needed, but a deactivated or deleted employee is still refused.
+     */
+    public boolean canLogInWithProvider() {
+        return active;
+    }
+
     private static boolean isActive(EmployeeSnapshot snapshot) {
         return ACTIVE_STATUS.equalsIgnoreCase(snapshot.employmentStatus());
     }
