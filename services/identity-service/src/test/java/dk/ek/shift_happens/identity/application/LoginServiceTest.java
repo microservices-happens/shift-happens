@@ -62,6 +62,15 @@ class LoginServiceTest {
         assertRefused("ada@shift.dk", "correct horse");
     }
 
+    @Test
+    void anOverlongPasswordIsRefusedNotAServerError() {
+        // bcrypt's encode() throws on more than 72 bytes; login must keep answering 401 for such input, not 500.
+        account(7, "ada@shift.dk", true, encoder.encode("correct horse"));
+
+        assertRefused("ada@shift.dk", "x".repeat(100));
+        assertRefused("unknown@shift.dk", "x".repeat(100));
+    }
+
     private void assertRefused(String email, String password) {
         assertThatThrownBy(() -> login.login(email, password))
                 .isInstanceOf(InvalidCredentialsException.class)
