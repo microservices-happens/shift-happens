@@ -71,6 +71,35 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 kubectl rollout restart deployment/frontend
 ```
 
+## Where the images come from (read this before changing code)
+
+- `kubectl apply` makes the cluster **pull every image from Docker Hub**. Our images are public,
+  so no `docker login` is needed to pull, and Docker picks the right CPU architecture
+  (amd64 on Windows, arm64 on Apple Silicon).
+- `imagePullPolicy: Always` makes the cluster check Docker Hub for the newest `:v1` on every pod start.
+- **Docker Compose does not use these images.** `docker compose -f docker-compose.microservices.yml
+  --profile app up --build` still builds from your local source.
+- **The images are frozen at the code they were built from** (main, 2026-11-04). If you change a service,
+  `kubectl apply` alone still runs the old image: rebuild + push + restart (section above).
+- **Only the `luke3520` account can push** to `luke3520/*`. Teammates can pull, not push.
+  See "Next step: images from CI" below.
+- Docker Hub limits anonymous pulls to about 100 per 6 hours per IP. One full start pulls about 20 images.
+  If several people on the same network hit the limit, `docker login` raises it.
+
+### Next step: images from CI
+
+`.github/workflows/ci.yml` already builds every changed service and, on a merge to `main`, pushes
+`ghcr.io/microservices-happens/<service>:<commit-sha>` to GitHub Container Registry. To use those
+images here instead of `luke3520/*`:
+
+1. Build multi-platform in CI: `platforms: linux/amd64,linux/arm64` with `push: true`
+   (`load: true` only supports a single platform).
+2. Also push a moving tag such as `:main`, and add the frontend to the image matrix.
+3. Make the GHCR packages public (org → Packages → package settings), or add an `imagePullSecret`.
+4. Change the `image:` lines in `kubernetes/*/deployment.yaml` to `ghcr.io/microservices-happens/<service>:main`.
+
+Then nobody pushes images by hand: merge to main → CI pushes → `kubectl rollout restart deployment/<name>`.
+
 ## Teardown
 
 ```bash
