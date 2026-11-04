@@ -161,6 +161,9 @@ class LoginIT {
 
     @Test
     void protectedEndpointsRejectMissingForgedAndExpiredTokens() throws Exception {
+        // A real account, so the control below can expect the endpoint's success code.
+        publishEmployee(1, 1, "x@shift.dk", "Administrator", "ACTIVE");
+        await().atMost(Duration.ofSeconds(20)).until(() -> accounts.findByEmployeeId(1).isPresent());
         String path = "/v1/auth/accounts/1/password";
 
         String valid = issuer(signingKey, Clock.systemUTC()).issueFor(anyAccount());
@@ -171,8 +174,8 @@ class LoginIT {
         assertThat(put(path, null)).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(put(path, forged)).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(put(path, expired)).isEqualTo(HttpStatus.UNAUTHORIZED);
-        // Control: a valid token passes authentication (the endpoint itself arrives with P2.4).
-        assertThat(put(path, valid)).isNotEqualTo(HttpStatus.UNAUTHORIZED);
+        // Control: the same request with a valid token succeeds, so the 401s above are about the token only.
+        assertThat(put(path, valid)).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     private ResponseEntity<Map> login(String email, String password) {
@@ -198,7 +201,7 @@ class LoginIT {
         return new Account(1L, 1, "EMP-1", "x@shift.dk", "X", "Y", "Administrator", true, 1, null);
     }
 
-    /** The account must come from workforce; only the password is set directly (P2.4 adds the endpoint). */
+    /** The account must come from workforce; only the password is set directly (SetPasswordIT covers the endpoint). */
     private void employeeWithPassword(long employeeId, String email, String role, String password) {
         publishEmployee(employeeId, 1, email, role, "ACTIVE");
         await().atMost(Duration.ofSeconds(20))

@@ -28,12 +28,14 @@ public class EmployeeProjectionService {
     private final AccountRepository accounts;
     private final ProcessedEventLog processedEvents;
     private final ObjectMapper objectMapper;
+    private final AdminBootstrap adminBootstrap;
 
     EmployeeProjectionService(AccountRepository accounts, ProcessedEventLog processedEvents,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper, AdminBootstrap adminBootstrap) {
         this.accounts = accounts;
         this.processedEvents = processedEvents;
         this.objectMapper = objectMapper;
+        this.adminBootstrap = adminBootstrap;
     }
 
     @Transactional
@@ -67,9 +69,10 @@ public class EmployeeProjectionService {
             log.info("Ignoring {} for employee {}: version {} is not newer than {}",
                     envelope.eventType(), snapshot.employeeId(), version, current.get().aggregateVersion());
         } else {
-            accounts.save(current
+            // The bootstrap admin usually arrives here, after startup, as a workforce event.
+            accounts.save(adminBootstrap.apply(current
                     .map(account -> account.withSnapshot(snapshot, version))
-                    .orElseGet(() -> Account.fromSnapshot(snapshot, version)));
+                    .orElseGet(() -> Account.fromSnapshot(snapshot, version))));
         }
 
         processedEvents.record(envelope.eventId());

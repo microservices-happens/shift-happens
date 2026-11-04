@@ -1,6 +1,9 @@
 package dk.ek.shift_happens.identity.api;
 
+import dk.ek.shift_happens.identity.application.AccountNotFoundException;
 import dk.ek.shift_happens.identity.application.InvalidCredentialsException;
+import dk.ek.shift_happens.identity.application.InvalidPasswordException;
+import dk.ek.shift_happens.identity.application.NotAllowedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -21,6 +24,30 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
         problem.setTitle("Login failed");
         problem.setType(URI.create("https://shift-happens.local/problems/invalid-credentials"));
+        return problem;
+    }
+
+    @ExceptionHandler(NotAllowedException.class)
+    ProblemDetail notAllowed(NotAllowedException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
+        problem.setTitle("Forbidden");
+        problem.setType(URI.create("https://shift-happens.local/problems/forbidden"));
+        return problem;
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    ProblemDetail accountNotFound(AccountNotFoundException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setTitle("Account not found");
+        problem.setType(URI.create("https://shift-happens.local/problems/not-found"));
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    ProblemDetail invalidPassword(InvalidPasswordException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setTitle("Invalid request body");
+        problem.setType(URI.create("https://shift-happens.local/problems/validation"));
         return problem;
     }
 

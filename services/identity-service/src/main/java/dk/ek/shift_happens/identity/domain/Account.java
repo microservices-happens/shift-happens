@@ -19,6 +19,7 @@ public record Account(
         String passwordHash) {
 
     public static final String ACTIVE_STATUS = "ACTIVE";
+    public static final String ADMINISTRATOR_ROLE = "Administrator";
 
     /** An account created from the first snapshot of an employee. */
     public static Account fromSnapshot(EmployeeSnapshot snapshot, long version) {
@@ -42,6 +43,12 @@ public record Account(
     public Account deleted(long version) {
         return new Account(accountId, employeeId, employeeNumber, email, firstName, lastName, role, false,
                 version, passwordHash);
+    }
+
+    /** Identity owns the password; the hash is bcrypt(pepper + password), made by the caller. */
+    public Account withPasswordHash(String newPasswordHash) {
+        return new Account(accountId, employeeId, employeeNumber, email, firstName, lastName, role, active,
+                aggregateVersion, newPasswordHash);
     }
 
     /**
