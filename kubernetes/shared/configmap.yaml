@@ -1,0 +1,16 @@
+# Shared settings every business service uses (x-service-env in compose).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-env
+data:
+  HTTP_PORT: "8080"
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: shift
+  RABBITMQ_VHOST: shift-happens
+  EVENT_EXCHANGE: shift-happens.events
+  DEAD_LETTER_EXCHANGE: shift-happens.dlx
+  JWT_ISSUER: shift-happens-identity
+  JWT_JWKS_URL: http://identity-service:8080/.well-known/jwks.json
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318

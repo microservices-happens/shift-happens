@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: caddy:2-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 443
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-config
+              mountPath: /config
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: api-gateway-caddyfile
+        # Caddy's internal CA/certs; regenerated on restart (browser warning either way).
+        - name: caddy-data
+          emptyDir: {}
+        - name: caddy-config
+          emptyDir: {}

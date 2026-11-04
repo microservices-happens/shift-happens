@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  labels:
+    app: ai-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+    spec:
+      containers:
+        - name: ai-service
+          image: ghcr.io/microservices-happens/ai-service:main
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: DB_HOST
+              value: "ai-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "ai"
+            - name: DB_USER
+              value: "ai"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: AI_DB_PASSWORD
+            - name: RABBITMQ_QUEUE
+              value: "ai.suggestions"
+            - name: OUTBOX_ENABLED
+              value: "true"
+            - name: LLM_BASE_URL
+              value: "http://ollama:11434"
+            - name: LLM_MODEL
+              value: "llama3.2:1b"
+            - name: LLM_TIMEOUT
+              value: "PT90S"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

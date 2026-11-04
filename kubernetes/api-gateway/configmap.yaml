@@ -1,0 +1,96 @@
+# Caddyfile copied from the `configs.caddyfile` block in docker-compose.microservices.yml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-caddyfile
+data:
+  Caddyfile: |
+    (upstream) {
+      health_uri /health
+      health_interval 10s
+      health_timeout 3s
+    }
+
+    https://localhost {
+      tls internal
+
+      @identity path /api/v1/auth /api/v1/auth/*
+      handle @identity {
+        uri strip_prefix /api
+        reverse_proxy identity-service:8080 {
+          import upstream
+        }
+      }
+
+      @workforce path /api/v1/employees* /api/v1/employeecontracts* /api/v1/employeejobroles* /api/v1/departments* /api/v1/jobroles* /api/v1/worklocations*
+      handle @workforce {
+        uri strip_prefix /api
+        reverse_proxy workforce-service:8080 {
+          import upstream
+        }
+      }
+
+      # Scheduling reads are GraphQL (query role); writes are REST (command role).
+      @schedulingGraphql path /api/graphql
+      handle @schedulingGraphql {
+        uri strip_prefix /api
+        reverse_proxy scheduling-query:8080 {
+          import upstream
+        }
+      }
+
+      @schedulingWrite path /api/v1/shifts* /api/v1/shiftassignments* /api/v1/shiftrequiredjobroles* /api/v1/shiftapprovals* /api/v1/shiftswaps* /api/v1/shiftswapapprovals*
+      handle @schedulingWrite {
+        uri strip_prefix /api
+        reverse_proxy scheduling-command:8080 {
+          import upstream
+        }
+      }
+
+      @leaveRead {
+        method GET
+        path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers* /api/v1/views/employee-leave-overview*
+      }
+      handle @leaveRead {
+        uri strip_prefix /api
+        reverse_proxy leave-query:8080 {
+          import upstream
+        }
+      }
+
+      @leaveWrite path /api/v1/leaverequests* /api/v1/leavetypes* /api/v1/leaveapprovals* /api/v1/leaveledgers*
+      handle @leaveWrite {
+        uri strip_prefix /api
+        reverse_proxy leave-command:8080 {
+          import upstream
+        }
+      }
+
+      @notification path /api/v1/notifications*
+      handle @notification {
+        uri strip_prefix /api
+        reverse_proxy notification-service:8080 {
+          import upstream
+        }
+      }
+
+      @audit path /api/v1/auditlogs*
+      handle @audit {
+        uri strip_prefix /api
+        reverse_proxy audit-service:8080 {
+          import upstream
+        }
+      }
+
+      # Named (not a bare path) so Caddy keeps it after the routes above.
+      @unknownApi path /api /api/*
+      handle @unknownApi {
+        respond "Unknown API route" 404
+      }
+
+      handle {
+        reverse_proxy frontend:80 {
+          import upstream
+        }
+      }
+    }

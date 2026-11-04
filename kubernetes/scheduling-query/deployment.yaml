@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-query
+  labels:
+    app: scheduling-query
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduling-query
+  template:
+    metadata:
+      labels:
+        app: scheduling-query
+    spec:
+      containers:
+        - name: scheduling-query
+          image: ghcr.io/microservices-happens/scheduling-service:main
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: APP_ROLE
+              value: "query"
+            - name: MONGO_HOST
+              value: "scheduling-read-db"
+            - name: MONGO_PORT
+              value: "27017"
+            - name: MONGO_DATABASE
+              value: "scheduling_read"
+            - name: MONGO_USERNAME
+              value: "scheduling"
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: SCHEDULING_MONGO_PASSWORD
+            - name: MONGO_AUTH_DATABASE
+              value: "admin"
+            - name: RABBITMQ_QUEUE
+              value: "scheduling.projection"
+            - name: GRAPHQL_PATH
+              value: "/graphql"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-write-db
+  labels:
+    app: scheduling-write-db
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: scheduling-write-db
+  template:
+    metadata:
+      labels:
+        app: scheduling-write-db
+    spec:
+      containers:
+        - name: scheduling-write-db
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "scheduling"
+            - name: POSTGRES_USER
+              value: "scheduling"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: SCHEDULING_DB_PASSWORD
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: scheduling-write-db-pvc

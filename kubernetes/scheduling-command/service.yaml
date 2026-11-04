@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduling-command
+  labels:
+    app: scheduling-command
+spec:
+  type: ClusterIP
+  selector:
+    app: scheduling-command
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

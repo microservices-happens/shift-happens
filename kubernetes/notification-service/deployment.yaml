@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: ghcr.io/microservices-happens/notification-service:main
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: DB_HOST
+              value: "notification-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "notification"
+            - name: DB_USER
+              value: "notification"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: NOTIFICATION_DB_PASSWORD
+            - name: RABBITMQ_QUEUE
+              value: "notification.events"
+            - name: OUTBOX_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

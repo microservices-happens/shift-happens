@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-command
+  labels:
+    app: scheduling-command
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduling-command
+  template:
+    metadata:
+      labels:
+        app: scheduling-command
+    spec:
+      containers:
+        - name: scheduling-command
+          image: ghcr.io/microservices-happens/scheduling-service:main
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: APP_ROLE
+              value: "command"
+            - name: DB_HOST
+              value: "scheduling-write-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "scheduling"
+            - name: DB_USER
+              value: "scheduling"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: SCHEDULING_DB_PASSWORD
+            - name: RABBITMQ_QUEUE
+              value: "scheduling.command"
+            - name: OUTBOX_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduling-query
+  labels:
+    app: scheduling-query
+spec:
+  type: ClusterIP
+  selector:
+    app: scheduling-query
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
