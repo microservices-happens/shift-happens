@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: leave-command
+  labels:
+    app: leave-command
+spec:
+  type: ClusterIP
+  selector:
+    app: leave-command
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

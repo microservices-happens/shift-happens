@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: email-function
+  labels:
+    app: email-function
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: email-function
+  template:
+    metadata:
+      labels:
+        app: email-function
+    spec:
+      containers:
+        - name: email-function
+          image: luke3520/email-function:v1
+          imagePullPolicy: Always
+          env:
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"
+            - name: RABBITMQ_PORT
+              value: "5672"
+            - name: RABBITMQ_USER
+              value: "shift"
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_VHOST
+              value: "shift-happens"
+            - name: RABBITMQ_QUEUE
+              value: "email.send"
+            - name: SMTP_HOST
+              value: "mailpit"
+            - name: SMTP_PORT
+              value: "1025"
+            - name: SMTP_USERNAME
+              value: ""
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: SMTP_PASSWORD
+            - name: SMTP_FROM
+              value: "no-reply@shift-happens.local"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4318"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi

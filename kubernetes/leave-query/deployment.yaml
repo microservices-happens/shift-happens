@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leave-query
+  labels:
+    app: leave-query
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: leave-query
+  template:
+    metadata:
+      labels:
+        app: leave-query
+    spec:
+      containers:
+        - name: leave-query
+          image: luke3520/leave-service:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: APP_ROLE
+              value: "query"
+            - name: MONGO_HOST
+              value: "leave-read-db"
+            - name: MONGO_PORT
+              value: "27017"
+            - name: MONGO_DATABASE
+              value: "leave_read"
+            - name: MONGO_USERNAME
+              value: "leave"
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: LEAVE_MONGO_PASSWORD
+            - name: MONGO_AUTH_DATABASE
+              value: "admin"
+            - name: RABBITMQ_QUEUE
+              value: "leave.projection"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

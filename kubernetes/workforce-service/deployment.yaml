@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workforce-service
+  labels:
+    app: workforce-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workforce-service
+  template:
+    metadata:
+      labels:
+        app: workforce-service
+    spec:
+      containers:
+        - name: workforce-service
+          image: luke3520/workforce-service:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: DB_HOST
+              value: "workforce-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "workforce"
+            - name: DB_USER
+              value: "workforce"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: WORKFORCE_DB_PASSWORD
+            - name: OUTBOX_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi

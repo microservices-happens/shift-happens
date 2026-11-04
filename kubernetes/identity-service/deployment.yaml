@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  labels:
+    app: identity-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-service
+  template:
+    metadata:
+      labels:
+        app: identity-service
+    spec:
+      containers:
+        - name: identity-service
+          image: luke3520/identity-service:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-env
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: DB_HOST
+              value: "identity-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "identity"
+            - name: DB_USER
+              value: "identity"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: IDENTITY_DB_PASSWORD
+            - name: RABBITMQ_QUEUE
+              value: "identity.accounts"
+            - name: OIDC_REDIRECT_BASE_URL
+              value: "https://localhost:8443/api/v1/auth/oidc"
+            - name: OIDC_GOOGLE_CLIENT_ID
+              value: ""
+            - name: OIDC_GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: OIDC_GOOGLE_CLIENT_SECRET
+            - name: OIDC_GITHUB_CLIENT_ID
+              value: ""
+            - name: OIDC_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: OIDC_GITHUB_CLIENT_SECRET
+            - name: FRONTEND_LOGIN_CALLBACK_URL
+              value: "https://localhost:8443/login/callback"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 640Mi
