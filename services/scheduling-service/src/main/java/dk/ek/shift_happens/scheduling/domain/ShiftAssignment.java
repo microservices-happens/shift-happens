@@ -48,6 +48,19 @@ public record ShiftAssignment(
                 checkInDatetime, checkOutDatetime, aggregateVersion + 1, true);
     }
 
+    /** An approved swap hands the assignment to a colleague: same row, new holder, status SWAPPED. */
+    public ShiftAssignment swappedTo(long newEmployeeId) {
+        if (deleted) {
+            throw new IllegalStateException("a deleted assignment cannot be swapped");
+        }
+        if (!status.canTransitionTo(AssignmentStatus.SWAPPED)) {
+            throw new SwapRejectedException(
+                    "assignment " + shiftAssignmentId + " is " + status + " and cannot be swapped");
+        }
+        return new ShiftAssignment(shiftAssignmentId, shiftId, newEmployeeId, AssignmentStatus.SWAPPED,
+                assignedDatetime, checkInDatetime, checkOutDatetime, aggregateVersion + 1, false);
+    }
+
     /** data of scheduling.assignment.created/updated.v1; the shift window is copied in. */
     public AssignmentSnapshot toSnapshot(Shift shift) {
         if (shiftAssignmentId == null) {

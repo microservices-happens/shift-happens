@@ -1,9 +1,6 @@
 package dk.ek.shift_happens.scheduling.application;
 
-import dk.ek.shift_happens.scheduling.domain.AssignmentRejectedException;
 import dk.ek.shift_happens.scheduling.domain.AssignmentStatus;
-import dk.ek.shift_happens.scheduling.domain.EmployeeReplica;
-import dk.ek.shift_happens.scheduling.domain.EmployeeReplicaRepository;
 import dk.ek.shift_happens.scheduling.domain.Shift;
 import dk.ek.shift_happens.scheduling.domain.ShiftAssignment;
 import dk.ek.shift_happens.scheduling.domain.ShiftAssignmentRepository;
@@ -16,10 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 /**
- * Assignments: who works a shift (P2.7) with the qualification and overlap rules of P2.8.
- *
- * <p>Both rules read local data only: the employee replica built from workforce.employee.* and the
- * assignments this service owns. No call to Workforce, ever (contracts/README.md).
+ * Assignments: who works a shift (P2.7). The qualification and overlap rules live in
+ * {@link AssignmentPolicy}, which a swap also uses.
  */
 @Service
 @Profile("command")
@@ -27,21 +22,21 @@ public class ShiftAssignmentService {
 
     private final ShiftRepository shifts;
     private final ShiftAssignmentRepository assignments;
-    private final EmployeeReplicaRepository employees;
+    private final AssignmentPolicy policy;
     private final DomainEvents events;
 
     ShiftAssignmentService(ShiftRepository shifts, ShiftAssignmentRepository assignments,
-                           EmployeeReplicaRepository employees, DomainEvents events) {
+                           AssignmentPolicy policy, DomainEvents events) {
         this.shifts = shifts;
         this.assignments = assignments;
-        this.employees = employees;
+        this.policy = policy;
         this.events = events;
     }
 
     @Transactional
     public ShiftAssignment create(long shiftId, long employeeId, Instant now, String correlationId) {
         Shift shift = activeShift(shiftId);
-        requireAssignable(shift, employeeId);
+        policy.requireAssignable(shift, employeeId);
 
         ShiftAssignment saved = assignments.save(ShiftAssignment.create(shiftId, employeeId, now));
         events.append(DomainEvents.ASSIGNMENT_CREATED, saved.shiftAssignmentId(), saved.aggregateVersion(),
@@ -90,28 +85,5 @@ public class ShiftAssignmentService {
         return shifts.findById(shiftId)
                 .filter(shift -> !shift.deleted())
                 .orElseThrow(() -> new ShiftNotFoundException(shiftId));
-    }
-
-    /** Active, qualified (P2.8) and free at that time, on a shift that still takes staff. */
-    private void requireAssignable(Shift shift, long employeeId) {
-        if (shift.status().isCancelled()) {
-            throw new AssignmentRejectedException("shift " + shift.shiftId() + " is cancelled");
-        }
-
-        EmployeeReplica employee = employees.findByEmployeeId(employeeId)
-                .orElseThrow(() -> new AssignmentRejectedException("unknown employee " + employeeId));
-        if (!employee.isActive()) {
-            throw new AssignmentRejectedException("employee " + employeeId + " is not active");
-        }
-        if (!shift.accepts(employee)) {
-            throw new AssignmentRejectedException("employee " + employeeId
-                    + " holds none of the job roles shift " + shift.shiftId() + " requires");
-        }
-
-        // Half-open intervals: an assignment ending exactly when the shift starts is fine.
-        if (!assignments.findActiveOverlapping(employeeId, shift.startDatetime(), shift.endDatetime()).isEmpty()) {
-            throw new AssignmentRejectedException("employee " + employeeId
-                    + " already works a shift that overlaps " + shift.shiftName());
-        }
     }
 }

@@ -22,6 +22,9 @@ public class DomainEvents {
     public static final String SHIFT_DELETED = "scheduling.shift.deleted.v1";
     public static final String ASSIGNMENT_CREATED = "scheduling.assignment.created.v1";
     public static final String ASSIGNMENT_UPDATED = "scheduling.assignment.updated.v1";
+    public static final String SWAP_REQUESTED = "scheduling.swap.requested.v1";
+    public static final String SWAP_APPROVED = "scheduling.swap.approved.v1";
+    public static final String SWAP_REJECTED = "scheduling.swap.rejected.v1";
     public static final String ASSIGNMENT_DELETED = "scheduling.assignment.deleted.v1";
 
     private final EventOutbox outbox;
