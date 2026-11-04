@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.List;
 
-/** JPA mapping for employee_replica (V2__employee_replica.sql). The id comes from Workforce. */
+/** JPA mapping for employee_replica (V2 + V7). The id and the contract hours come from Workforce. */
 @Entity
 @Table(name = "employee_replica")
 public class EmployeeReplicaEntity {
@@ -35,6 +35,9 @@ public class EmployeeReplicaEntity {
     @Column(name = "primary_work_location_id")
     private Long primaryWorkLocationId;
 
+    @Column(name = "weekly_contract_hours", nullable = false)
+    private double weeklyContractHours;
+
     @Column(name = "aggregate_version", nullable = false)
     private long aggregateVersion;
 
@@ -53,6 +56,7 @@ public class EmployeeReplicaEntity {
         entity.employmentStatus = employee.employmentStatus();
         entity.jobRoleIds = employee.jobRoleIds();
         entity.primaryWorkLocationId = employee.primaryWorkLocationId();
+        entity.weeklyContractHours = employee.weeklyContractHours();
         entity.aggregateVersion = employee.aggregateVersion();
         entity.deletedAt = employee.deletedAt();
         return entity;
@@ -60,6 +64,7 @@ public class EmployeeReplicaEntity {
 
     EmployeeReplica toDomain() {
         return new EmployeeReplica(employeeId, firstName, lastName, employmentStatus,
-                jobRoleIds == null ? List.of() : jobRoleIds, primaryWorkLocationId, aggregateVersion, deletedAt);
+                jobRoleIds == null ? List.of() : jobRoleIds, primaryWorkLocationId, aggregateVersion, deletedAt,
+                weeklyContractHours);
     }
 }

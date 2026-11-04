@@ -22,8 +22,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The Scheduling half of the leave-approval saga (P3.1, contracts/events/catalog.md).
@@ -32,6 +34,9 @@ import java.util.Optional;
  * answers scheduling.leave-release.completed.v1, or - when any of those shifts is locked - answers
  * scheduling.leave-release.rejected.v1 and changes nothing, so Leave compensates. One transaction,
  * and the answer is stored so a redelivered request republishes the same reply.
+ *
+ * <p>Each shift that lost an employee also publishes scheduling.shift.understaffed.v1, which is what
+ * wakes ai-service up.
  */
 @Service
 @Profile("command")
@@ -42,16 +47,18 @@ public class LeaveReleaseService {
     private final ShiftRepository shifts;
     private final ShiftAssignmentRepository assignments;
     private final LeaveReleaseRepository releases;
+    private final UnderstaffingService understaffing;
     private final DomainEvents events;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     LeaveReleaseService(ShiftRepository shifts, ShiftAssignmentRepository assignments,
-                        LeaveReleaseRepository releases, DomainEvents events, ObjectMapper objectMapper,
-                        Clock clock) {
+                        LeaveReleaseRepository releases, UnderstaffingService understaffing,
+                        DomainEvents events, ObjectMapper objectMapper, Clock clock) {
         this.shifts = shifts;
         this.assignments = assignments;
         this.releases = releases;
+        this.understaffing = understaffing;
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -84,17 +91,24 @@ public class LeaveReleaseService {
 
         if (record == null) {
             List<Long> released = new ArrayList<>();
+            Set<Long> touchedShifts = new LinkedHashSet<>();
             for (ShiftAssignment assignment : overlapping) {
                 Shift shift = shiftOf(assignment);
                 ShiftAssignment freed = assignments.save(
                         assignment.withStatus(AssignmentStatus.RELEASED_FOR_LEAVE, null, null));
                 released.add(freed.shiftAssignmentId());
+                touchedShifts.add(shift.shiftId());
                 events.append(DomainEvents.ASSIGNMENT_UPDATED, freed.shiftAssignmentId(),
                         freed.aggregateVersion(), envelope.correlationId(), envelope.eventId(),
                         freed.toSnapshot(shift));
             }
             record = LeaveReleaseRecord.completed(leaveRequestId, request.employeeId(), request.startDate(),
                     request.endDate(), released, now);
+
+            // After the loop, so a shift that lost two people reports the final missing count.
+            for (Long touchedShift : touchedShifts) {
+                understaffing.publishIfShort(touchedShift, envelope.correlationId(), envelope.eventId());
+            }
         }
 
         releases.save(record);

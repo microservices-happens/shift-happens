@@ -8,7 +8,8 @@ import java.util.List;
  * contracts/README.md). It exists so a qualification check never needs a synchronous call.
  *
  * <p>{@code deletedAt} is the retained tombstone: the row stays so a late, lower-version update can
- * never make a deleted employee assignable again.
+ * never make a deleted employee assignable again. {@code weeklyContractHours} comes from the same
+ * snapshot and is what the understaffed candidates report.
  */
 public record EmployeeReplica(
         long employeeId,
@@ -18,7 +19,8 @@ public record EmployeeReplica(
         List<Long> jobRoleIds,
         Long primaryWorkLocationId,
         long aggregateVersion,
-        Instant deletedAt) {
+        Instant deletedAt,
+        double weeklyContractHours) {
 
     public static final String ACTIVE = "ACTIVE";
 

@@ -304,6 +304,22 @@ channels:
           autoDelete: false
           vhost: shift-happens
         bindingVersion: 0.3.0
+  leaveRequestCancelledV1:
+    address: leave.request.cancelled.v1
+    description: Routing key leave.request.cancelled.v1 on exchange shift-happens.events.
+    messages:
+      leaveRequestCancelledV1:
+        $ref: '#/components/messages/leaveRequestCancelledV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
   leaveRequestRejectedV1:
     address: leave.request.rejected.v1
     description: Routing key leave.request.rejected.v1 on exchange shift-happens.events.
@@ -1259,6 +1275,54 @@ operations:
       amqp:
         ack: true
         bindingVersion: 0.3.0
+  scheduling_command__leaveRequestApprovedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestApprovedV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/leaveRequestApprovedV1/messages/leaveRequestApprovedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveRequestCancelledV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveRequestCancelledV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveRequestCancelledV1/messages/leaveRequestCancelledV1'
+  scheduling_command__leaveRequestCancelledV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestCancelledV1'
+    summary: scheduling-command consumes from queue scheduling.command
+    tags:
+    - name: scheduling-command
+    messages:
+    - $ref: '#/channels/leaveRequestCancelledV1/messages/leaveRequestCancelledV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  audit_events__leaveRequestCancelledV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestCancelledV1'
+    summary: audit-service consumes from queue audit.events
+    tags:
+    - name: audit-service
+    messages:
+    - $ref: '#/channels/leaveRequestCancelledV1/messages/leaveRequestCancelledV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
   notification_events__leaveRequestApprovedV1:
     action: receive
     channel:
@@ -1726,6 +1790,22 @@ components:
           properties:
             eventType:
               const: leave.request.approved.v1
+            data:
+              $ref: ./events/payloads/leave-request.schema.json
+    leaveRequestCancelledV1:
+      name: leave.request.cancelled.v1
+      title: leave.request.cancelled.v1
+      summary: The employee withdrew approved leave, so the released assignments are no longer justified
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.request.cancelled.v1
             data:
               $ref: ./events/payloads/leave-request.schema.json
     leaveRequestRejectedV1:

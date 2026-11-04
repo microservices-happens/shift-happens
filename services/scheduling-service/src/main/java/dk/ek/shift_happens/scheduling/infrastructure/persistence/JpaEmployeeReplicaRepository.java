@@ -5,6 +5,7 @@ import dk.ek.shift_happens.scheduling.domain.EmployeeReplicaRepository;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /** Adapter: the employee replica on top of Spring Data JPA. Command role only. */
@@ -21,6 +22,11 @@ class JpaEmployeeReplicaRepository implements EmployeeReplicaRepository {
     @Override
     public Optional<EmployeeReplica> findByEmployeeId(long employeeId) {
         return jpa.findById(employeeId).map(EmployeeReplicaEntity::toDomain);
+    }
+
+    @Override
+    public List<EmployeeReplica> findAll() {
+        return jpa.findAll().stream().map(EmployeeReplicaEntity::toDomain).toList();
     }
 
     @Override

@@ -6,8 +6,8 @@ Generated from the same table as [`../asyncapi.yaml`](../asyncapi.yaml), which i
 
 | eventType | Producer | Published when | `data` schema | Consumed by (queue) |
 |---|---|---|---|---|
-| `workforce.employee.created.v1` | workforce-service | Employee created | `payloads/employee.schema.json` | `identity.accounts`, `scheduling.command`, `scheduling.projection`, `leave.command`, `leave.projection`, `audit.events` |
-| `workforce.employee.updated.v1` | workforce-service | Any employee field or job role changes | `payloads/employee.schema.json` | `identity.accounts`, `scheduling.command`, `scheduling.projection`, `leave.command`, `leave.projection`, `audit.events` |
+| `workforce.employee.created.v1` | workforce-service | Employee created (snapshot includes `jobRoleIds` and `weeklyContractHours`) | `payloads/employee.schema.json` | `identity.accounts`, `scheduling.command`, `scheduling.projection`, `leave.command`, `leave.projection`, `audit.events` |
+| `workforce.employee.updated.v1` | workforce-service | Any employee field, job role or contract hours change | `payloads/employee.schema.json` | `identity.accounts`, `scheduling.command`, `scheduling.projection`, `leave.command`, `leave.projection`, `audit.events` |
 | `workforce.employee.deleted.v1` | workforce-service | Employee deleted (tombstone) | `payloads/tombstone.schema.json` | `identity.accounts`, `scheduling.command`, `scheduling.projection`, `leave.command`, `leave.projection`, `audit.events` |
 | `scheduling.shift.created.v1` | scheduling-service | Shift created | `payloads/shift.schema.json` | `scheduling.projection`, `audit.events` |
 | `scheduling.shift.updated.v1` | scheduling-service | Shift, its required roles or its status (incl. CANCELLED) changes | `payloads/shift.schema.json` | `scheduling.projection`, `notification.events`, `audit.events` |
@@ -23,8 +23,9 @@ Generated from the same table as [`../asyncapi.yaml`](../asyncapi.yaml), which i
 | `scheduling.leave-release.rejected.v1` | scheduling-service | Saga reply: release refused (e.g. a locked shift); nothing changed | `payloads/leave-release.schema.json` | `leave.command`, `audit.events` |
 | `leave.request.submitted.v1` | leave-service | Employee submits a leave request | `payloads/leave-request.schema.json` | `leave.projection`, `notification.events`, `audit.events` |
 | `leave.request.approval-started.v1` | leave-service | Saga start: manager approved, days reserved in the ledger | `payloads/leave-request.schema.json` | `scheduling.command`, `leave.projection`, `audit.events` |
-| `leave.request.approved.v1` | leave-service | Saga completed | `payloads/leave-request.schema.json` | `leave.projection`, `notification.events`, `audit.events` |
+| `leave.request.approved.v1` | leave-service | Saga completed | `payloads/leave-request.schema.json` | `scheduling.command`, `leave.projection`, `notification.events`, `audit.events` |
 | `leave.request.rejected.v1` | leave-service | Manager rejects, or saga compensated (reason in rejectionReason) | `payloads/leave-request.schema.json` | `leave.projection`, `notification.events`, `audit.events` |
+| `leave.request.cancelled.v1` | leave-service | The employee withdrew approved leave (`requestStatus` CANCELLED); consumers drop the window | `payloads/leave-request.schema.json` | `scheduling.command`, `leave.projection`, `audit.events` |
 | `leave.ledger.entry-recorded.v1` | leave-service | Any ledger entry appended (accrual, reservation, reversal, adjustment) | `payloads/ledger-entry.schema.json` | `leave.projection`, `audit.events` |
 | `ai.replacement.suggested.v1` | ai-service | Ranked replacement candidates for an understaffed shift | `payloads/replacement-suggestion.schema.json` | `scheduling.projection`, `notification.events`, `audit.events` |
 | `notification.email.requested.v1` | notification-service | A notification should also be emailed | `payloads/email-request.schema.json` | `email.send` |
@@ -36,7 +37,7 @@ Each queue is declared by its consumer at startup, bound to the exact routing ke
 | Queue | Consumer | Binds routing keys | Purpose |
 |---|---|---|---|
 | `identity.accounts` | identity-service | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1` | Upsert the login account (email, role, active); tombstone disables it |
-| `scheduling.command` | scheduling-command | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1`<br>`leave.request.approval-started.v1` | Keeps a local employee replica for validation; saga participant for leave release |
+| `scheduling.command` | scheduling-command | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1`<br>`leave.request.approval-started.v1`<br>`leave.request.approved.v1`<br>`leave.request.cancelled.v1` | Keeps a local employee replica for validation and a copy of approved leave windows for the understaffed candidates; saga participant for leave release |
 | `scheduling.projection` | scheduling-query | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1`<br>`scheduling.shift.created.v1`<br>`scheduling.shift.updated.v1`<br>`scheduling.shift.deleted.v1`<br>`scheduling.assignment.created.v1`<br>`scheduling.assignment.updated.v1`<br>`scheduling.assignment.deleted.v1`<br>`scheduling.swap.requested.v1`<br>`scheduling.swap.approved.v1`<br>`scheduling.swap.rejected.v1`<br>`ai.replacement.suggested.v1` | Builds the Mongo read model served over GraphQL |
 | `leave.command` | leave-command | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1`<br>`scheduling.leave-release.completed.v1`<br>`scheduling.leave-release.rejected.v1` | Saga orchestrator (completes or compensates leave approvals); keeps a local employee replica |
 | `leave.projection` | leave-query | `workforce.employee.created.v1`<br>`workforce.employee.updated.v1`<br>`workforce.employee.deleted.v1`<br>`leave.request.submitted.v1`<br>`leave.request.approval-started.v1`<br>`leave.request.approved.v1`<br>`leave.request.rejected.v1`<br>`leave.ledger.entry-recorded.v1` | Builds the Mongo read model: overviews and balances |
@@ -68,8 +69,8 @@ Consistency across Leave and Scheduling uses compensating actions, not a distrib
 
 ## Flow: AI replacement suggestion
 
-1. scheduling-command publishes `scheduling.shift.understaffed.v1` (after a leave release or a cancelled assignment). The event already lists qualified, active candidates who are free at that time.
-2. ai-service (queue `ai.suggestions`) sends the shift and candidates to the LLM (Ollama locally) and asks for a ranking with one overall reason of at most 100 words. If the LLM is slow or down, it ranks by fewest hours this week and marks `source: rule`.
+1. scheduling-command publishes `scheduling.shift.understaffed.v1` (after a leave release or a cancelled assignment). The event already lists qualified, active candidates who are free at that time and not on approved leave: Scheduling builds that list from its employee replica (`jobRoleIds`, `weeklyContractHours`) and the leave windows it copies from `leave.request.approved.v1`, so ai-service needs no other data and nobody calls anybody synchronously.
+2. ai-service (queue `ai.suggestions`) sends the shift and candidates to the LLM (Ollama locally) and asks for a ranking with a one-line reason per candidate. If the LLM is slow or down, it ranks by fewest hours this week and marks `source: rule`.
 3. ai-service publishes `ai.replacement.suggested.v1`.
 4. scheduling-query stores it on the shift, so the frontend sees it in GraphQL (`Shift.replacementSuggestions`). notification-service alerts the manager.
 5. The manager picks someone with `POST /api/v1/shiftassignments`. The AI only advises; it never writes the schedule.

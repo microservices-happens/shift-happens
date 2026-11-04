@@ -26,6 +26,7 @@ public class DomainEvents {
     public static final String SWAP_REQUESTED = "scheduling.swap.requested.v1";
     public static final String SWAP_APPROVED = "scheduling.swap.approved.v1";
     public static final String SWAP_REJECTED = "scheduling.swap.rejected.v1";
+    public static final String SHIFT_UNDERSTAFFED = "scheduling.shift.understaffed.v1";
     public static final String LEAVE_RELEASE_COMPLETED = "scheduling.leave-release.completed.v1";
     public static final String LEAVE_RELEASE_REJECTED = "scheduling.leave-release.rejected.v1";
 

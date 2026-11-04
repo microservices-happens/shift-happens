@@ -12,7 +12,8 @@
     "lastName",
     "email",
     "employmentStatus",
-    "jobRoleIds"
+    "jobRoleIds",
+    "weeklyContractHours"
   ],
   "properties": {
     "employeeId": {
@@ -61,6 +62,11 @@
         "integer",
         "null"
       ]
+    },
+    "weeklyContractHours": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Weekly contracted hours from the employee's active contract (workforce-service employee_contract.weekly_hours). 0 when the employee has no active contract. Scheduling needs it to pre-filter the candidates of scheduling.shift.understaffed.v1; salary never appears in an event."
     },
     "jobRoleIds": {
       "type": "array",

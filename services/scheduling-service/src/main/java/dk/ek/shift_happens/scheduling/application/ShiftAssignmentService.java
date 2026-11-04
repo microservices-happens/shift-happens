@@ -15,6 +15,9 @@ import java.time.Instant;
 /**
  * Assignments: who works a shift (P2.7). The qualification and overlap rules live in
  * {@link AssignmentPolicy}, which a swap also uses.
+ *
+ * <p>When an assignment is cancelled, released or deleted the shift may be short of a role, so the
+ * same transaction appends scheduling.shift.understaffed.v1 through {@link UnderstaffingService}.
  */
 @Service
 @Profile("command")
@@ -23,13 +26,15 @@ public class ShiftAssignmentService {
     private final ShiftRepository shifts;
     private final ShiftAssignmentRepository assignments;
     private final AssignmentPolicy policy;
+    private final UnderstaffingService understaffing;
     private final DomainEvents events;
 
     ShiftAssignmentService(ShiftRepository shifts, ShiftAssignmentRepository assignments,
-                           AssignmentPolicy policy, DomainEvents events) {
+                           AssignmentPolicy policy, UnderstaffingService understaffing, DomainEvents events) {
         this.shifts = shifts;
         this.assignments = assignments;
         this.policy = policy;
+        this.understaffing = understaffing;
         this.events = events;
     }
 
@@ -57,6 +62,10 @@ public class ShiftAssignmentService {
         ShiftAssignment updated = assignments.save(current.withStatus(status, checkIn, checkOut));
         events.append(DomainEvents.ASSIGNMENT_UPDATED, updated.shiftAssignmentId(), updated.aggregateVersion(),
                 correlationId, updated.toSnapshot(shift));
+
+        if (status == AssignmentStatus.CANCELLED || status == AssignmentStatus.RELEASED_FOR_LEAVE) {
+            understaffing.publishIfShort(updated.shiftId(), correlationId, null);
+        }
         return updated;
     }
 
@@ -66,6 +75,8 @@ public class ShiftAssignmentService {
         ShiftAssignment deleted = assignments.save(current.markedDeleted());
         events.append(DomainEvents.ASSIGNMENT_DELETED, shiftAssignmentId, deleted.aggregateVersion(),
                 correlationId, new Tombstone(Tombstone.ASSIGNMENT, shiftAssignmentId, Instant.now()));
+
+        understaffing.publishIfShort(deleted.shiftId(), correlationId, null);
         return deleted;
     }
 

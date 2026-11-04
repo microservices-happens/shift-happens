@@ -105,6 +105,6 @@ class AssignmentsTest {
     }
 
     private static EmployeeReplica employee(List<Long> jobRoleIds) {
-        return new EmployeeReplica(7, "Ada", "Lovelace", "ACTIVE", jobRoleIds, null, 1, null);
+        return new EmployeeReplica(7, "Ada", "Lovelace", "ACTIVE", jobRoleIds, null, 1, null, 37.5);
     }
 }

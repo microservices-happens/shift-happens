@@ -53,6 +53,19 @@ public class SchedulingCommandTopology {
                 .with("leave.request.approval-started.v1");
     }
 
+    /** leave.request.approved.v1 and .cancelled.v1 keep the leave windows the candidates are built from. */
+    @Bean
+    Binding schedulingCommandLeaveApprovedBinding(Queue schedulingCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(schedulingCommandQueue).to(eventsExchange)
+                .with("leave.request.approved.v1");
+    }
+
+    @Bean
+    Binding schedulingCommandLeaveCancelledBinding(Queue schedulingCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(schedulingCommandQueue).to(eventsExchange)
+                .with("leave.request.cancelled.v1");
+    }
+
     @Bean
     Queue schedulingCommandDeadLetterQueue(@Value("${app.rabbit.queue}") String name) {
         return QueueBuilder.durable(name + ".dlq").build();
