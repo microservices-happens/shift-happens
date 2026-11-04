@@ -49,4 +49,36 @@ class AccountTest {
         assertThat(deleted.aggregateVersion()).isEqualTo(2);
         assertThat(deleted.email()).isEqualTo("ada@shift.dk");
     }
+
+    @Test
+    void aWorkforceUpdateKeepsThePassword() {
+        // Identity owns the password; an employee update from workforce must not wipe it, or every
+        // profile edit would lock the employee out.
+        Account withPassword = withPassword(Account.fromSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 1), "hash");
+
+        Account updated = withPassword.withSnapshot(snapshot("ada.l@shift.dk", "ACTIVE"), 2);
+
+        assertThat(updated.passwordHash()).isEqualTo("hash");
+        assertThat(updated.email()).isEqualTo("ada.l@shift.dk");
+    }
+
+    @Test
+    void onlyAnActiveAccountWithAPasswordCanLogIn() {
+        Account noPassword = Account.fromSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 1);
+        Account active = withPassword(noPassword, "hash");
+        Account deactivated = withPassword(Account.fromSnapshot(snapshot("ada@shift.dk", "INACTIVE"), 1), "hash");
+        Account deleted = active.deleted(2);
+
+        assertThat(active.canLogInWithPassword()).isTrue();
+        assertThat(noPassword.canLogInWithPassword()).isFalse();
+        assertThat(deactivated.canLogInWithPassword()).isFalse();
+        // A deleted employee keeps the hash but must be refused (README "Done when").
+        assertThat(deleted.passwordHash()).isEqualTo("hash");
+        assertThat(deleted.canLogInWithPassword()).isFalse();
+    }
+
+    private static Account withPassword(Account a, String hash) {
+        return new Account(a.accountId(), a.employeeId(), a.employeeNumber(), a.email(), a.firstName(),
+                a.lastName(), a.role(), a.active(), a.aggregateVersion(), hash);
+    }
 }

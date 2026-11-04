@@ -7,4 +7,6 @@ import java.util.Optional;
 interface AccountJpaRepository extends JpaRepository<AccountEntity, Long> {
 
     Optional<AccountEntity> findByEmployeeId(long employeeId);
+
+    Optional<AccountEntity> findByEmailIgnoreCase(String email);
 }

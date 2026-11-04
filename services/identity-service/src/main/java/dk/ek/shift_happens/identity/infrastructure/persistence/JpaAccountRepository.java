@@ -22,6 +22,11 @@ class JpaAccountRepository implements AccountRepository {
     }
 
     @Override
+    public Optional<Account> findByEmail(String email) {
+        return jpa.findByEmailIgnoreCase(email).map(AccountEntity::toDomain);
+    }
+
+    @Override
     public Account save(Account account) {
         AccountEntity entity = jpa.findByEmployeeId(account.employeeId()).orElseGet(AccountEntity::new);
         entity.apply(account);

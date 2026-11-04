@@ -11,16 +11,19 @@ public record Account(
         long employeeId,
         String employeeNumber,
         String email,
+        String firstName,
+        String lastName,
         String role,
         boolean active,
-        long aggregateVersion) {
+        long aggregateVersion,
+        String passwordHash) {
 
     public static final String ACTIVE_STATUS = "ACTIVE";
 
     /** An account created from the first snapshot of an employee. */
     public static Account fromSnapshot(EmployeeSnapshot snapshot, long version) {
         return new Account(null, snapshot.employeeId(), snapshot.employeeNumber(), snapshot.email(),
-                snapshot.userRole(), isActive(snapshot), version);
+                snapshot.firstName(), snapshot.lastName(), snapshot.userRole(), isActive(snapshot), version, null);
     }
 
     /** Out-of-order delivery must not change the result: ignore anything older than what we hold. */
@@ -29,13 +32,24 @@ public record Account(
     }
 
     public Account withSnapshot(EmployeeSnapshot snapshot, long version) {
+        // The password hash is owned by identity, so a workforce update never touches it.
         return new Account(accountId, employeeId, snapshot.employeeNumber(), snapshot.email(),
-                snapshot.userRole(), isActive(snapshot), version);
+                snapshot.firstName(), snapshot.lastName(), snapshot.userRole(), isActive(snapshot), version,
+                passwordHash);
     }
 
     /** workforce.employee.deleted.v1 is a tombstone: the account is disabled, never removed. */
     public Account deleted(long version) {
-        return new Account(accountId, employeeId, employeeNumber, email, role, false, version);
+        return new Account(accountId, employeeId, employeeNumber, email, firstName, lastName, role, false,
+                version, passwordHash);
+    }
+
+    /**
+     * Only an active employee with a password can log in with one. A deactivated or deleted employee
+     * keeps the hash (so reactivation restores access) but is refused.
+     */
+    public boolean canLogInWithPassword() {
+        return active && passwordHash != null;
     }
 
     private static boolean isActive(EmployeeSnapshot snapshot) {
