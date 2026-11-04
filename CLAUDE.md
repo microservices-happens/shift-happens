@@ -1,55 +1,94 @@
-# CLAUDE.md — 12-rule template
+# CLAUDE.md — Shift Happens
 
-These rules apply to every task in this project unless explicitly overridden.
-Bias: caution over speed on non-trivial work.
+Microservices rewrite of the Shift Happens monolith (DLS final project). Rules below were checked
+against the code on 2026-11-04. Where a rule describes the target rather than today's code, it says so.
 
-## Rule 1 — Think Before Coding
-State assumptions explicitly. Ask rather than guess.
-Push back when a simpler approach exists. Stop when confused.
+## Before you change anything
 
-## Rule 2 — Simplicity First
-Minimum code that solves the problem. Nothing speculative.
-No abstractions for single-use code.
+- Read the contract and README for the area you touch: `contracts/README.md`,
+  `contracts/openapi/<service>.yaml`, `contracts/asyncapi.yaml`, `services/<service>/README.md`.
+  Read `docs/architecture.md` §4 before any design decision.
+- `contracts/` is the source of truth. Do not edit it unless asked; if code needs a contract change,
+  say so first.
+- Narrowest change that works. One service per PR unless a contract changes.
+- Ask when a request is ambiguous or when docs and code disagree. Do not silently pick one.
 
-## Rule 3 — Surgical Changes
-Touch only what you must. Don't improve adjacent code.
-Match existing style. Don't refactor what isn't broken.
+## Architecture boundaries (do not break)
 
-## Rule 4 — Goal-Driven Execution
-Define success criteria. Loop until verified.
-Strong success criteria let Claude loop independently.
+- Seven services in `services/` (identity, workforce, scheduling, leave, ai, notification, audit)
+  plus `functions/email-function`. Each has its own `pom.xml`, database and image.
+- Service → service is RabbitMQ only (`shift-happens.events` topic exchange, `shift-happens.dlx`).
+  No synchronous calls (no RestTemplate/WebClient/Feign between services), no shared database,
+  no shared library or shared Maven parent. Patterns are copied per service on purpose.
+- Routing key = `eventType` = `<context>.<entity>.<event>.vN`. Envelope:
+  `contracts/events/envelope.schema.json`; `data` is a full entity snapshot.
+- Scheduling and leave are CQRS: one codebase, `APP_ROLE=command|query` (Postgres + outbox for
+  commands, Mongo read model for queries). The query sides are not built yet.
+- The monolith (`src/`, root `pom.xml`, `docker-compose_old.yml`, `*_old*`, `scripts_old/`,
+  `docs/old/`) is reference only. Never refactor it.
 
-## Rule 5 — Use the model only for judgment calls
-Use for: classification, drafting, summarization, extraction.
-Do NOT use for: routing, retries, deterministic transforms.
-If code can answer, code answers.
+## Java conventions (as used in scheduling and workforce)
 
-## Rule 6 — Token budgets are not advisory
-Per-task: 4,000 tokens. Per-session: 30,000 tokens.
-If approaching budget, summarize and start fresh.
-Surface the breach. Do not silently overrun.
+- Java 21, Spring Boot 3.5.10, Maven. Package root `dk.ek.shift_happens.<service>`.
+- Layers: `api/` → `application/` → `domain/`, `infrastructure/` implements ports, `config/` for wiring.
+  `domain/` is plain Java (no Spring/JPA imports). `@Transactional` belongs in `application/`.
+- Constructor injection with `private final` fields; records for DTOs, events and commands; no Lombok.
+- REST paths `/v1/<resource>` (the gateway adds `/api`). Errors as RFC 9457 problem+json via a
+  `@RestControllerAdvice` (`ApiExceptionHandler`). Async-projected commands return `202 Accepted`.
+- POST endpoints take an `Idempotency-Key` (UUID); replay the stored response for 24 h, `409` if the
+  body differs.
+- Config through environment variables only, named as in `docker-compose.microservices.yml`.
+  Never hard-code hosts, ports or secrets. `GET /health` stays public and unrenamed.
+- Security target: every service validates the identity-service JWT itself (RS256, JWKS from
+  `JWT_JWKS_URL`, roles `Administrator|Manager|Employee`). Not implemented anywhere yet (P2.1).
+- Never log tokens, passwords or salary.
 
-## Rule 7 — Surface conflicts, don't average them
-If two patterns contradict, pick one (more recent / more tested).
-Explain why. Flag the other for cleanup.
+## Messaging
 
-## Rule 8 — Read before you write
-Before adding code, read exports, immediate callers, shared utilities.
-If unsure why existing code is structured a certain way, ask.
+- Publish through the transactional outbox in the same transaction as the state change.
+- Consumers: one durable queue each, record `eventId` in `processed_events` in the same transaction,
+  keep the highest `aggregateVersion`, a tombstone wins over lower versions.
+- Three attempts, then dead-letter. Never requeue forever.
 
-## Rule 9 — Tests verify intent, not just behavior
-Tests must encode WHY behavior matters, not just WHAT it does.
-A test that can't fail when business logic changes is wrong.
+## Tests
 
-## Rule 10 — Checkpoint after every significant step
-Summarize what was done, what's verified, what's left.
-Don't continue from a state you can't describe back.
+- Unit tests `*Test` (Surefire), integration tests `*IT` (Failsafe, run by `mvn verify`),
+  cooperation tests in `tests/cooperation`.
+- Integration tests use real Postgres/Mongo/RabbitMQ through Testcontainers. No H2, no embedded broker.
+- Domain rules are testable without Spring. No `Thread.sleep`; use Awaitility. Stub the LLM in tests.
+- A bug fix starts with a failing test. Never weaken an assertion or a CI gate to get green.
+- `@Disabled` must name the task ID that re-enables it.
 
-## Rule 11 — Match the codebase's conventions, even if you disagree
-Conformance > taste inside the codebase.
-If you think a convention is harmful, surface it. Don't fork silently.
+| Task | Command (from repo root) |
+|---|---|
+| Unit tests, one service | `./mvnw -B -f services/<svc>/pom.xml test` |
+| Unit + integration | `./mvnw -B -f services/<svc>/pom.xml verify` |
+| Cooperation tests | `./mvnw -B -f tests/cooperation/pom.xml verify` |
+| Frontend | `npm --prefix frontend ci && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
+| Infrastructure only | `docker compose -f docker-compose.microservices.yml up -d` |
+| Full stack | `docker compose -f docker-compose.microservices.yml --profile app up --build` |
 
-## Rule 12 — Fail loud
-"Completed" is wrong if anything was skipped silently.
-"Tests pass" is wrong if any were skipped.
-Default to surfacing uncertainty, not hiding it.
+## Git
+
+- Branches `feat|fix/<service>-<topic>`, `docs/<topic>`, `ci/<topic>`. Never commit to `main`.
+- Conventional commits scoped by service: `feat(scheduling): reject overlapping assignments`.
+- Reference task IDs from `docs/project-plan.md` (e.g. `P3.1`) in PR titles.
+- An event change updates `contracts/asyncapi.yaml`, `contracts/events/catalog.md`, the payload
+  schema, and producer + consumer in one PR.
+- Never commit `.env`, keys or passwords; update `.env.example` instead.
+
+## Done means
+
+- The narrowest test command was run and its result is quoted.
+- New business rule → unit test; new messaging/database code → `*IT`.
+- Service README updated in the same change when behaviour or a contract changed.
+- Anything skipped or unverified is said out loud.
+
+## Context hygiene
+
+- `docs/DLS Report-2026-10-21.md` is ~2 MB (embedded images): search it, read line ranges only.
+- Skip `target/`, `node_modules/`, `*.pdf`, and the monolith archives listed above.
+
+## Talking to the user
+
+- Answer in the user's language (usually Danish). Code, comments, commits and docs in English.
