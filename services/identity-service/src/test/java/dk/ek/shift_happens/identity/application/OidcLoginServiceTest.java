@@ -293,6 +293,22 @@ class OidcLoginServiceTest {
         }
 
         @Override
+        public boolean setPasswordHash(long employeeId, String passwordHash) {
+            Account account = byEmployeeId.get(employeeId);
+            if (account == null) {
+                return false;
+            }
+            byEmployeeId.put(employeeId, account.withPasswordHash(passwordHash));
+            return true;
+        }
+
+        @Override
+        public boolean setPasswordHashIfUnset(long employeeId, String passwordHash) {
+            Account account = byEmployeeId.get(employeeId);
+            return account != null && account.passwordHash() == null && setPasswordHash(employeeId, passwordHash);
+        }
+
+        @Override
         public Account save(Account account) {
             byEmployeeId.put(account.employeeId(), account);
             return account;

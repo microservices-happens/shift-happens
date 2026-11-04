@@ -39,6 +39,15 @@ class AdminBootstrapTest {
     }
 
     @Test
+    void aPasswordTooLongForBcryptStopsStartup() {
+        // Otherwise the admin's workforce event would fail inside the projection and be dead-lettered,
+        // so the admin account would silently never exist.
+        assertThatThrownBy(() -> bootstrap(EMAIL, "x".repeat(70)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("too long");
+    }
+
+    @Test
     void anExistingPasswordIsNeverOverwritten() {
         // Otherwise every restart or workforce update would reset a password the admin has since changed.
         Account withPassword = account(EMAIL, "Administrator", "changed-hash");
@@ -96,6 +105,22 @@ class AdminBootstrapTest {
         @Override
         public Optional<Account> findByEmail(String email) {
             return byEmployeeId.values().stream().filter(a -> a.email().equalsIgnoreCase(email)).findFirst();
+        }
+
+        @Override
+        public boolean setPasswordHash(long employeeId, String passwordHash) {
+            Account account = byEmployeeId.get(employeeId);
+            if (account == null) {
+                return false;
+            }
+            byEmployeeId.put(employeeId, account.withPasswordHash(passwordHash));
+            return true;
+        }
+
+        @Override
+        public boolean setPasswordHashIfUnset(long employeeId, String passwordHash) {
+            Account account = byEmployeeId.get(employeeId);
+            return account != null && account.passwordHash() == null && setPasswordHash(employeeId, passwordHash);
         }
 
         @Override

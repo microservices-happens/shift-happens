@@ -1,4 +1,4 @@
--- Google/GitHub login (P2.3). V3 is taken by P2.4 (passwords and roles).
+-- Google/GitHub login (P2.3).
 
 -- A started login: the state sent to the provider and the PKCE verifier that never leaves this
 -- service. Kept here, not in an HTTP session, so any replica can handle the callback. A row is

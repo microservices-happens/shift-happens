@@ -1,6 +1,5 @@
 package dk.ek.shift_happens.identity.application;
 
-import dk.ek.shift_happens.identity.domain.Account;
 import dk.ek.shift_happens.identity.domain.AccountRepository;
 import dk.ek.shift_happens.identity.domain.Caller;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,9 +29,9 @@ public class SetPasswordService {
         if (!caller.maySetPasswordOf(employeeId)) {
             throw new NotAllowedException("Only an Administrator can set another employee's password");
         }
-        Account account = accounts.findByEmployeeId(employeeId)
-                .orElseThrow(() -> new AccountNotFoundException(employeeId));
-        accounts.save(account.withPasswordHash(encode(rawPassword)));
+        if (!accounts.setPasswordHash(employeeId, encode(rawPassword))) {
+            throw new AccountNotFoundException(employeeId);
+        }
     }
 
     private String encode(String rawPassword) {

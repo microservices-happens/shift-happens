@@ -42,6 +42,15 @@ public class AdminBootstrap {
         if (hasPassword && password.length() < MIN_PASSWORD_LENGTH) {
             throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters");
         }
+        if (hasPassword) {
+            try {
+                passwordEncoder.encode(password);
+            } catch (IllegalArgumentException e) {
+                // bcrypt takes at most 72 bytes, pepper included. Fail now, not later inside the
+                // projection, where the admin's workforce event would be dead-lettered.
+                throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD is too long for bcrypt with this pepper");
+            }
+        }
         this.accounts = accounts;
         this.passwordEncoder = passwordEncoder;
         this.email = hasEmail ? email.trim() : null;
@@ -62,6 +71,17 @@ public class AdminBootstrap {
         return account.withPasswordHash(passwordEncoder.encode(password));
     }
 
+    /**
+     * Stores the bootstrap password for a saved account if the rule applies. Only the hash column is
+     * written, and only while it is still empty, so a concurrent password change always wins.
+     */
+    public void applyTo(Account saved) {
+        Account result = apply(saved);
+        if (result != saved) {
+            accounts.setPasswordHashIfUnset(saved.employeeId(), result.passwordHash());
+        }
+    }
+
     /** For an admin account that arrived before the variables were set; later ones go through the projection. */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
@@ -69,11 +89,6 @@ public class AdminBootstrap {
         if (email == null) {
             return;
         }
-        accounts.findByEmail(email).ifPresent(account -> {
-            Account result = apply(account);
-            if (result != account) {
-                accounts.save(result);
-            }
-        });
+        accounts.findByEmail(email).ifPresent(this::applyTo);
     }
 }

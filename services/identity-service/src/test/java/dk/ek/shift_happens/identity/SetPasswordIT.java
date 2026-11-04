@@ -145,6 +145,19 @@ class SetPasswordIT {
         assertThat(login("short@shift.dk", "long-enough").getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
+    @Test
+    void aStaleWorkforceSaveCannotWipeANewPassword() {
+        // The projection and PUT /password can run at the same time. A projection that read the account
+        // before the password was set must not write the old (empty) hash back over the new one.
+        Account self = employee(661, "stale@shift.dk", "Employee");
+        Account staleCopy = accounts.findByEmployeeId(661).orElseThrow();
+        assertThat(setPassword(self, 661, "fresh-password").getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        accounts.save(staleCopy);
+
+        assertThat(login("stale@shift.dk", "fresh-password").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
     private ResponseEntity<Map> login(String email, String password) {
         return http.postForEntity("/v1/auth/login", Map.of("email", email, "password", password), Map.class);
     }

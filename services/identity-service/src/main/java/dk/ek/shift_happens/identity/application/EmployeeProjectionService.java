@@ -70,9 +70,10 @@ public class EmployeeProjectionService {
                     envelope.eventType(), snapshot.employeeId(), version, current.get().aggregateVersion());
         } else {
             // The bootstrap admin usually arrives here, after startup, as a workforce event.
-            accounts.save(adminBootstrap.apply(current
+            Account saved = accounts.save(current
                     .map(account -> account.withSnapshot(snapshot, version))
-                    .orElseGet(() -> Account.fromSnapshot(snapshot, version))));
+                    .orElseGet(() -> Account.fromSnapshot(snapshot, version)));
+            adminBootstrap.applyTo(saved);
         }
 
         processedEvents.record(envelope.eventId());

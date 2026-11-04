@@ -35,7 +35,9 @@ public class AccountEntity {
     @Column(name = "last_name", length = 100)
     private String lastName;
 
-    @Column(name = "password_hash", length = 255)
+    // updatable = false: the projection saves the whole row, and it must never wipe or restore a
+    // password. Passwords change only through AccountRepository.setPasswordHash*.
+    @Column(name = "password_hash", length = 255, updatable = false)
     private String passwordHash;
 
     @Column(name = "role", nullable = false, length = 20)
