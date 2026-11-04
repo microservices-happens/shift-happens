@@ -2,6 +2,7 @@ package dk.ek.shift_happens.scheduling.infrastructure.persistence;
 
 import dk.ek.shift_happens.scheduling.domain.ShiftAssignment;
 import dk.ek.shift_happens.scheduling.domain.ShiftAssignmentRepository;
+import dk.ek.shift_happens.scheduling.domain.WorkedWindow;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
@@ -34,6 +35,25 @@ class JpaShiftAssignmentRepository implements ShiftAssignmentRepository {
     public List<ShiftAssignment> findActiveOverlapping(long employeeId, Instant from, Instant to) {
         return jpa.findActiveOverlapping(employeeId, from, to).stream()
                 .map(ShiftAssignmentEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<ShiftAssignment> findActiveByShift(long shiftId) {
+        return jpa.findActiveByShift(shiftId).stream().map(ShiftAssignmentEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<ShiftAssignment> findActiveOverlappingOtherThanShift(long shiftId, Instant from, Instant to) {
+        return jpa.findActiveOverlappingOtherThanShift(shiftId, from, to).stream()
+                .map(ShiftAssignmentEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<WorkedWindow> findWorkedWindows(long employeeId, Instant from, Instant to) {
+        return jpa.findWorkedWindows(employeeId, from, to).stream()
+                .map(view -> new WorkedWindow(view.getStart(), view.getEnd()))
                 .toList();
     }
 }

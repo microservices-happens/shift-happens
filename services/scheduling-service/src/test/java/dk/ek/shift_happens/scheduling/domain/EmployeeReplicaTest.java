@@ -31,7 +31,7 @@ class EmployeeReplicaTest {
 
     @Test
     void anEmployeeWithNoJobRolesMatchesNothing() {
-        EmployeeReplica employee = new EmployeeReplica(1, "Ada", "Lovelace", "ACTIVE", null, null, 1, null);
+        EmployeeReplica employee = new EmployeeReplica(1, "Ada", "Lovelace", "ACTIVE", null, null, 1, null, 37.5);
 
         assertThat(employee.hasJobRole(7)).isFalse();
     }
@@ -45,6 +45,6 @@ class EmployeeReplicaTest {
     }
 
     private static EmployeeReplica employee(String status, Instant deletedAt) {
-        return new EmployeeReplica(1, "Ada", "Lovelace", status, List.of(7L), 3L, 1, deletedAt);
+        return new EmployeeReplica(1, "Ada", "Lovelace", status, List.of(7L), 3L, 1, deletedAt, 37.5);
     }
 }

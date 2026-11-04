@@ -54,7 +54,8 @@ public class EmployeeReplicaService {
             if (current != null && current.accepts(envelope.aggregateVersion())) {
                 employees.save(new EmployeeReplica(current.employeeId(), current.firstName(),
                         current.lastName(), current.employmentStatus(), current.jobRoleIds(),
-                        current.primaryWorkLocationId(), envelope.aggregateVersion(), envelope.occurredAt()));
+                        current.primaryWorkLocationId(), envelope.aggregateVersion(), envelope.occurredAt(),
+                        current.weeklyContractHours()));
             }
             processedEvents.record(envelope.eventId());
             return;
@@ -81,7 +82,8 @@ public class EmployeeReplicaService {
                 snapshot.primaryWorkLocationId(),
                 envelope.aggregateVersion(),
                 // A snapshot never clears a tombstone that is already there.
-                current == null ? null : current.deletedAt()));
+                current == null ? null : current.deletedAt(),
+                snapshot.weeklyContractHours() == null ? 0 : snapshot.weeklyContractHours()));
         processedEvents.record(envelope.eventId());
     }
 }
