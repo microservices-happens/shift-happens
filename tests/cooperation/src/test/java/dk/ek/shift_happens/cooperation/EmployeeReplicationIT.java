@@ -70,7 +70,8 @@ class EmployeeReplicationIT {
         workforce = ServiceContainer.create("workforce-service", NETWORK)
                 .withEnv(serviceEnvironment("workforce-db", "workforce", "workforce", "workforce_dev", null));
         identity = ServiceContainer.create("identity-service", NETWORK)
-                .withEnv(serviceEnvironment("identity-db", "identity", "identity", "identity_dev", "identity.accounts"));
+                .withEnv(serviceEnvironment("identity-db", "identity", "identity", "identity_dev", "identity.accounts"))
+                .withEnv("PASSWORD_PEPPER", "cooperation-test-pepper");
 
         workforce.start();
         identity.start();
