@@ -1,7 +1,7 @@
 # Shift Happens on local Kubernetes
 
 Plain manifests for Docker Desktop Kubernetes (kubeadm), translated from
-`docker-compose.microservices.yml` (the `app` profile, without `ollama`).
+`docker-compose.microservices.yml` (the `app` profile, with Ollama deployed alongside the AI service).
 One folder per compose service; each Kubernetes Service has the same name as
 its compose service, so hostnames like `DB_HOST=identity-db` work unchanged.
 
@@ -114,7 +114,17 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 - **OIDC callback URLs** (`OIDC_REDIRECT_BASE_URL`, `FRONTEND_LOGIN_CALLBACK_URL` on identity-service)
   are copied from compose and still say `https://localhost:8443`. Through the NodePort the gateway is
   on `:30443`, so Google/GitHub login redirects go to the wrong port. Local password login is unaffected.
-- **ollama** (optional `ai` profile) is not deployed. ai-service falls back to rule-based ranking.
+- **Ollama** runs as a Deployment with a ClusterIP Service. The AI service uses
+  `http://ollama:11434` in the same namespace. Load the default model after the Deployment is ready:
+
+  ```sh
+  kubectl rollout status deployment/ollama
+  kubectl exec deployment/ollama -- ollama pull llama3.2:1b
+  ```
+
+  The model cache lives for the lifetime of the pod. Repeat the pull after pod replacement.
+  AI falls back to rule-based ranking while the model is unavailable.
+  See [the latency measurement](ollama/latency.md) for the report.
 - **email-function** has no Service and no probe: it has no ports and no healthcheck in compose.
   It exits when `email.send` is empty, so as a Deployment it keeps restarting (`Completed` →
   `CrashLoopBackOff` with growing back-off). Compose does the same with `restart: unless-stopped`.
