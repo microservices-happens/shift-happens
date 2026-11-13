@@ -3,6 +3,7 @@ package dk.ek.shift_happens.workforce.api;
 import dk.ek.shift_happens.workforce.application.EmployeeNotFoundException;
 import dk.ek.shift_happens.workforce.application.IdempotencyConflictException;
 import dk.ek.shift_happens.workforce.application.InvalidIdempotencyKeyException;
+import dk.ek.shift_happens.workforce.application.ReferenceDataNotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -18,6 +19,11 @@ import java.util.Map;
 /** Errors are RFC 9457 problem+json, as required by contracts/README.md. */
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(ReferenceDataNotFoundException.class)
+    ProblemDetail referenceDataNotFound(ReferenceDataNotFoundException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
 
     @ExceptionHandler(EmployeeNotFoundException.class)
     ProblemDetail notFound(EmployeeNotFoundException exception) {

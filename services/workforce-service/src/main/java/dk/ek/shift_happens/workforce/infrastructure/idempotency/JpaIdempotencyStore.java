@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.workforce.infrastructure.idempotency;
 
 import dk.ek.shift_happens.workforce.application.IdempotencyStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -18,9 +19,17 @@ class JpaIdempotencyStore implements IdempotencyStore {
     private static final Duration RETENTION = Duration.ofHours(24);
 
     private final IdempotencyRecordJpaRepository repository;
+    private final JdbcTemplate jdbc;
 
-    JpaIdempotencyStore(IdempotencyRecordJpaRepository repository) {
+    JpaIdempotencyStore(IdempotencyRecordJpaRepository repository, JdbcTemplate jdbc) {
         this.repository = repository;
+        this.jdbc = jdbc;
+    }
+
+    @Override
+    public void lock(String idempotencyKey) {
+        // Serializes first use and replay of the same key until the command commits.
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?, 0))", result -> null, idempotencyKey);
     }
 
     @Override
