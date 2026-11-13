@@ -58,6 +58,7 @@ Idempotent by `eventId`: a redelivery does not call the LLM again.
 Only `GET /health`. The suggestions reach the frontend through Scheduling's GraphQL API.
 
 ## Done when
-- [ ] Unit test: an invalid or hallucinated LLM output is rejected and the rule fallback is used.
+- [x] Tests cover rejected candidate IDs and fallback for malformed model output.
+- [x] Unit test verifies that the Ollama client times out when the HTTP endpoint stalls.
 - [x] Integration test with PostgreSQL and RabbitMQ in Testcontainers and a stubbed LLM HTTP endpoint.
   `mvn verify` checks that an understaffed event produces a suggestion, including fallback for malformed model output.
