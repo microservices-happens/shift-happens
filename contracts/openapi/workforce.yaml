@@ -25,6 +25,7 @@ paths:
       - employees
       summary: List employees
       operationId: list_employees
+      description: When multiple filters are provided, all must match.
       responses:
         '200':
           description: OK
@@ -38,6 +39,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
       parameters:
       - $ref: '#/components/parameters/CorrelationId'
+      - name: employmentStatus
+        in: query
+        description: Exact employment status match.
+        schema:
+          type: string
+      - name: primaryWorkLocationId
+        in: query
+        description: Exact primary work location ID match.
+        schema:
+          type: integer
+          format: int64
+      - name: userRole
+        in: query
+        description: Exact user role match.
+        schema:
+          type: string
+      - name: email
+        in: query
+        description: Case-insensitive email substring match.
+        schema:
+          type: string
+      - name: firstName
+        in: query
+        description: Case-insensitive first name substring match.
+        schema:
+          type: string
+      - name: lastName
+        in: query
+        description: Case-insensitive last name substring match.
+        schema:
+          type: string
     post:
       tags:
       - employees
