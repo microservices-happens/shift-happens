@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.workforce.domain;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -26,6 +27,14 @@ public record Employee(
 
     /** Creates a new employee; the id and the first aggregate version are assigned on save. */
     public static Employee create(NewEmployee newEmployee) {
+        return withDetails(null, 1, newEmployee);
+    }
+
+    public Employee update(NewEmployee details) {
+        return withDetails(id, aggregateVersion + 1, details);
+    }
+
+    private static Employee withDetails(Long id, long version, NewEmployee newEmployee) {
         requireText(newEmployee.employeeNumber(), "employeeNumber");
         requireText(newEmployee.firstName(), "firstName");
         requireText(newEmployee.lastName(), "lastName");
@@ -35,7 +44,7 @@ public record Employee(
             throw new IllegalArgumentException("userRole must be one of " + ROLES);
         }
         return new Employee(
-                null,
+                id,
                 newEmployee.employeeNumber(),
                 newEmployee.userRole(),
                 newEmployee.firstName(),
@@ -45,16 +54,20 @@ public record Employee(
                 newEmployee.hireDate(),
                 newEmployee.employmentStatus(),
                 newEmployee.primaryWorkLocationId(),
-                1);
+                version);
     }
 
     /** The full snapshot that goes into workforce.employee.created.v1 / .updated.v1. */
-    public EmployeeSnapshot snapshot() {
+    public EmployeeSnapshot snapshot(List<Long> jobRoleIds, int weeklyContractHours) {
         return new EmployeeSnapshot(
                 id, employeeNumber, userRole, firstName, lastName, email,
                 phoneNumber, hireDate, employmentStatus, primaryWorkLocationId,
-                // Employee job roles are a separate slice (P2.5); the schema allows an empty list.
-                java.util.List.of());
+                jobRoleIds, weeklyContractHours);
+    }
+
+    public Employee nextVersion() {
+        return new Employee(id, employeeNumber, userRole, firstName, lastName, email, phoneNumber,
+                hireDate, employmentStatus, primaryWorkLocationId, aggregateVersion + 1);
     }
 
     private static void requireText(String value, String field) {
