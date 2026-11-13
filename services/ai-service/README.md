@@ -59,4 +59,5 @@ Only `GET /health`. The suggestions reach the frontend through Scheduling's Grap
 
 ## Done when
 - [ ] Unit test: an invalid or hallucinated LLM output is rejected and the rule fallback is used.
-- [ ] Integration test with a stubbed LLM endpoint: an understaffed event in → a suggestion event out.
+- [x] Integration test with PostgreSQL and RabbitMQ in Testcontainers and a stubbed LLM HTTP endpoint.
+  `mvn verify` checks that an understaffed event produces a suggestion, including fallback for malformed model output.
