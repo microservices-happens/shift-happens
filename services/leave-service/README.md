@@ -8,6 +8,8 @@
 | `command` | `leave-command` | `leave-write-db` (Postgres, Flyway) + outbox + saga table + employee replica | REST POST/PUT/PATCH/DELETE |
 | `query` | `leave-query` | `leave-read-db` (MongoDB) | REST GET (balances, overviews) |
 
+> **Status:** the command-side foundation exists: transactional outbox + relay, DLX topology (events and dead-letter exchanges), `processed_events`, idempotency (`Idempotency-Key`) and RFC 9457 problem+json errors. Not built yet: the leave domain (types, requests, approvals, ledger, saga), the employee replica, message listeners (and the `leave.command` queue) and JWT security. The sections below describe the target design.
+
 REST contract: [`contracts/openapi/leave.yaml`](../../contracts/openapi/leave.yaml).
 
 ## Immutable ledger + snapshot
