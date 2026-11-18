@@ -13,7 +13,7 @@
 REST contract: [`contracts/openapi/leave.yaml`](../../contracts/openapi/leave.yaml).
 
 ## Command API (#44)
-Writes only; GETs belong to the query role (#46). All writes answer `202 Accepted` with the resource, errors are problem+json (`400` invalid input, `404` unknown id, `409` business rule). Schema `V3__leave_domain.sql`; the `employee_replica` is checked, never another service.
+Writes only; GETs belong to the query role (#46). POST, PUT and PATCH answer `202 Accepted` with the resource, DELETEs answer an empty `202`; errors are problem+json (`400` invalid input, `404` unknown id, `409` business rule). Schema `V3__leave_domain.sql`; the `employee_replica` is checked, never another service.
 
 | Endpoint | Rules | Event |
 |---|---|---|
@@ -21,7 +21,7 @@ Writes only; GETs belong to the query role (#46). All writes answer `202 Accepte
 | `PUT /v1/leavetypes/{id}` | same validation; `404` when missing | none |
 | `DELETE /v1/leavetypes/{id}` | hard delete; `409` while any leave request uses the type | none |
 | `POST /v1/leaverequests` (`Idempotency-Key`) | `endDate >= startDate` (`400`); leave type must exist (`400`); employee must be active in the replica (`409`, the replica may lag); no overlap with the employee's PENDING / APPROVAL_PENDING / APPROVED requests (`409`). `endDate` is the last day of leave, so 1st-5th and 5th-7th overlap. Always starts `PENDING`, even when the type does not require approval (auto-approval is out of scope) | `leave.request.submitted.v1` |
-| `PATCH /v1/leaverequests/{id}` | only while `PENDING` (`409`); optional `leaveTypeId`, `startDate`, `endDate`, `reason`, same validations, overlap ignores itself; a PATCH that changes nothing returns the current request (`202`, no version bump, no event); no `Idempotency-Key` (as in scheduling's PUT) | `leave.request.submitted.v1` again, with a higher `aggregateVersion` |
+| `PATCH /v1/leaverequests/{id}` | only while `PENDING` (`409`); optional `leaveTypeId`, `startDate`, `endDate`, `reason`; the same field validations as POST (`endDate >= startDate`, leave type must exist); the employee is not re-checked, since `employeeId` cannot change; overlap ignores itself; a PATCH that changes nothing returns the current request (`202`, no version bump, no event); no `Idempotency-Key` (as in scheduling's PUT) | `leave.request.submitted.v1` again, with a higher `aggregateVersion` |
 | `DELETE /v1/leaverequests/{id}` | only `PENDING` becomes `CANCELLED` (the row stays); a repeated DELETE on a `CANCELLED` request is an idempotent `202` no-op (no change, no second event); any other status is `409` (#47 adds APPROVED with a REVERSAL ledger entry) | `leave.request.cancelled.v1` (first cancel only) |
 | `POST /v1/leaveapprovals` (`Idempotency-Key`) | approver must be active in the replica (`409`), unknown `leaveRequestId` is `404`. `REJECTED`: request must be `PENDING` (`409`), becomes `REJECTED` with `rejectionReason` = comment (default "Rejected by manager") | `leave.request.rejected.v1` with the `decision` object |
 | | **`APPROVED` is a placeholder:** `409` "Approval not available yet" (the leave-approval saga is not implemented, P3.1); no state change, no event. `LeaveRequest.startApproval` is the one place #47 replaces | none |
@@ -30,9 +30,10 @@ Writes only; GETs belong to the query role (#46). All writes answer `202 Accepte
 `aggregateVersion` starts at 1 and increments on every change of a request. `DELETE /v1/leaveapprovals/{id}` is not implemented. Role checks (Administrator/Manager) wait for the JWT work (P2.1). 
 
 ### Concurrency
-- **Edit, cancel and reject** lock the `leave_request` row (`SELECT ... FOR UPDATE`), so concurrent changes of one request run one after the other and the later one sees the committed state (a reject racing a cancel gets `409`).
+- **Edit, cancel and reject** lock the `leave_request` row (JPA `PESSIMISTIC_WRITE`, `SELECT … FOR NO KEY UPDATE` on PostgreSQL), so concurrent changes of one request run one after the other and the later one sees the committed state (a reject racing a cancel gets `409`).
 - **Overlap rule:** `submit` and `edit` take a per-employee advisory lock (`pg_advisory_xact_lock(employeeId)`) before checking the employee's other requests, so two overlapping requests of one employee cannot both pass the check.
 - **`Idempotency-Key`:** `IdempotencyService.execute` is one transaction that first takes an advisory lock on the (canonical, lower-case) key (`pg_advisory_xact_lock(4401, hash(key))`), so two simultaneous calls with the same key run the action once and the second one replays the first response. A failing command rolls back its effects together with the idempotency record, so failures are not stored and a retry with the same key runs again.
+- **Bounded waits:** every lock wait is limited by `lock_timeout` (`DB_LOCK_TIMEOUT`, default `5s`, set per connection through Hikari's `connection-init-sql`), so a stuck lock cannot starve the connection pool. A timed-out wait or a deadlock is answered `409` "Conflicting change" and the client may retry; a retry with the same `Idempotency-Key` that waits longer than the timeout also gets that `409`. Flyway shares the datasource, so a blocked migration fails the boot after the timeout instead of hanging.
 - **Backstop:** the exclusion constraint (`btree_gist`) still guards the overlap rule in the database. A lost lock race or deadlock (`ConcurrencyFailureException`) and a constraint violation are answered as `409` "Conflicting change" problem+json; the client may retry.
 
 ## Immutable ledger + snapshot
@@ -53,6 +54,9 @@ Planned: `leave.request.approval-started.v1`, `leave.request.approved.v1` (#47) 
 
 The relay polls the outbox every `OUTBOX_RELAY_DELAY` ms (default `2000`).
 
+## Configuration
+Environment variables only (names as in `docker-compose.microservices.yml`). Besides the usual `DB_*` and `RABBITMQ_*` variables: `DB_LOCK_TIMEOUT` (PostgreSQL `lock_timeout` per connection, default `5s`; keep it well below Hikari's 30 s connection timeout) and `OUTBOX_RELAY_DELAY`.
+
 ## Consumes
 | Queue | Role | Routing keys |
 |---|---|---|
@@ -61,7 +65,7 @@ The relay polls the outbox every `OUTBOX_RELAY_DELAY` ms (default `2000`).
 
 A message that fails three times (or cannot be converted) is republished to the dead-letter exchange `shift-happens.dlx` with routing key `leave.command` (the queue name) and lands in `leave.command.dlq`; it is never requeued forever.
 
-> **Upgrading a local broker:** the arguments (`x-dead-letter-routing-key`) and bindings of `leave.command` changed. RabbitMQ refuses to redeclare a queue with different arguments, so delete the existing `leave.command` queue (or run `docker compose -f docker-compose.microservices.yml down -v`) before starting the service.
+> **Upgrading a local broker:** the arguments (`x-dead-letter-routing-key`) and bindings of `leave.command` changed. RabbitMQ refuses to redeclare a queue with different arguments, so delete the existing `leave.command` **and** `leave.command.dlq` queues (RabbitAdmin never removes the old `#` binding of the DLQ; or run `docker compose -f docker-compose.microservices.yml down -v`) before starting the service.
 
 ## Extract from monolith
 `leavetype`, `leaverequest`, `leaveapproval`, `leaveledger` and `view/employeeleaveoverview`. Remove PUT/DELETE on the ledger.

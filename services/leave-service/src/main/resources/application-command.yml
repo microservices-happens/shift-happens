@@ -4,6 +4,10 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:leave}
     username: ${DB_USER:leave}
     password: ${DB_PASSWORD:leave_dev}
+    hikari:
+      # Bounds every lock wait (row and advisory locks) so a stuck lock cannot starve the pool; keep it well
+      # below hikari's connection-timeout (30 s). Flyway shares this datasource, so a blocked migration fails.
+      connection-init-sql: "SET lock_timeout = '${DB_LOCK_TIMEOUT:5s}'"
   jpa:
     open-in-view: false
     hibernate:
