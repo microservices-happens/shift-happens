@@ -2,6 +2,15 @@ package dk.ek.shift_happens.leave.api;
 
 import dk.ek.shift_happens.leave.application.IdempotencyConflictException;
 import dk.ek.shift_happens.leave.application.InvalidIdempotencyKeyException;
+import dk.ek.shift_happens.leave.application.LeaveApprovalNotFoundException;
+import dk.ek.shift_happens.leave.application.LeaveRequestNotFoundException;
+import dk.ek.shift_happens.leave.application.LeaveTypeNotFoundException;
+import dk.ek.shift_happens.leave.domain.ApprovalNotAvailableException;
+import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
+import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
+import dk.ek.shift_happens.leave.domain.LeaveTypeConflictException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -22,6 +31,66 @@ class ApiExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid request");
         problem.setType(URI.create("https://shift-happens.local/problems/invalid-request"));
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidLeaveRequestException.class)
+    ProblemDetail invalidLeave(InvalidLeaveRequestException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid leave request", "invalid-leave-request",
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail unreadableBody(HttpMessageNotReadableException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request body", "validation",
+                "The request body is missing or malformed (check dates as yyyy-MM-dd and enum values)");
+    }
+
+    @ExceptionHandler(LeaveTypeNotFoundException.class)
+    ProblemDetail leaveTypeNotFound(LeaveTypeNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "Leave type not found", "leave-type-not-found", exception.getMessage());
+    }
+
+    @ExceptionHandler(LeaveRequestNotFoundException.class)
+    ProblemDetail leaveRequestNotFound(LeaveRequestNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "Leave request not found", "leave-request-not-found",
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(LeaveApprovalNotFoundException.class)
+    ProblemDetail leaveApprovalNotFound(LeaveApprovalNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "Leave approval not found", "leave-approval-not-found",
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(LeaveRequestRejectedException.class)
+    ProblemDetail leaveRejected(LeaveRequestRejectedException exception) {
+        return problem(HttpStatus.CONFLICT, "Leave request rejected", "leave-request-rejected",
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(LeaveTypeConflictException.class)
+    ProblemDetail leaveTypeConflict(LeaveTypeConflictException exception) {
+        return problem(HttpStatus.CONFLICT, "Leave type conflict", "leave-type-conflict", exception.getMessage());
+    }
+
+    @ExceptionHandler(ApprovalNotAvailableException.class)
+    ProblemDetail approvalNotAvailable(ApprovalNotAvailableException exception) {
+        return problem(HttpStatus.CONFLICT, "Approval not available yet", "approval-not-available",
+                exception.getMessage());
+    }
+
+    /** The overlap exclusion constraint of V3 caught a concurrent request that the application check missed. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ProblemDetail integrityViolation(DataIntegrityViolationException exception) {
+        return problem(HttpStatus.CONFLICT, "Conflicting change", "conflicting-change",
+                "The change conflicts with a concurrent change (for example an overlapping leave request)");
+    }
+
+    private static ProblemDetail problem(HttpStatus status, String title, String type, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(title);
+        problem.setType(URI.create("https://shift-happens.local/problems/" + type));
         return problem;
     }
 

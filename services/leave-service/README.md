@@ -8,9 +8,26 @@
 | `command` | `leave-command` | `leave-write-db` (Postgres, Flyway) + outbox + saga table + employee replica | REST POST/PUT/PATCH/DELETE |
 | `query` | `leave-query` | `leave-read-db` (MongoDB) | REST GET (balances, overviews) |
 
-> **Status:** the command-side foundation exists: transactional outbox + relay, DLX topology (events and dead-letter exchanges), `processed_events`, idempotency (`Idempotency-Key`) and RFC 9457 problem+json errors. The employee replica (`employee_replica`, fed by `workforce.employee.*`) and the `leave.command` queue with its listener and dead-letter queue also exist. Not built yet: the leave domain (types, requests, approvals, ledger), the saga and its reply bindings (`scheduling.leave-release.*`) and JWT security. The sections below describe the target design.
+> **Status:** the command side has its foundation (transactional outbox + relay, DLX topology, `processed_events`, `Idempotency-Key`, RFC 9457 problem+json, the employee replica fed by `workforce.employee.*`, the `leave.command` queue) and, since #44, the **write API for leave types, leave requests and leave approvals** (see "Command API (#44)"). Still missing: the immutable ledger and balance snapshots (#45), the saga and therefore `APPROVED` decisions plus cancelling approved leave (#47 / P3.1), the query role and all GET endpoints (#46), and JWT security with role checks (P2.1). The sections below describe the target design.
 
 REST contract: [`contracts/openapi/leave.yaml`](../../contracts/openapi/leave.yaml).
+
+## Command API (#44)
+Writes only; GETs belong to the query role (#46). All writes answer `202 Accepted` with the resource, errors are problem+json (`400` invalid input, `404` unknown id, `409` business rule). Schema `V3__leave_domain.sql`; the `employee_replica` is checked, never another service.
+
+| Endpoint | Rules | Event |
+|---|---|---|
+| `POST /v1/leavetypes` (`Idempotency-Key`) | name unique ignoring case (`409`); `requiresApproval` and `isPaidLeave` default to `true` | none (not in the catalog) |
+| `PUT /v1/leavetypes/{id}` | same validation; `404` when missing | none |
+| `DELETE /v1/leavetypes/{id}` | hard delete; `409` while any leave request uses the type | none |
+| `POST /v1/leaverequests` (`Idempotency-Key`) | `endDate >= startDate` (`400`); leave type must exist (`400`); employee must be active in the replica (`409`, the replica may lag); no overlap with the employee's PENDING / APPROVAL_PENDING / APPROVED requests (`409`). `endDate` is the last day of leave, so 1st-5th and 5th-7th overlap. Always starts `PENDING`, even when the type does not require approval (auto-approval is out of scope) | `leave.request.submitted.v1` |
+| `PATCH /v1/leaverequests/{id}` | only while `PENDING` (`409`); optional `leaveTypeId`, `startDate`, `endDate`, `reason`, same validations, overlap ignores itself; no `Idempotency-Key` (as in scheduling's PUT) | `leave.request.submitted.v1` again, with a higher `aggregateVersion` |
+| `DELETE /v1/leaverequests/{id}` | only `PENDING` becomes `CANCELLED` (the row stays); anything else is `409` (#47 adds APPROVED with a REVERSAL ledger entry) | `leave.request.cancelled.v1` |
+| `POST /v1/leaveapprovals` (`Idempotency-Key`) | approver must be active in the replica (`409`), unknown `leaveRequestId` is `404`. `REJECTED`: request must be `PENDING` (`409`), becomes `REJECTED` with `rejectionReason` = comment (default "Rejected by manager") | `leave.request.rejected.v1` with the `decision` object |
+| | **`APPROVED` is a placeholder:** `409` "Approval not available yet" (the leave-approval saga is not implemented, P3.1); no state change, no event. `LeaveRequest.startApproval` is the one place #47 replaces | none |
+| `PUT /v1/leaveapprovals/{id}` | every stored decision is final today, so `404` when missing, otherwise `409` | none |
+
+`aggregateVersion` starts at 1 and increments on every change of a request. `DELETE /v1/leaveapprovals/{id}` is not implemented. Role checks (Administrator/Manager) wait for the JWT work (P2.1). A database exclusion constraint (`btree_gist`) backs the overlap rule against concurrent requests.
 
 ## Immutable ledger + snapshot
 Ledger rows are never updated or deleted. A correction or saga compensation is a new `REVERSAL` entry. For fast balances, the command side stores a **balance snapshot** per employee and leave type every 50 entries: balance = latest snapshot + the entries after it.
