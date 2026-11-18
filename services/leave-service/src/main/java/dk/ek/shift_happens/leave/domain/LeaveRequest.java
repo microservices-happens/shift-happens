@@ -3,6 +3,7 @@ package dk.ek.shift_happens.leave.domain;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Objects;
 
 /**
  * A leave request and its state machine. Every rule lives here as plain Java, so it is testable without Spring.
@@ -35,22 +36,33 @@ public record LeaveRequest(
                 reason, now, null, null, 1);
     }
 
-    /** PATCH: a null argument keeps the current value. Only a PENDING request can be edited. */
+    /**
+     * PATCH: a null argument keeps the current value. Only a PENDING request can be edited. An edit that changes
+     * nothing returns this very instance (no version bump).
+     */
     public LeaveRequest edited(Long newLeaveTypeId, LocalDate newStartDate, LocalDate newEndDate, String newReason) {
         requirePending("edited");
         LocalDate start = newStartDate != null ? newStartDate : startDate;
         LocalDate end = newEndDate != null ? newEndDate : endDate;
         requireDates(start, end);
-        return new LeaveRequest(leaveRequestId, employeeId, newLeaveTypeId != null ? newLeaveTypeId : leaveTypeId,
-                start, end, status, newReason != null ? newReason : reason, requestedDatetime, decision,
-                rejectionReason, aggregateVersion + 1);
+        long type = newLeaveTypeId != null ? newLeaveTypeId : leaveTypeId;
+        String text = newReason != null ? newReason : reason;
+        if (type == leaveTypeId && start.equals(startDate) && end.equals(endDate) && Objects.equals(text, reason)) {
+            return this; // nothing changes: same instance, same version
+        }
+        return new LeaveRequest(leaveRequestId, employeeId, type, start, end, status, text, requestedDatetime,
+                decision, rejectionReason, aggregateVersion + 1);
     }
 
     /**
-     * DELETE: PENDING to CANCELLED (soft, the row stays). Cancelling APPROVED leave, with a REVERSAL ledger
-     * entry, is added by #47.
+     * DELETE: PENDING to CANCELLED (soft, the row stays). Cancelling an already CANCELLED request is an
+     * idempotent no-op and returns this instance. Cancelling APPROVED leave, with a REVERSAL ledger entry, is
+     * added by #47.
      */
     public LeaveRequest cancelled() {
+        if (status == LeaveRequestStatus.CANCELLED) {
+            return this;
+        }
         requirePending("cancelled");
         return withStatus(LeaveRequestStatus.CANCELLED, decision, rejectionReason);
     }

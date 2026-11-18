@@ -46,7 +46,7 @@ public class LeaveApprovalService {
     @Transactional
     public LeaveApproval decide(long leaveRequestId, long approverEmployeeId, ApprovalDecision decision,
                                 String comment, String correlationId) {
-        LeaveRequest request = requests.findById(leaveRequestId)
+        LeaveRequest request = requests.findByIdForUpdate(leaveRequestId)
                 .orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
         // TODO(P2.1): once the JWT is validated, require the Administrator or Manager role here.
         LeaveRequestService.requireActiveEmployee(employees, approverEmployeeId, "approver");

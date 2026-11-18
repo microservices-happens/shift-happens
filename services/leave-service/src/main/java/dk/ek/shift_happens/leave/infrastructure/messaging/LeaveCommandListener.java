@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>One queue has one listener that dispatches on eventType: two listeners on the same queue would be
  * competing consumers, and a message could land on the one that does not handle it. Today only
- * workforce.employee.* (local replica) is bound; the saga replies join with the saga ticket.
+ * workforce.employee.{created,updated,deleted}.v1 (local replica) is bound, by exact routing key; the saga
+ * replies join with the saga ticket (#47).
  */
 @Component
 @Profile("command")
@@ -31,10 +32,11 @@ public class LeaveCommandListener {
         log.info("Received {} for aggregate {} (v{}), correlation {}", envelope.eventType(),
                 envelope.aggregateId(), envelope.aggregateVersion(), envelope.correlationId());
 
-        if (envelope.eventType().startsWith("workforce.employee.")) {
-            replica.apply(envelope);
-        } else {
-            log.warn("Ignoring unexpected event type {}", envelope.eventType());
+        switch (envelope.eventType()) {
+            case LeaveCommandTopology.EMPLOYEE_CREATED, LeaveCommandTopology.EMPLOYEE_UPDATED ->
+                    replica.applySnapshot(envelope);
+            case LeaveCommandTopology.EMPLOYEE_DELETED -> replica.applyTombstone(envelope);
+            default -> log.warn("Ignoring unexpected event type {}", envelope.eventType());
         }
     }
 }

@@ -45,6 +45,7 @@ public class LeaveRequestService {
                 clock.instant());
         LeaveType type = leaveType(leaveTypeId);
         requireActiveEmployee(employeeId, "employee");
+        requests.lockEmployeeCalendar(employeeId);
         request.requireNoOverlapWith(requests.findOccupyingByEmployeeId(employeeId));
 
         LeaveRequest saved = requests.save(request);
@@ -57,9 +58,13 @@ public class LeaveRequestService {
     @Transactional
     public LeaveRequest edit(long leaveRequestId, Long leaveTypeId, LocalDate startDate, LocalDate endDate,
                              String reason, String correlationId) {
-        LeaveRequest current = find(leaveRequestId);
+        LeaveRequest current = findForUpdate(leaveRequestId);
         LeaveRequest edited = current.edited(leaveTypeId, startDate, endDate, reason);
+        if (edited.equals(current)) {
+            return current; // nothing changed: no version bump, no event
+        }
         LeaveType type = leaveType(edited.leaveTypeId());
+        requests.lockEmployeeCalendar(current.employeeId());
         edited.requireNoOverlapWith(requests.findOccupyingByEmployeeId(edited.employeeId()));
 
         LeaveRequest saved = requests.save(edited);
@@ -68,17 +73,25 @@ public class LeaveRequestService {
         return saved;
     }
 
-    /** DELETE: PENDING to CANCELLED. #47 extends this to APPROVED requests (with a REVERSAL ledger entry). */
+    /**
+     * DELETE: PENDING to CANCELLED; an already CANCELLED request is an idempotent no-op (no change, no event).
+     * #47 extends this to APPROVED requests (with a REVERSAL ledger entry).
+     */
     @Transactional
     public LeaveRequest cancel(long leaveRequestId, String correlationId) {
-        LeaveRequest saved = requests.save(find(leaveRequestId).cancelled());
+        LeaveRequest current = findForUpdate(leaveRequestId);
+        LeaveRequest cancelled = current.cancelled();
+        if (cancelled.equals(current)) {
+            return current;
+        }
+        LeaveRequest saved = requests.save(cancelled);
         events.append(DomainEvents.LEAVE_REQUEST_CANCELLED, saved.leaveRequestId(), saved.aggregateVersion(),
                 correlationId, saved.snapshot(leaveType(saved.leaveTypeId()).leaveTypeName()));
         return saved;
     }
 
-    private LeaveRequest find(long leaveRequestId) {
-        return requests.findById(leaveRequestId).orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
+    private LeaveRequest findForUpdate(long leaveRequestId) {
+        return requests.findByIdForUpdate(leaveRequestId).orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
     }
 
     private LeaveType leaveType(long leaveTypeId) {

@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.function.ToLongFunction;
 
 /**
  * Projects workforce.employee.* events into the local replica, so validating a leave request never
@@ -41,21 +42,29 @@ public class EmployeeReplicaService {
         this.objectMapper = objectMapper;
     }
 
+    /** workforce.employee.created.v1 and .updated.v1: the data is a full employee snapshot. */
     @Transactional
-    public void apply(EventEnvelope envelope) {
+    public void applySnapshot(EventEnvelope envelope) {
+        applyOnce(envelope, this::projectSnapshot);
+    }
+
+    /** workforce.employee.deleted.v1: the data is a tombstone. */
+    @Transactional
+    public void applyTombstone(EventEnvelope envelope) {
+        applyOnce(envelope, this::projectTombstone);
+    }
+
+    private void applyOnce(EventEnvelope envelope, ToLongFunction<EventEnvelope> projection) {
         if (processedEvents.contains(envelope.eventId())) {
             log.debug("Ignoring already processed event {}", envelope.eventId());
             return;
         }
-
-        long employeeId = envelope.eventType().endsWith(".deleted.v1")
-                ? applyTombstone(envelope)
-                : applySnapshot(envelope);
+        long employeeId = projection.applyAsLong(envelope);
         log.debug("Applied {} for employee {}", envelope.eventType(), employeeId);
         processedEvents.record(envelope.eventId());
     }
 
-    private long applySnapshot(EventEnvelope envelope) {
+    private long projectSnapshot(EventEnvelope envelope) {
         EmployeeSnapshot snapshot = objectMapper.convertValue(envelope.data(), EmployeeSnapshot.class);
         if (snapshot == null || snapshot.employeeId() == null) {
             throw new IllegalArgumentException("event " + envelope.eventId() + " has no employeeId");
@@ -72,7 +81,7 @@ public class EmployeeReplicaService {
     }
 
     /** A tombstone carries {entityType, entityId, deletedAt}, not an employee snapshot. */
-    private long applyTombstone(EventEnvelope envelope) {
+    private long projectTombstone(EventEnvelope envelope) {
         JsonNode data = objectMapper.valueToTree(envelope.data());
         JsonNode entityId = data.path("entityId");
         if (!entityId.canConvertToLong()) {

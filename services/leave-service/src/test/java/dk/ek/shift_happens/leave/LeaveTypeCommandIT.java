@@ -58,13 +58,18 @@ class LeaveTypeCommandIT extends AbstractCommandIT {
         createLeaveType(name);
         long other = createLeaveType("Other " + UUID.randomUUID());
 
-        ResponseEntity<String> duplicate = post("/v1/leavetypes", Map.of("leaveTypeName", name.toUpperCase()),
-                String.class);
-        ResponseEntity<String> renamed = put("/v1/leavetypes/" + other, Map.of("leaveTypeName", name), String.class);
+        ResponseEntity<JsonNode> duplicate = post("/v1/leavetypes", Map.of("leaveTypeName", name.toUpperCase()),
+                JsonNode.class);
+        ResponseEntity<JsonNode> renamed = put("/v1/leavetypes/" + other, Map.of("leaveTypeName", name),
+                JsonNode.class);
 
+        // Title and detail of the application check; the unique index would answer "Conflicting change".
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(duplicate.getBody()).contains("already exists");
+        assertThat(duplicate.getBody().path("title").asText()).isEqualTo("Leave type conflict");
+        assertThat(duplicate.getBody().path("detail").asText()).contains("already exists");
         assertThat(renamed.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(renamed.getBody().path("title").asText()).isEqualTo("Leave type conflict");
+        assertThat(renamed.getBody().path("detail").asText()).contains("already exists");
     }
 
     @Test

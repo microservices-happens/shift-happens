@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,7 +38,7 @@ class LeaveRequestCommandIT extends AbstractCommandIT {
         long id = created.path("leaveRequestId").asLong();
         assertThat(created.path("requestStatus").asText()).isEqualTo("PENDING");
         assertThat(created.path("employeeId").asLong()).isEqualTo(801);
-        assertThat(created.path("requestedDatetime").asText()).isNotBlank();
+        assertThat(instantOf(created.path("requestedDatetime"))).isNotNull();
         assertThat(jdbc.queryForObject("SELECT request_status FROM leave_request WHERE leave_request_id = ?",
                 String.class, id)).isEqualTo("PENDING");
 
@@ -55,11 +56,11 @@ class LeaveRequestCommandIT extends AbstractCommandIT {
         assertThat(data.path("employeeId").asLong()).isEqualTo(801);
         assertThat(data.path("leaveTypeId").asLong()).isEqualTo(typeId);
         assertThat(data.path("leaveTypeName").asText()).startsWith("Vacation");
-        assertThat(data.path("startDate").asText()).isEqualTo("2027-06-01");
-        assertThat(data.path("endDate").asText()).isEqualTo("2027-06-05");
+        assertThat(LocalDate.parse(data.path("startDate").asText())).isEqualTo(LocalDate.of(2027, 6, 1));
+        assertThat(LocalDate.parse(data.path("endDate").asText())).isEqualTo(LocalDate.of(2027, 6, 5));
         assertThat(data.path("requestStatus").asText()).isEqualTo("PENDING");
         assertThat(data.path("reason").asText()).isEqualTo("Summer");
-        assertThat(data.path("requestedDatetime").asText()).isNotBlank();
+        assertThat(instantOf(data.path("requestedDatetime"))).isNotNull();
         assertThat(data.path("decision").isNull()).isTrue();
         assertThat(data.path("rejectionReason").isNull()).isTrue();
     }
@@ -225,10 +226,13 @@ class LeaveRequestCommandIT extends AbstractCommandIT {
 
         assertThat(patch("/v1/leaverequests/" + first, Map.of("endDate", "2027-09-04"), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        ResponseEntity<String> collision = patch("/v1/leaverequests/" + first, Map.of("endDate", "2027-09-10"),
-                String.class);
+        ResponseEntity<JsonNode> collision = patch("/v1/leaverequests/" + first, Map.of("endDate", "2027-09-10"),
+                JsonNode.class);
 
+        // Title and detail of the application check; the exclusion constraint would answer "Conflicting change".
         assertThat(collision.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(collision.getBody().path("title").asText()).isEqualTo("Leave request rejected");
+        assertThat(collision.getBody().path("detail").asText()).contains("already has leave request");
     }
 
     @Test
@@ -284,14 +288,17 @@ class LeaveRequestCommandIT extends AbstractCommandIT {
     }
 
     @Test
-    void cancellingTwiceOrAMissingRequestFails() {
+    void cancellingTwiceIsAnIdempotentNoOpAndAMissingRequestIsNotFound() {
         long typeId = createLeaveType("CancelTwice " + UUID.randomUUID());
         seedEmployee(818);
         long id = submit(818, typeId, "2027-10-01", "2027-10-03");
         delete("/v1/leaverequests/" + id);
 
-        assertThat(delete("/v1/leaverequests/" + id).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        // Spec change requested by the product owner (review Q2): a repeated DELETE is a 202 no-op, no longer 409.
+        assertThat(delete("/v1/leaverequests/" + id).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(outboxEvents(CANCELLED, id)).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT aggregate_version FROM leave_request WHERE leave_request_id = ?",
+                Long.class, id)).isEqualTo(2L);
         assertThat(delete("/v1/leaverequests/99999999").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
@@ -309,10 +316,123 @@ class LeaveRequestCommandIT extends AbstractCommandIT {
 
         assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         long id = first.getBody().path("leaveRequestId").asLong();
-        assertThat(replay.getBody().path("leaveRequestId").asLong()).isEqualTo(id);
+        assertThat(replay.getBody()).as("a replay returns the first response").isEqualTo(first.getBody());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_request WHERE employee_id = 819", Integer.class))
                 .isEqualTo(1);
         assertThat(outboxEvents(SUBMITTED, id)).hasSize(1);
+    }
+
+    @Test
+    void aSameKeyWithADifferentBodyIsAConflictAndCreatesNothing() {
+        long typeId = createLeaveType("KeyConflict " + UUID.randomUUID());
+        seedEmployee(820);
+        String key = UUID.randomUUID().toString();
+        assertThat(http.postForEntity("/v1/leaverequests", new HttpEntity<>(
+                body(820, typeId, "2027-11-01", "2027-11-02", null), headersFor(key, null)), JsonNode.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        ResponseEntity<JsonNode> other = http.postForEntity("/v1/leaverequests", new HttpEntity<>(
+                body(820, typeId, "2027-12-01", "2027-12-02", null), headersFor(key, null)), JsonNode.class);
+
+        assertThat(other.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(other.getHeaders().getContentType().toString()).contains("problem+json");
+        assertThat(other.getBody().path("title").asText()).isEqualTo("Idempotency-Key reused with a different request");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_request WHERE employee_id = 820", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void anExpiredIdempotencyRecordLetsTheSameKeyRunAgain() {
+        long typeId = createLeaveType("Expired " + UUID.randomUUID());
+        seedEmployee(821);
+        String key = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO idempotency_record (idempotency_key, request_hash, response_status, response_body, "
+                + "created_at) VALUES (?, 'stale', 202, '{\"stale\":true}', now() - interval '25 hours')", key);
+
+        ResponseEntity<JsonNode> response = http.postForEntity("/v1/leaverequests", new HttpEntity<>(
+                body(821, typeId, "2027-11-01", "2027-11-02", null), headersFor(key, null)), JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody().path("leaveRequestId").asLong()).isPositive();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_request WHERE employee_id = 821", Integer.class))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT request_hash FROM idempotency_record WHERE idempotency_key = ?",
+                String.class, key)).isNotEqualTo("stale");
+    }
+
+    @Test
+    void aKeyThatIsNotAUuidIsABadRequestAndACaseVariantIsTheSameKey() {
+        long typeId = createLeaveType("KeyForm " + UUID.randomUUID());
+        seedEmployee(822);
+        Map<String, Object> body = body(822, typeId, "2027-11-01", "2027-11-02", null);
+
+        ResponseEntity<JsonNode> invalid = http.postForEntity("/v1/leaverequests",
+                new HttpEntity<>(body, headersFor("not-a-uuid", null)), JsonNode.class);
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(invalid.getHeaders().getContentType().toString()).contains("problem+json");
+        assertThat(invalid.getBody().path("title").asText()).isEqualTo("Invalid Idempotency-Key");
+
+        String key = UUID.randomUUID().toString();
+        ResponseEntity<JsonNode> first = http.postForEntity("/v1/leaverequests",
+                new HttpEntity<>(body, headersFor(key, null)), JsonNode.class);
+        ResponseEntity<JsonNode> upperCase = http.postForEntity("/v1/leaverequests",
+                new HttpEntity<>(body, headersFor(key.toUpperCase(), null)), JsonNode.class);
+
+        assertThat(upperCase.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(upperCase.getBody()).isEqualTo(first.getBody());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_request WHERE employee_id = 822", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void aFailedCommandStoresNoIdempotencyRecordAndKeepsItsDomainProblem() {
+        long typeId = createLeaveType("NoRecord " + UUID.randomUUID());
+        seedEmployee(823);
+        submit(823, typeId, "2027-11-01", "2027-11-05");
+        String key = UUID.randomUUID().toString();
+
+        ResponseEntity<JsonNode> overlap = http.postForEntity("/v1/leaverequests", new HttpEntity<>(
+                body(823, typeId, "2027-11-03", "2027-11-04", null), headersFor(key, null)), JsonNode.class);
+
+        // The problem is the domain's, not an UnexpectedRollbackException from the surrounding transaction.
+        assertThat(overlap.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(overlap.getBody().path("title").asText()).isEqualTo("Leave request rejected");
+        assertThat(overlap.getBody().path("detail").asText()).contains("already has leave request");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_record WHERE idempotency_key = ?",
+                Integer.class, key)).isZero();
+    }
+
+    @Test
+    void aPatchThatChangesNothingKeepsTheVersionAndPublishesNothing() {
+        long typeId = createLeaveType("Noop " + UUID.randomUUID());
+        seedEmployee(824);
+        long id = submit(824, typeId, "2027-09-01", "2027-09-03");
+
+        ResponseEntity<JsonNode> empty = patch("/v1/leaverequests/" + id, Map.of(), JsonNode.class);
+        ResponseEntity<JsonNode> same = patch("/v1/leaverequests/" + id,
+                Map.of("startDate", "2027-09-01", "endDate", "2027-09-03", "leaveTypeId", typeId), JsonNode.class);
+
+        assertThat(empty.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(same.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(same.getBody().path("leaveRequestId").asLong()).isEqualTo(id);
+        assertThat(jdbc.queryForObject("SELECT aggregate_version FROM leave_request WHERE leave_request_id = ?",
+                Long.class, id)).isEqualTo(1L);
+        assertThat(outboxEvents(SUBMITTED, id)).hasSize(1);
+    }
+
+    @Test
+    void aRejectedRequestFreesItsDaysForANewSubmission() {
+        long typeId = createLeaveType("Resubmit " + UUID.randomUUID());
+        seedEmployee(825);
+        seedEmployee(826);
+        long id = submit(825, typeId, "2027-10-10", "2027-10-12");
+        assertThat(post("/v1/leaveapprovals", Map.of("leaveRequestId", id, "approverEmployeeId", 826,
+                "decision", "REJECTED"), String.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        ResponseEntity<String> again = post("/v1/leaverequests",
+                body(825, typeId, "2027-10-10", "2027-10-12", null), String.class);
+
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
     }
 
     private long submit(long employeeId, long typeId, String start, String end) {

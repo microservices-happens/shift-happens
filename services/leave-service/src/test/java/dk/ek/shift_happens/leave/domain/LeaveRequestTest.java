@@ -133,9 +133,37 @@ class LeaveRequestTest {
     }
 
     @Test
+    void cancellingACancelledRequestIsANoOp() {
+        LeaveRequest cancelled = pending().cancelled();
+
+        assertThat(cancelled.cancelled()).isSameAs(cancelled);
+        assertThat(cancelled.cancelled().aggregateVersion()).isEqualTo(2);
+    }
+
+    @Test
+    void aCancelledRequestCanStillNotBeEditedOrRejected() {
+        LeaveRequest cancelled = pending().cancelled();
+
+        assertThatThrownBy(() -> cancelled.edited(null, null, null, "x"))
+                .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("CANCELLED");
+        assertThatThrownBy(() -> cancelled.rejected(decision(ApprovalDecision.REJECTED, "no"), "default"))
+                .isInstanceOf(LeaveRequestRejectedException.class);
+    }
+
+    @Test
+    void anEditThatChangesNothingKeepsTheSameInstanceAndVersion() {
+        LeaveRequest request = pending();
+
+        assertThat(request.edited(null, null, null, null)).isSameAs(request);
+        assertThat(request.edited(request.leaveTypeId(), request.startDate(), request.endDate(), request.reason()))
+                .isSameAs(request);
+        assertThat(request.edited(null, null, null, "another reason").aggregateVersion()).isEqualTo(2);
+    }
+
+    @Test
     void onlyPendingRequestsCanBeEditedCancelledOrRejected() {
         for (LeaveRequestStatus status : List.of(LeaveRequestStatus.APPROVAL_PENDING, LeaveRequestStatus.APPROVED,
-                LeaveRequestStatus.REJECTED, LeaveRequestStatus.CANCELLED)) {
+                LeaveRequestStatus.REJECTED)) {
             LeaveRequest request = saved(10, 5, 1, 5, status);
 
             assertThatThrownBy(() -> request.edited(null, null, null, "x"))

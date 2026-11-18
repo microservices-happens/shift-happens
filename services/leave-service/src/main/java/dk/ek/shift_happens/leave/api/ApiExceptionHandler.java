@@ -9,6 +9,7 @@ import dk.ek.shift_happens.leave.domain.ApprovalNotAvailableException;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
 import dk.ek.shift_happens.leave.domain.LeaveTypeConflictException;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
@@ -85,6 +86,16 @@ class ApiExceptionHandler {
     ProblemDetail integrityViolation(DataIntegrityViolationException exception) {
         return problem(HttpStatus.CONFLICT, "Conflicting change", "conflicting-change",
                 "The change conflicts with a concurrent change (for example an overlapping leave request)");
+    }
+
+    /**
+     * A lock could not be acquired or a deadlock was detected (CannotAcquireLock, PessimisticLockingFailure,
+     * DeadlockLoser are all ConcurrencyFailureException): the change lost a race, retrying is safe.
+     */
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    ProblemDetail concurrencyFailure(ConcurrencyFailureException exception) {
+        return problem(HttpStatus.CONFLICT, "Conflicting change", "conflicting-change",
+                "The change collided with a concurrent change; please retry the request");
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String type, String detail) {

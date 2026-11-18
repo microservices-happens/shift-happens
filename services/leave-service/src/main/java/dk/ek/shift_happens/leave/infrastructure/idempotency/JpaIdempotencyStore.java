@@ -16,12 +16,19 @@ import java.util.Optional;
 @Profile("command")
 class JpaIdempotencyStore implements IdempotencyStore {
 
+    /** First int of the advisory-lock key, so it cannot collide with other two-int advisory locks. */
+    private static final int LOCK_CLASS_ID = 4401;
     private static final Duration RETENTION = Duration.ofHours(24);
 
     private final IdempotencyRecordJpaRepository repository;
 
     JpaIdempotencyStore(IdempotencyRecordJpaRepository repository) {
         this.repository = repository;
+    }
+
+    @Override
+    public void lock(String idempotencyKey) {
+        repository.lock(LOCK_CLASS_ID, idempotencyKey.hashCode());
     }
 
     @Override

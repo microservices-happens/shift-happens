@@ -32,18 +32,36 @@ import org.springframework.context.annotation.Profile;
 @Profile("command")
 public class LeaveCommandTopology {
 
-    /** workforce.employee.created.v1, .updated.v1 and .deleted.v1. */
-    private static final String EMPLOYEE_EVENTS = "workforce.employee.*.v1";
+    static final String EMPLOYEE_CREATED = "workforce.employee.created.v1";
+    static final String EMPLOYEE_UPDATED = "workforce.employee.updated.v1";
+    static final String EMPLOYEE_DELETED = "workforce.employee.deleted.v1";
 
+    /**
+     * Dead-lettered messages (rejected by the container or republished by the recoverer) leave with the queue
+     * name as routing key, so the DLQ is bound to exactly that key.
+     */
     @Bean
     Queue leaveCommandQueue(@Value("${app.rabbit.queue}") String name,
                             @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
-        return QueueBuilder.durable(name).deadLetterExchange(deadLetterExchange).build();
+        return QueueBuilder.durable(name)
+                .deadLetterExchange(deadLetterExchange)
+                .deadLetterRoutingKey(name)
+                .build();
     }
 
     @Bean
-    Binding leaveCommandEmployeeBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
-        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(EMPLOYEE_EVENTS);
+    Binding leaveCommandEmployeeCreatedBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(EMPLOYEE_CREATED);
+    }
+
+    @Bean
+    Binding leaveCommandEmployeeUpdatedBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(EMPLOYEE_UPDATED);
+    }
+
+    @Bean
+    Binding leaveCommandEmployeeDeletedBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(EMPLOYEE_DELETED);
     }
 
     @Bean
@@ -52,8 +70,9 @@ public class LeaveCommandTopology {
     }
 
     @Bean
-    Binding leaveCommandDeadLetterBinding(Queue leaveCommandDeadLetterQueue, TopicExchange deadLetterExchange) {
-        return BindingBuilder.bind(leaveCommandDeadLetterQueue).to(deadLetterExchange).with("#");
+    Binding leaveCommandDeadLetterBinding(Queue leaveCommandDeadLetterQueue, TopicExchange deadLetterExchange,
+                                          @Value("${app.rabbit.queue}") String name) {
+        return BindingBuilder.bind(leaveCommandDeadLetterQueue).to(deadLetterExchange).with(name);
     }
 
     @Bean
@@ -62,7 +81,8 @@ public class LeaveCommandTopology {
             ConnectionFactory connectionFactory,
             Jackson2JsonMessageConverter converter,
             RabbitTemplate rabbitTemplate,
-            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
+            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange,
+            @Value("${app.rabbit.queue}") String queueName) {
 
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         configurer.configure(factory, connectionFactory);
@@ -70,8 +90,9 @@ public class LeaveCommandTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
-                // Keep the original routing key; the DLQ is bound with "#".
-                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, null))
+                // Republish with the queue name as routing key (without an explicit key spring-amqp would use
+                // "error." + the original key); the DLQ is bound with exactly that key.
+                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))
                 .build());
         return factory;
     }

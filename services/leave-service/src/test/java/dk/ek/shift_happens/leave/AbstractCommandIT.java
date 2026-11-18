@@ -22,9 +22,12 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Shared harness of the command-role integration tests: real PostgreSQL and RabbitMQ (no H2, no
@@ -82,6 +85,20 @@ abstract class AbstractCommandIT {
         return queueName;
     }
 
+    /** The node is a JSON string holding an ISO-8601 instant, e.g. 2027-01-01T10:00:00Z. */
+    protected static Instant instantOf(JsonNode node) {
+        assertThat(node.isTextual()).as("%s is a JSON string", node).isTrue();
+        return Instant.parse(node.asText());
+    }
+
+    /** The node is a JSON string holding a UUID in canonical form. */
+    protected static UUID uuidOf(JsonNode node) {
+        assertThat(node.isTextual()).as("%s is a JSON string", node).isTrue();
+        UUID uuid = UUID.fromString(node.asText());
+        assertThat(uuid.toString()).isEqualTo(node.asText());
+        return uuid;
+    }
+
     protected HttpHeaders headersFor(String idempotencyKey, String correlationId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -129,13 +146,12 @@ abstract class AbstractCommandIT {
     }
 
     /**
-     * All outbox rows of one type about one leave request, oldest first, as parsed envelopes. The data filter
-     * keeps synthetic events of other tests (OutboxRelayIT) with the same aggregate id out.
+     * All outbox rows of one event type about one aggregate, oldest first, as parsed envelopes. Synthetic events
+     * of OutboxRelayIT use ids near Long.MAX_VALUE, which a BIGSERIAL never reaches, so ids cannot collide.
      */
     protected List<JsonNode> outboxEvents(String eventType, long aggregateId) {
         return jdbc.queryForList("SELECT payload FROM outbox_event WHERE event_type = ? AND aggregate_id = ? "
-                        + "AND payload::jsonb -> 'data' ->> 'leaveRequestId' = ?::text "
-                        + "ORDER BY occurred_at, event_id", String.class, eventType, aggregateId, aggregateId).stream()
+                        + "ORDER BY occurred_at, event_id", String.class, eventType, aggregateId).stream()
                 .map(payload -> {
                     try {
                         return objectMapper.readTree(payload);

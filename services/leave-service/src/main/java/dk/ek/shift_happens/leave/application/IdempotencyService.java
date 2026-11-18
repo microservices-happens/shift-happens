@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -20,6 +21,11 @@ import java.util.function.Supplier;
  * body is a 409.
  *
  * <p>The response body is stored as JSON, so a replay is byte-for-byte the first response.
+ *
+ * <p>{@link #execute} is one transaction: it first takes a transaction-scoped advisory lock on the key, so two
+ * simultaneous calls with the same key run one after the other, and the second one finds the first one's record.
+ * The action's own transactional methods join this transaction. A failing action rolls back its effects together
+ * with the record, so failures are never stored and a retry with the same key runs again.
  */
 @Service
 @Profile("command")
@@ -33,11 +39,14 @@ public class IdempotencyService {
         this.mapper = mapper;
     }
 
-    public ResponseEntity<?> execute(String idempotencyKey, Object requestBody,
+    @Transactional
+    public ResponseEntity<?> execute(String rawIdempotencyKey, Object requestBody,
                                      Supplier<ResponseEntity<?>> action) {
-        requireUuid(idempotencyKey);
+        // The canonical form makes "ABC..." and "abc..." (and lenient inputs such as 1-1-1-1-1) one key.
+        String idempotencyKey = requireUuid(rawIdempotencyKey).toString();
         String requestHash = hash(requestBody);
 
+        store.lock(idempotencyKey);
         Optional<IdempotencyStore.StoredResponse> stored = store.find(idempotencyKey);
         if (stored.isPresent()) {
             if (!stored.get().requestHash().equals(requestHash)) {
@@ -53,9 +62,9 @@ public class IdempotencyService {
         return response;
     }
 
-    private void requireUuid(String idempotencyKey) {
+    private UUID requireUuid(String idempotencyKey) {
         try {
-            UUID.fromString(idempotencyKey);
+            return UUID.fromString(idempotencyKey);
         } catch (IllegalArgumentException exception) {
             throw new InvalidIdempotencyKeyException(idempotencyKey);
         }

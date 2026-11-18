@@ -37,6 +37,16 @@ class JpaLeaveRequestRepository implements LeaveRequestRepository {
     }
 
     @Override
+    public Optional<LeaveRequest> findByIdForUpdate(long leaveRequestId) {
+        return jpa.findForUpdate(leaveRequestId).map(this::withDecision);
+    }
+
+    @Override
+    public void lockEmployeeCalendar(long employeeId) {
+        jpa.lockEmployeeCalendar(employeeId);
+    }
+
+    @Override
     public List<LeaveRequest> findOccupyingByEmployeeId(long employeeId) {
         return jpa.findByEmployeeIdAndRequestStatusIn(employeeId,
                         LeaveRequestStatus.OCCUPYING.stream().map(Enum::name).toList())

@@ -65,6 +65,25 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void theKeyIsLockedInItsCanonicalFormSoCaseVariantsShareOneRecord() {
+        String lower = key();
+        AtomicInteger calls = new AtomicInteger();
+        service.execute(lower, new Body("a"), () -> {
+            calls.incrementAndGet();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Body("done"));
+        });
+
+        service.execute(lower.toUpperCase(), new Body("a"), () -> {
+            calls.incrementAndGet();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Body("again"));
+        });
+
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(store.locked).containsExactly(lower, lower);
+        assertThat(store.records).containsOnlyKeys(lower);
+    }
+
+    @Test
     void aKeyThatIsNotAUuidIsRejected() {
         assertThatThrownBy(() -> service.execute("not-a-uuid", new Body("a"),
                 () -> ResponseEntity.ok().build()))
@@ -81,6 +100,12 @@ class IdempotencyServiceTest {
     private static final class InMemoryStore implements IdempotencyStore {
 
         private final Map<String, StoredResponse> records = new HashMap<>();
+        private final java.util.List<String> locked = new java.util.ArrayList<>();
+
+        @Override
+        public void lock(String idempotencyKey) {
+            locked.add(idempotencyKey);
+        }
 
         @Override
         public Optional<StoredResponse> find(String idempotencyKey) {

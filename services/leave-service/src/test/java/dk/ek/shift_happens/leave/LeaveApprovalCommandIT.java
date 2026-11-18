@@ -30,7 +30,7 @@ class LeaveApprovalCommandIT extends AbstractCommandIT {
         assertThat(approval.path("leaveRequestId").asLong()).isEqualTo(id);
         assertThat(approval.path("decision").asText()).isEqualTo("REJECTED");
         assertThat(approval.path("leaveComment").asText()).isEqualTo("Too busy");
-        assertThat(approval.path("decisionDatetime").asText()).isNotBlank();
+        assertThat(instantOf(approval.path("decisionDatetime"))).isNotNull();
 
         assertThat(jdbc.queryForMap("SELECT request_status, rejection_reason, aggregate_version FROM leave_request "
                 + "WHERE leave_request_id = ?", id))
@@ -50,7 +50,7 @@ class LeaveApprovalCommandIT extends AbstractCommandIT {
         assertThat(decision.path("approverEmployeeId").asLong()).isEqualTo(990);
         assertThat(decision.path("decision").asText()).isEqualTo("REJECTED");
         assertThat(decision.path("comment").asText()).isEqualTo("Too busy");
-        assertThat(decision.path("decisionDatetime").asText()).isNotBlank();
+        assertThat(instantOf(decision.path("decisionDatetime"))).isNotNull();
     }
 
     @Test
