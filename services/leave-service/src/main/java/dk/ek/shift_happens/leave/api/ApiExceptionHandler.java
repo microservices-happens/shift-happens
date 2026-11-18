@@ -6,6 +6,7 @@ import dk.ek.shift_happens.leave.application.LeaveApprovalNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveRequestNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveTypeNotFoundException;
 import dk.ek.shift_happens.leave.domain.ApprovalNotAvailableException;
+import dk.ek.shift_happens.leave.domain.InsufficientLeaveBalanceException;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
 import dk.ek.shift_happens.leave.domain.LeaveTypeConflictException;
@@ -67,6 +68,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(LeaveRequestRejectedException.class)
     ProblemDetail leaveRejected(LeaveRequestRejectedException exception) {
         return problem(HttpStatus.CONFLICT, "Leave request rejected", "leave-request-rejected",
+                exception.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientLeaveBalanceException.class)
+    ProblemDetail insufficientBalance(InsufficientLeaveBalanceException exception) {
+        return problem(HttpStatus.CONFLICT, "Insufficient leave balance", "insufficient-leave-balance",
                 exception.getMessage());
     }
 

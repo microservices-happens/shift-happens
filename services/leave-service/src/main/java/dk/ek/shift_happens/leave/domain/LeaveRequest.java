@@ -2,6 +2,7 @@ package dk.ek.shift_happens.leave.domain;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Objects;
 
@@ -82,6 +83,11 @@ public record LeaveRequest(
      */
     public LeaveRequest startApproval(LeaveDecision approval) {
         throw new ApprovalNotAvailableException();
+    }
+
+    /** Calendar days of leave, both ends included: weekends count (1st-1st is 1 day, 1st-5th is 5). */
+    public long days() {
+        return ChronoUnit.DAYS.between(startDate, endDate) + 1;
     }
 
     /** True when the two closed day ranges share at least one day. */

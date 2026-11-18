@@ -8,7 +8,7 @@
 | `command` | `leave-command` | `leave-write-db` (Postgres, Flyway) + outbox + employee replica (the saga table arrives with #47) | REST POST/PUT/PATCH/DELETE |
 | `query` | `leave-query` | `leave-read-db` (MongoDB) | REST GET (balances, overviews) |
 
-> **Status:** the command side has its foundation (transactional outbox + relay, DLX topology, `processed_events`, `Idempotency-Key`, RFC 9457 problem+json, the employee replica fed by `workforce.employee.*`, the `leave.command` queue) and, since #44, the **write API for leave types, leave requests and leave approvals** (see "Command API (#44)"). Still missing: the immutable ledger and balance snapshots (#45), the saga and therefore `APPROVED` decisions plus cancelling approved leave (#47 / P3.1), the query role and all GET endpoints (#46), and JWT security with role checks (P2.1). The sections below describe the target design.
+> **Status:** the command side has its foundation (transactional outbox + relay, DLX topology, `processed_events`, `Idempotency-Key`, RFC 9457 problem+json, the employee replica fed by `workforce.employee.*`, the `leave.command` queue) and, since #44, the **write API for leave types, leave requests and leave approvals** (see "Command API (#44)"). and, since #45, the **immutable ledger with balance snapshots** and `POST /v1/leaveledgers` (see "Immutable ledger + snapshot"). Still missing: the saga and therefore `APPROVED` decisions plus cancelling approved leave (#47 / P3.1), the query role and all GET endpoints (#46), and JWT security with role checks (P2.1). The sections below describe the target design.
 
 REST contract: [`contracts/openapi/leave.yaml`](../../contracts/openapi/leave.yaml).
 
@@ -25,6 +25,7 @@ Writes only; GETs belong to the query role (#46). POST, PUT and PATCH answer `20
 | `DELETE /v1/leaverequests/{id}` | only `PENDING` becomes `CANCELLED` (the row stays); a repeated DELETE on a `CANCELLED` request is an idempotent `202` no-op (no change, no second event); any other status is `409` (#47 adds APPROVED with a REVERSAL ledger entry) | `leave.request.cancelled.v1` (first cancel only) |
 | `POST /v1/leaveapprovals` (`Idempotency-Key`) | approver must be active in the replica (`409`), unknown `leaveRequestId` is `404`. `REJECTED`: request must be `PENDING` (`409`), becomes `REJECTED` with `rejectionReason` = comment (default "Rejected by manager") | `leave.request.rejected.v1` with the `decision` object |
 | | **`APPROVED` is a placeholder:** `409` "Approval not available yet" (the leave-approval saga is not implemented, P3.1); no state change, no event. `LeaveRequest.startApproval` is the one place #47 replaces | none |
+| `POST /v1/leaveledgers` (`Idempotency-Key`) | manual `ACCRUAL` (amount > 0) or `ADJUSTMENT` (amount ≠ 0, either sign) only; `RESERVATION`/`REVERSAL` by hand is `400`. At most 2 decimals and at most 99999.99 (`400`); leave type must exist (`400`); employee must be active in the replica (`409`); an entry that would make the balance of that employee and leave type negative is `409` "Insufficient leave balance" and writes nothing. `referenceEntityType`/`referenceEntityId` are optional and stored as given. No PUT, PATCH or DELETE exists (append-only) | `leave.ledger.entry-recorded.v1` |
 | `PUT /v1/leaveapprovals/{id}` | every stored decision is final today, so `404` when missing, otherwise `409` | none |
 
 `aggregateVersion` starts at 1 and increments on every change of a request. `DELETE /v1/leaveapprovals/{id}` is not implemented. Role checks (Administrator/Manager) wait for the JWT work (P2.1). 
@@ -34,10 +35,21 @@ Writes only; GETs belong to the query role (#46). POST, PUT and PATCH answer `20
 - **Overlap rule:** `submit` and `edit` take a per-employee advisory lock (`pg_advisory_xact_lock(employeeId)`) before checking the employee's other requests, so two overlapping requests of one employee cannot both pass the check.
 - **`Idempotency-Key`:** `IdempotencyService.execute` is one transaction that first takes an advisory lock on the (canonical, lower-case) key (`pg_advisory_xact_lock(4401, hash(key))`), so two simultaneous calls with the same key run the action once and the second one replays the first response. A failing command rolls back its effects together with the idempotency record, so failures are not stored and a retry with the same key runs again.
 - **Bounded waits:** every lock wait is limited by `lock_timeout` (`DB_LOCK_TIMEOUT`, default `5s`, set per connection through Hikari's `connection-init-sql`), so a stuck lock cannot starve the connection pool. A timed-out wait or a deadlock is answered `409` "Conflicting change" and the client may retry; a retry with the same `Idempotency-Key` that waits longer than the timeout also gets that `409`. Flyway shares the datasource, so a blocked migration fails the boot after the timeout instead of hanging.
+- **Ledger appends** (manual, `reserve`, `reverseReservation`) take the same per-employee advisory lock *before* they read the balance, so entry numbers have no gaps or duplicates and parallel reservations cannot overspend. The lock order stays idempotency key, then request row, then employee; nothing else is locked. `UNIQUE (employee_id, leave_type_id, entry_number)` is the backstop.
 - **Backstop:** the exclusion constraint (`btree_gist`) still guards the overlap rule in the database. A lost lock race or deadlock (`ConcurrencyFailureException`) and a constraint violation are answered as `409` "Conflicting change" problem+json; the client may retry.
 
 ## Immutable ledger + snapshot
-Ledger rows are never updated or deleted. A correction or saga compensation is a new `REVERSAL` entry. For fast balances, the command side stores a **balance snapshot** per employee and leave type every 50 entries: balance = latest snapshot + the entries after it.
+Ledger rows are never updated or deleted, in the application **and** in the database (`V4__leave_ledger.sql`: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on `leave_ledger` and `balance_snapshot`). A correction or saga compensation is a new entry.
+
+- **Balance** = the sum of all entries of one *(employee, leave type)*; every leave type is tracked. Entries are numbered 1, 2, 3... per pair and carry `balance_after_days`; amounts are `NUMERIC` with at most 2 decimals.
+- **Types:** `ACCRUAL` (+), `ADJUSTMENT` (±, never 0), `RESERVATION` (−, days of a leave request), `REVERSAL` (+, undoes a reservation). Only the first two can be posted by hand.
+- **Days of a request** = calendar days, both ends included (`endDate − startDate + 1`; weekends count; `LeaveRequest.days()`).
+- **Snapshots:** after every 50th entry of a pair the same transaction stores a `balance_snapshot`. The balance is always read as *newest snapshot + the entries after it* (at most 49 rows), never by summing the whole ledger.
+- **`reserve(request)`** (used by the saga, #47): needs balance ≥ days, else `InsufficientLeaveBalanceException` (409), then appends a `RESERVATION` of −days with `referenceEntityType = LEAVE_REQUEST` and `referenceEntityId` = the request. A request is reserved once (a second `reserve` is `409`; a partial unique index backs it).
+- **`reverseReservation(leaveRequestId)`**: appends a `REVERSAL` of the opposite amount (same reference). Idempotent: nothing is appended when the request has no reservation or was already reversed.
+- `reserve` and `reverseReservation` exist and are tested, but **no endpoint calls them yet**: `APPROVED` still answers `409` until the saga (#47) wires them in. Submitting does not check the balance.
+- Every append publishes `leave.ledger.entry-recorded.v1` (`aggregateId` = `leaveLedgerId`, `aggregateVersion` 1, `data` as in `ledger-entry.schema.json`) through the outbox in the same transaction.
+- A leave type with ledger entries cannot be deleted (`409`, foreign key).
 
 ## Leave-approval saga (orchestrator)
 See [`catalog.md`](../../contracts/events/catalog.md#flow-leave-approval-saga-orchestrated-by-leave-command).
@@ -49,8 +61,8 @@ See [`catalog.md`](../../contracts/events/catalog.md#flow-leave-approval-saga-or
 | 2b | `scheduling.leave-release.rejected.v1` or the deadline passes | **Compensate:** append a `REVERSAL` entry, set the request to `REJECTED` with a reason, and publish `leave.request.rejected.v1` |
 
 ## Publishes (outbox)
-Today: `leave.request.submitted.v1` (submit and every changing edit), `leave.request.cancelled.v1` (cancel of a `PENDING` request; a repeated DELETE is a `202` no-op and publishes nothing) and `leave.request.rejected.v1`.
-Planned: `leave.request.approval-started.v1`, `leave.request.approved.v1` (#47) and `leave.ledger.entry-recorded.v1` (#45).
+Today: `leave.ledger.entry-recorded.v1` (every ledger append), `leave.request.submitted.v1` (submit and every changing edit), `leave.request.cancelled.v1` (cancel of a `PENDING` request; a repeated DELETE is a `202` no-op and publishes nothing) and `leave.request.rejected.v1`.
+Planned: `leave.request.approval-started.v1` and `leave.request.approved.v1` (#47).
 
 The relay polls the outbox every `OUTBOX_RELAY_DELAY` ms (default `2000`).
 

@@ -226,4 +226,13 @@ class LeaveRequestTest {
 
         assertThatThrownBy(() -> unsaved.snapshot("Vacation")).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void daysAreCalendarDaysInclusiveOfBothEnds() {
+        assertThat(saved(1, 5, 3, 3, LeaveRequestStatus.PENDING).days()).as("single day").isEqualTo(1);
+        assertThat(saved(1, 5, 1, 5, LeaveRequestStatus.PENDING).days()).as("1st to 5th").isEqualTo(5);
+        // 2027-03-05 is a Friday and 2027-03-08 a Monday: the weekend counts, so 4 days
+        assertThat(saved(1, 5, 5, 8, LeaveRequestStatus.PENDING).days()).as("across a weekend").isEqualTo(4);
+        assertThat(saved(1, 5, 1, 31, LeaveRequestStatus.PENDING).days()).as("a whole month").isEqualTo(31);
+    }
 }
