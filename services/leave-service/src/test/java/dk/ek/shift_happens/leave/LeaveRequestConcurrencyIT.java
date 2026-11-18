@@ -14,6 +14,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ import static org.awaitility.Awaitility.await;
 class LeaveRequestConcurrencyIT extends AbstractCommandIT {
 
     private static final String CANCELLED = "leave.request.cancelled.v1";
+    private static final String SUBMITTED = "leave.request.submitted.v1";
     private static final String REJECTED = "leave.request.rejected.v1";
 
     @Autowired
@@ -94,6 +96,46 @@ class LeaveRequestConcurrencyIT extends AbstractCommandIT {
     }
 
     @Test
+    void aCancelRacingAnUncommittedEditSeesTheEditAndAnnouncesIt() throws Exception {
+        long typeId = createLeaveType("EditCancel " + UUID.randomUUID());
+        seedEmployee(1002);
+        long id = post("/v1/leaverequests", Map.of("employeeId", 1002, "leaveTypeId", typeId,
+                "startDate", "2029-02-10", "endDate", "2029-02-12"), JsonNode.class)
+                .getBody().path("leaveRequestId").asLong();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch edited = new CountDownLatch(1);
+            CountDownLatch commit = new CountDownLatch(1);
+            Future<?> a = pool.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                requests.edit(id, null, null, LocalDate.of(2029, 2, 14), null, null);
+                edited.countDown();
+                awaitLatch(commit);
+            }));
+            assertThat(edited.await(15, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> b = pool.submit(() -> requests.cancel(id, null));
+            await().atMost(Duration.ofSeconds(15)).until(() -> b.isDone() || sessionsBlockedOnALock() > 0);
+            commit.countDown();
+            a.get(15, TimeUnit.SECONDS);
+            b.get(15, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        List<JsonNode> submitted = outboxEvents(SUBMITTED, id);
+        assertThat(submitted).extracting(e -> e.path("aggregateVersion").asLong()).containsExactly(1L, 2L);
+        List<JsonNode> cancelledEvents = outboxEvents(CANCELLED, id);
+        assertThat(cancelledEvents).hasSize(1);
+        assertThat(cancelledEvents.get(0).path("aggregateVersion").asLong()).isEqualTo(3);
+        assertThat(cancelledEvents.get(0).path("data").path("endDate").asText())
+                .as("the cancelled snapshot carries the edited end date").isEqualTo("2029-02-14");
+        assertThat(jdbc.queryForMap("SELECT request_status, aggregate_version FROM leave_request "
+                + "WHERE leave_request_id = ?", id))
+                .containsEntry("request_status", "CANCELLED").containsEntry("aggregate_version", 3L);
+    }
+
+    @Test
     void parallelOverlappingSubmissionsForOneEmployeeYieldExactlyOneAcceptedAndNoServerError() throws Exception {
         long typeId = createLeaveType("Storm " + UUID.randomUUID());
         int rounds = 10;
@@ -128,6 +170,11 @@ class LeaveRequestConcurrencyIT extends AbstractCommandIT {
                     } else {
                         assertThat(response.getHeaders().getContentType().toString())
                                 .as("round %d", round).contains("problem+json");
+                        JsonNode problem = objectMapper.readTree(response.getBody());
+                        assertThat(problem.path("title").asText()).as("round %d: %s", round, response.getBody())
+                                .isEqualTo("Leave request rejected");
+                        assertThat(problem.path("detail").asText()).as("round %d", round)
+                                .contains("already has leave request");
                     }
                 }
                 assertThat(accepted).as("round %d accepted", round).isEqualTo(1);

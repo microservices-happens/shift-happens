@@ -11,6 +11,8 @@ import org.springframework.amqp.core.Message;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -74,13 +76,15 @@ class EmployeeReplicaIT extends AbstractCommandIT {
     }
 
     @Test
-    void anUnknownEmployeeEventTypeIsNotRoutedToTheReplica() {
+    void anUnknownEmployeeEventTypeIsNotRoutedToTheReplica(CapturedOutput output) {
         publish(envelope("workforce.employee.renamed.v1", 306, 1, employeeData(306, "ACTIVE")));
         EventEnvelope sentinel = employeeEvent(EMPLOYEE_CREATED, 3060, 1, "ACTIVE");
         awaitCount("SELECT count(*) FROM processed_events WHERE event_id = ?", 1, sentinel.eventId());
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM employee_replica WHERE employee_id = ?",
                 Integer.class, 306L)).as("only created, updated and deleted are bound").isZero();
+        assertThat(output.getAll()).as("the queue is bound with exact keys, so the listener never saw it")
+                .doesNotContain("workforce.employee.renamed.v1");
     }
 
     @Test
@@ -127,6 +131,35 @@ class EmployeeReplicaIT extends AbstractCommandIT {
         Message dead = awaitDeadLetter(marker);
 
         assertThat(dead.getMessageProperties().getReceivedRoutingKey()).isEqualTo("leave.command");
+    }
+
+    @Test
+    void theDeadLetterQueueIgnoresForeignDeadLetters() {
+        String marker = UUID.randomUUID().toString();
+        String sentinel = UUID.randomUUID().toString();
+        rabbitTemplate.execute(channel -> {
+            publishToDlx(channel, "scheduling.command", marker);
+            publishToDlx(channel, "leave.command", sentinel);
+            return null;
+        });
+
+        // Collect everything that arrives until the sentinel does (messages are consumed, so assert afterwards).
+        List<String> arrived = new ArrayList<>();
+        await().atMost(Duration.ofSeconds(20)).until(() -> {
+            Message message;
+            while ((message = rabbitTemplate.receive("leave.command.dlq", 300)) != null) {
+                arrived.add(new String(message.getBody(), StandardCharsets.UTF_8));
+            }
+            return arrived.stream().anyMatch(body -> body.contains(sentinel));
+        });
+
+        assertThat(arrived).as("a dead letter of another queue must not land in leave.command.dlq")
+                .noneMatch(body -> body.contains(marker));
+    }
+
+    private void publishToDlx(com.rabbitmq.client.Channel channel, String routingKey, String body)
+            throws java.io.IOException {
+        channel.basicPublish("shift-happens.dlx", routingKey, null, body.getBytes(StandardCharsets.UTF_8));
     }
 
     private Message awaitDeadLetter(String marker) {

@@ -38,7 +38,9 @@ public class LeaveCommandTopology {
 
     /**
      * Dead-lettered messages (rejected by the container or republished by the recoverer) leave with the queue
-     * name as routing key, so the DLQ is bound to exactly that key.
+     * name as routing key, so the DLQ is bound to exactly that key. The queue's {@code x-dead-letter-routing-key}
+     * is a belt-and-braces backstop for messages the broker dead-letters itself (reject without requeue, TTL);
+     * the retry advice republishes through the recoverer first, so the backstop is not reachable in tests.
      */
     @Bean
     Queue leaveCommandQueue(@Value("${app.rabbit.queue}") String name,
