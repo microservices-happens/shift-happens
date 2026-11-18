@@ -14,6 +14,5 @@ spring:
 
 app:
   rabbit:
-    # Consumed by the listener PR; no queue is declared yet (a bound queue without a listener would
-    # only pile up messages).
+    # Durable consumer queue declared by LeaveCommandTopology (plus <queue>.dlq on the DLX).
     queue: ${RABBITMQ_QUEUE:leave.command}
