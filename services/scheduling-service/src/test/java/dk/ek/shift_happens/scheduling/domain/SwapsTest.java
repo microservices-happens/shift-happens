@@ -87,6 +87,39 @@ class SwapsTest {
         assertThat(moved.status()).isEqualTo(AssignmentStatus.SWAPPED);
         assertThat(moved.aggregateVersion()).isEqualTo(2);
     }
+    @Test
+    void aDecisionCanBeCorrectedWithoutFlippingIt() {
+        ShiftSwap approved = savedSwap().decided(new SwapDecision(1L, ApprovalDecision.APPROVED, "ok", NOW));
+
+        ShiftSwap corrected = approved.decisionCorrected(
+                new SwapDecision(2L, ApprovalDecision.APPROVED, "handled by the deputy manager", NOW));
+
+        assertThat(corrected.status()).isEqualTo(SwapStatus.APPROVED);
+        assertThat(corrected.decision().approverEmployeeId()).isEqualTo(2L);
+        assertThat(corrected.decision().comment()).isEqualTo("handled by the deputy manager");
+        assertThat(corrected.aggregateVersion()).isEqualTo(3);
+        assertThat(corrected.snapshot().decision().comment()).isEqualTo("handled by the deputy manager");
+    }
+
+    @Test
+    void aDecisionCannotBeFlipped() {
+        ShiftSwap approved = savedSwap().decided(new SwapDecision(1L, ApprovalDecision.APPROVED, "ok", NOW));
+
+        assertThatThrownBy(() -> approved.decisionCorrected(
+                new SwapDecision(1L, ApprovalDecision.REJECTED, "changed my mind", NOW)))
+                .isInstanceOf(SwapRejectedException.class)
+                .hasMessageContaining("cannot be reversed");
+    }
+
+    @Test
+    void aPendingSwapHasNoDecisionToCorrect() {
+        assertThatThrownBy(() -> savedSwap().decisionCorrected(
+                new SwapDecision(1L, ApprovalDecision.APPROVED, "ok", NOW)))
+                .isInstanceOf(SwapRejectedException.class)
+                .hasMessageContaining("no decision to correct yet");
+    }
+
+
 
     /** A swap as it looks after it was stored: the snapshot needs the id the database assigned. */
     private static ShiftSwap savedSwap() {

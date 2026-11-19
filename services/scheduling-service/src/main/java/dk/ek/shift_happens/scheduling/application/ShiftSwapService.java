@@ -23,6 +23,9 @@ import java.time.Instant;
  *
  * <p>The colleague is checked with the same {@link AssignmentPolicy} that guards a new assignment, so a
  * swap can never produce an assignment that a direct assignment would have refused.
+ *
+ * <p>A decision can be corrected but not reversed: the catalog defines no swap reversal event, so a
+ * published decision stays the state of the swap and only its approver and comment can be fixed.
  */
 @Service
 @Profile("command")
@@ -114,6 +117,55 @@ public class ShiftSwapService {
         }
         return saved;
     }
+
+    /**
+     * PUT /v1/shiftswapapprovals/{id}: corrects who decided and the comment of an existing decision.
+     *
+     * <p>The decision itself is final (no reversal event exists), so a different APPROVED/REJECTED value
+     * is a 409. A correction republishes the same event type with the next aggregateVersion, which is
+     * what a commutative consumer expects: the highest version wins.
+     */
+    @Transactional
+    public ShiftSwapApproval correctDecision(long shiftSwapApprovalId, long shiftSwapId,
+                                             long approverEmployeeId, ApprovalDecision decision, String comment,
+                                             String correlationId) {
+        ShiftSwapApproval existing = approval(shiftSwapApprovalId);
+        if (existing.shiftSwapId() != shiftSwapId) {
+            throw new SwapRejectedException("approval " + shiftSwapApprovalId + " belongs to swap "
+                    + existing.shiftSwapId() + ", not " + shiftSwapId);
+        }
+
+        ShiftSwap current = swaps.findById(existing.shiftSwapId())
+                .orElseThrow(() -> new SwapNotFoundException(existing.shiftSwapId()));
+        // The decision is stored in shift_swap_approval and joined in when the swap is read back, so the
+        // approval row has to be written first or the published snapshot would still carry the old comment.
+        ShiftSwapApproval saved = approvals.save(new ShiftSwapApproval(existing.shiftSwapApprovalId(),
+                existing.shiftSwapId(), approverEmployeeId, decision, comment, existing.decisionDatetime()));
+        ShiftSwap corrected = swaps.save(current.decisionCorrected(new SwapDecision(approverEmployeeId,
+                decision, comment, existing.decisionDatetime())));
+
+        events.append(
+                decision == ApprovalDecision.APPROVED ? DomainEvents.SWAP_APPROVED : DomainEvents.SWAP_REJECTED,
+                corrected.shiftSwapId(), corrected.aggregateVersion(), correlationId, corrected.snapshot());
+        return saved;
+    }
+
+    /**
+     * DELETE /v1/shiftswapapprovals/{id}: removes the record of a decision.
+     *
+     * <p>It does not undo the handover: the swap keeps the status it already published, and no event is
+     * written because the catalog defines no reversal. The history stays in audit-service.
+     */
+    @Transactional
+    public void retractDecision(long shiftSwapApprovalId) {
+        approvals.delete(approval(shiftSwapApprovalId));
+    }
+
+    private ShiftSwapApproval approval(long shiftSwapApprovalId) {
+        return approvals.findById(shiftSwapApprovalId)
+                .orElseThrow(() -> new ApprovalNotFoundException(shiftSwapApprovalId));
+    }
+
 
     private ShiftSwap pendingSwap(long shiftSwapId) {
         ShiftSwap swap = swaps.findById(shiftSwapId)

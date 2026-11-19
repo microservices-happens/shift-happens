@@ -1,0 +1,8 @@
+# Local development only, activated additively: APP_ROLE=query,dev (P8.3).
+#
+# GraphiQL is served at GET /graphiql by the query role and talks to /graphql. The schema it shows is the
+# copy of contracts/graphql/scheduling.graphql that ships in src/main/resources/graphql.
+spring:
+  graphql:
+    graphiql:
+      enabled: true

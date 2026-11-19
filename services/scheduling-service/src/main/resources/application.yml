@@ -26,6 +26,12 @@ app:
   outbox:
     # How often the relay looks for unpublished events.
     relay-delay: ${OUTBOX_RELAY_DELAY:2000}
+  security:
+    # Names are fixed by contracts/README.md: every service validates the JWT itself against the JWKS of
+    # identity-service (cached by Nimbus), plus the iss claim.
+    issuer: ${JWT_ISSUER:shift-happens-identity}
+    jwks-url: ${JWT_JWKS_URL:http://localhost:8080/.well-known/jwks.json}
+
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

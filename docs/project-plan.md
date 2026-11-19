@@ -74,11 +74,11 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 - [ ] P2.6 Publish `workforce.employee.created/updated/deleted` (snapshot + tombstone, `jobRoleIds`)
 
 **Scheduling**
-- [ ] P2.7 Command role: shifts, required roles, assignments, approvals (REST, Postgres, outbox)
+- [x] P2.7 Command role: shifts, required roles, assignments, approvals (REST, Postgres, outbox)
 - [ ] P2.8 Employee replica from `workforce.employee.*`; qualification check on assign
 - [ ] P2.9 Shift swaps: request + approval in one transaction
-- [ ] P2.10 Query role: Mongo projection from `scheduling.*` + `workforce.employee.*`
-- [ ] P2.11 GraphQL API (`contracts/graphql/scheduling.graphql`) with role-based filtering
+- [x] P2.10 Query role: Mongo projection from `scheduling.*` + `workforce.employee.*`
+- [x] P2.11 GraphQL API (`contracts/graphql/scheduling.graphql`) with role-based filtering
 - [ ] P2.12 Publish `scheduling.shift.understaffed.v1` with candidate filtering
 
 **Leave**
@@ -130,7 +130,7 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 ### P8: Documentation (continuous, in the same PR as the code)
 - [ ] P8.1 README for each service: purpose, APIs, events, how to run and test (skeletons exist)
 - [ ] P8.2 Swagger UI per service (springdoc), served from the contract
-- [ ] P8.3 GraphQL docs: GraphiQL on scheduling-query + SDL in `contracts/graphql`
+- [x] P8.3 GraphQL docs: GraphiQL on scheduling-query + SDL in `contracts/graphql`
 - [ ] P8.4 AsyncAPI HTML generated in CI from `contracts/asyncapi.yaml` (published as a CI artifact or on GitHub Pages)
 - [ ] P8.5 Monorepo README: an **installation procedure** from clone to a running Compose stack and Kubernetes (the course requires this for onboarding)
 - [ ] P8.6 GitHub Wiki: how-tos (local Kubernetes, troubleshooting, adding a new event)

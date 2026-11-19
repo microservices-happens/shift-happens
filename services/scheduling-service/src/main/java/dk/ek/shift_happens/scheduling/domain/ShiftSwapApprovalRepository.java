@@ -7,5 +7,10 @@ public interface ShiftSwapApprovalRepository {
 
     ShiftSwapApproval save(ShiftSwapApproval approval);
 
+    Optional<ShiftSwapApproval> findById(long shiftSwapApprovalId);
+
     Optional<ShiftSwapApproval> findByShiftSwapId(long shiftSwapId);
+
+    /** DELETE /v1/shiftswapapprovals/{id}: removes the record of a decision, not the decision itself. */
+    void delete(ShiftSwapApproval approval);
 }

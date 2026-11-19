@@ -1,6 +1,15 @@
 # Command role: Postgres write model + transactional outbox; serves the REST writes of
-# contracts/openapi/scheduling.yaml and (later) the leave-approval saga message.
+# contracts/openapi/scheduling.yaml and the leave-approval saga message.
+#
+# Neither the MongoDB read model (P2.10) nor GraphQL (P2.11) is loaded here: they belong to the query
+# role, and excluding their autoconfiguration keeps this role honest about what it depends on.
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.graphql.GraphQlAutoConfiguration
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:scheduling}
     username: ${DB_USER:scheduling}

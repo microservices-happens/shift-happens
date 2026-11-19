@@ -5,6 +5,7 @@ import dk.ek.shift_happens.scheduling.api.dto.CreateShiftAssignmentRequest;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftRequest;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftSwapApprovalRequest;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftSwapRequest;
+import dk.ek.shift_happens.scheduling.api.dto.UpdateShiftSwapApprovalRequest;
 import dk.ek.shift_happens.scheduling.api.dto.RequiredJobRoleRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftAssignmentResponse;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftResponse;
@@ -151,6 +152,78 @@ class SwapCommandIT extends AbstractCommandIT {
                 shiftSwapId)).isZero();
         assertThat(approveRaw(shiftSwapId, "APPROVED", "too late").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void aDecisionCanBeCorrectedButNotFlipped() {
+        Long assignmentId = assignedShift(415, 416);
+        Long shiftSwapId = requestSwap(assignmentId, 415, 416);
+        ShiftSwapApprovalResponse approval = approve(shiftSwapId, "APPROVED", "ok").getBody();
+        receiveEvent(SWAP_APPROVED, shiftSwapId);
+
+        ResponseEntity<ShiftSwapApprovalResponse> corrected = put(
+                "/v1/shiftswapapprovals/" + approval.shiftSwapApprovalId(),
+                new UpdateShiftSwapApprovalRequest(shiftSwapId, 2, "APPROVED", "decided by the deputy"),
+                ShiftSwapApprovalResponse.class);
+
+        assertThat(corrected.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(corrected.getBody()).isNotNull();
+        assertThat(corrected.getBody().approverEmployeeId()).isEqualTo(2);
+        assertThat(corrected.getBody().shiftSwapComment()).isEqualTo("decided by the deputy");
+
+        JsonNode correctedEvent = receiveEvent(SWAP_APPROVED, shiftSwapId);
+        assertThat(correctedEvent.path("aggregateVersion").asLong()).isEqualTo(3);
+        assertThat(correctedEvent.path("data").path("swapStatus").asText()).isEqualTo("APPROVED");
+        assertThat(correctedEvent.path("data").path("decision").path("comment").asText())
+                .isEqualTo("decided by the deputy");
+
+        ResponseEntity<String> flipped = put("/v1/shiftswapapprovals/" + approval.shiftSwapApprovalId(),
+                new UpdateShiftSwapApprovalRequest(shiftSwapId, 2, "REJECTED", "changed my mind"), String.class);
+        assertThat(flipped.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(flipped.getBody()).contains("cannot be reversed");
+    }
+
+    @Test
+    void aDecisionRecordCanBeDeletedWithoutUndoingTheHandover() {
+        Long assignmentId = assignedShift(417, 418);
+        Long shiftSwapId = requestSwap(assignmentId, 417, 418);
+        ShiftSwapApprovalResponse approval = approve(shiftSwapId, "APPROVED", "ok").getBody();
+
+        assertThat(deleteRaw("/v1/shiftswapapprovals/" + approval.shiftSwapApprovalId()).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM shift_swap_approval WHERE shift_swap_approval_id = ?", Integer.class,
+                approval.shiftSwapApprovalId())).isZero();
+        // The handover stands: the swap is still approved and the assignment belongs to the colleague.
+        assertThat(jdbc.queryForObject("SELECT swap_status FROM shift_swap WHERE shift_swap_id = ?",
+                String.class, shiftSwapId)).isEqualTo("APPROVED");
+        assertThat(jdbc.queryForObject(
+                "SELECT employee_id FROM shift_assignment WHERE shift_assignment_id = ?", Long.class,
+                assignmentId)).isEqualTo(418L);
+        assertThat(deleteRaw("/v1/shiftswapapprovals/" + approval.shiftSwapApprovalId()).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void correctingAnUnknownApprovalIsNotFound() {
+        ResponseEntity<String> response = put("/v1/shiftswapapprovals/999999",
+                new UpdateShiftSwapApprovalRequest(1, 1, "APPROVED", "x"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void aCorrectionMustNameTheSwapItBelongsTo() {
+        Long assignmentId = assignedShift(419, 420);
+        Long shiftSwapId = requestSwap(assignmentId, 419, 420);
+        ShiftSwapApprovalResponse approval = approve(shiftSwapId, "APPROVED", "ok").getBody();
+
+        ResponseEntity<String> response = put("/v1/shiftswapapprovals/" + approval.shiftSwapApprovalId(),
+                new UpdateShiftSwapApprovalRequest(shiftSwapId + 5000, 2, "APPROVED", "wrong swap"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).contains("belongs to swap " + shiftSwapId);
+    }
+
 
     /** Creates a shift, assigns it to the first employee and (when non-zero) registers the colleague. */
     private Long assignedShift(long employeeId, long colleagueId) {

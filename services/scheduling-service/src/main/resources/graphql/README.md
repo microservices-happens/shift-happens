@@ -1,3 +1,3 @@
-Spring for GraphQL loads `*.graphqls` from here. Copy or symlink
-`contracts/graphql/scheduling.graphql` when the query role is implemented;
-the contract file stays the source of truth.
+Spring for GraphQL loads `scheduling.graphqls` from here. It is a copy of
+`contracts/graphql/scheduling.graphql`, which stays the source of truth: `GraphQlSchemaMatchesContractTest` fails the
+build when the two drift apart.

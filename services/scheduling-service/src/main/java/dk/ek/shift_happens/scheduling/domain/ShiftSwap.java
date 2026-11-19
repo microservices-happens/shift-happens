@@ -51,6 +51,26 @@ public record ShiftSwap(
                 target, reason, requestDatetime, decision, aggregateVersion + 1);
     }
 
+    /**
+     * PUT /v1/shiftswapapprovals/{id}: the record of a decision can be corrected (who decided, with
+     * which comment), but the decision itself is final.
+     *
+     * <p>Flipping it would undo a handover that has already been published as an assignment update, and
+     * the event catalog defines no reversal event, so the aggregate refuses it instead of letting the
+     * write model disagree with the read model.
+     */
+    public ShiftSwap decisionCorrected(SwapDecision corrected) {
+        if (status.isPending() || decision == null) {
+            throw new SwapRejectedException("swap " + shiftSwapId + " has no decision to correct yet");
+        }
+        if (corrected.decision() != decision.decision()) {
+            throw new SwapRejectedException("swap " + shiftSwapId + " is already " + status
+                    + "; a decision cannot be reversed because the catalog defines no reversal event");
+        }
+        return new ShiftSwap(shiftSwapId, originalShiftAssignmentId, shiftId, employeeFromId, employeeToId,
+                status, reason, requestDatetime, corrected, aggregateVersion + 1);
+    }
+
     /** PUT /v1/shiftswaps/{id}: another colleague or another reason, while still pending. */
     public ShiftSwap reRequested(long newEmployeeToId, String newReason) {
         if (!status.isPending()) {
