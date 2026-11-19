@@ -81,6 +81,10 @@ class LeaveLedgerCommandIT extends AbstractCommandIT {
         assertThat(envelope.path("aggregateVersion").asLong()).isEqualTo(1);
         assertThat(envelope.path("producer").asText()).isEqualTo("leave-service");
         assertThat(envelope.path("correlationId").asText()).isEqualTo(correlationId);
+        assertThat(envelope.path("aggregateId").asLong()).isEqualTo(id);
+        assertThat(envelope.path("eventType").asText()).isEqualTo(RECORDED);
+        assertThat(envelope.path("causationId").isNull() || envelope.path("causationId").isMissingNode())
+                .as("a hand-posted entry has no causing event").isTrue();
         assertThat(uuidOf(envelope.path("eventId"))).isNotNull();
         JsonNode data = envelope.path("data");
         assertThat(data.fieldNames()).toIterable().containsExactlyInAnyOrder("leaveLedgerId", "employeeId",

@@ -1,5 +1,6 @@
 package dk.ek.shift_happens.leave.application;
 
+import dk.ek.shift_happens.leave.domain.LeaveLedgerRepository;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRepository;
 import dk.ek.shift_happens.leave.domain.LeaveType;
 import dk.ek.shift_happens.leave.domain.LeaveTypeConflictException;
@@ -12,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Leave types: plain CRUD. The event catalog defines no leave-type events, so nothing is published.
  *
  * <p>Delete is hard: with no tombstone event and no consumer of leave types, a physical delete is the
- * simplest thing that keeps integrity. A type that any request references can never be deleted (409, and
+ * simplest thing that keeps integrity. A type that any request or ledger entry references can never be deleted (409, and
  * the foreign key backs that up), so no request is left pointing at a missing type.
  */
 @Service
@@ -21,10 +22,12 @@ public class LeaveTypeService {
 
     private final LeaveTypeRepository types;
     private final LeaveRequestRepository requests;
+    private final LeaveLedgerRepository ledger;
 
-    LeaveTypeService(LeaveTypeRepository types, LeaveRequestRepository requests) {
+    LeaveTypeService(LeaveTypeRepository types, LeaveRequestRepository requests, LeaveLedgerRepository ledger) {
         this.types = types;
         this.requests = requests;
+        this.ledger = ledger;
     }
 
     @Transactional
@@ -45,6 +48,9 @@ public class LeaveTypeService {
         types.findById(leaveTypeId).orElseThrow(() -> new LeaveTypeNotFoundException(leaveTypeId));
         if (requests.existsByLeaveTypeId(leaveTypeId)) {
             throw new LeaveTypeConflictException("leave type " + leaveTypeId + " is used by leave requests");
+        }
+        if (ledger.existsByLeaveTypeId(leaveTypeId)) {
+            throw new LeaveTypeConflictException("leave type " + leaveTypeId + " has ledger entries");
         }
         types.delete(leaveTypeId);
     }

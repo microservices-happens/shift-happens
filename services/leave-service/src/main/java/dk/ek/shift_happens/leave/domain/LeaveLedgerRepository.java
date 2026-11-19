@@ -17,4 +17,7 @@ public interface LeaveLedgerRepository {
 
     /** The entry of this type that references the leave request, if any. */
     Optional<LedgerEntry> findForLeaveRequest(long leaveRequestId, TransactionType type);
+
+    /** True when any ledger entry uses the leave type. */
+    boolean existsByLeaveTypeId(long leaveTypeId);
 }

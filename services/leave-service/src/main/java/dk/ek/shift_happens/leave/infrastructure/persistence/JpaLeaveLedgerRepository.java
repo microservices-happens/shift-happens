@@ -51,4 +51,9 @@ class JpaLeaveLedgerRepository implements LeaveLedgerRepository {
         return ledger.findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionType(
                 LedgerEntry.LEAVE_REQUEST, leaveRequestId, type.name()).map(LeaveLedgerEntity::toDomain);
     }
+
+    @Override
+    public boolean existsByLeaveTypeId(long leaveTypeId) {
+        return ledger.existsByLeaveTypeId(leaveTypeId);
+    }
 }

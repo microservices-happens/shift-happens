@@ -13,4 +13,6 @@ interface LeaveLedgerJpaRepository extends JpaRepository<LeaveLedgerEntity, Long
 
     Optional<LeaveLedgerEntity> findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionType(
             String referenceEntityType, Long referenceEntityId, String transactionType);
+
+    boolean existsByLeaveTypeId(long leaveTypeId);
 }

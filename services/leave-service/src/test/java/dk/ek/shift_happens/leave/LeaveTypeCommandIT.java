@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Leave types are plain CRUD: no events, 202 with the resource, 409 on duplicates and on types in use. */
 class LeaveTypeCommandIT extends AbstractCommandIT {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private dk.ek.shift_happens.leave.application.LeaveLedgerService ledger;
+
     @Test
     void aTypeIsCreatedWithDefaultsAndPublishesNothing() {
         String name = "Vacation " + UUID.randomUUID();
@@ -104,6 +107,23 @@ class LeaveTypeCommandIT extends AbstractCommandIT {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).contains("used by leave requests");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_type WHERE leave_type_id = ?", Integer.class,
+                typeId)).isEqualTo(1);
+    }
+
+    @Test
+    void aTypeWithLedgerEntriesCannotBeDeleted() throws Exception {
+        long typeId = createLeaveType("Ledgered " + UUID.randomUUID());
+        seedEmployee(702);
+        ledger.recordManual(702, typeId, dk.ek.shift_happens.leave.domain.TransactionType.ACCRUAL,
+                new java.math.BigDecimal("1"), null, null, null);
+
+        ResponseEntity<String> response = delete("/v1/leavetypes/" + typeId);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        JsonNode problem = objectMapper.readTree(response.getBody());
+        assertThat(problem.path("type").asText()).endsWith("leave-type-conflict");
+        assertThat(problem.path("detail").asText()).contains("has ledger entries");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_type WHERE leave_type_id = ?", Integer.class,
                 typeId)).isEqualTo(1);
     }

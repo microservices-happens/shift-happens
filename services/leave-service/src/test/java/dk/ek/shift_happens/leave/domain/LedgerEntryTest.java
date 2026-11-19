@@ -54,6 +54,15 @@ class LedgerEntryTest {
     }
 
     @Test
+    void theBalanceCanReachTheMaximumExactlyButNotExceedIt() {
+        assertThat(next(balance(1, "9999999.98"), TransactionType.ACCRUAL, "0.01").balanceAfterDays())
+                .isEqualByComparingTo("9999999.99");
+        assertThatThrownBy(() -> next(balance(1, "9999999.99"), TransactionType.ACCRUAL, "0.01"))
+                .isInstanceOf(InvalidLeaveRequestException.class)
+                .hasMessageContaining("9999999.99");
+    }
+
+    @Test
     void onlyAccrualAndAdjustmentCanBePostedByHand() {
         LedgerEntry.requireManual(TransactionType.ACCRUAL);
         LedgerEntry.requireManual(TransactionType.ADJUSTMENT);
