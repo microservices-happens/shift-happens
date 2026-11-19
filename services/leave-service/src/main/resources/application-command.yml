@@ -1,1 +1,22 @@
 # Command role: Postgres write model + transactional outbox; handles REST writes and saga messages.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:leave}
+    username: ${DB_USER:leave}
+    password: ${DB_PASSWORD:leave_dev}
+    hikari:
+      # Bounds every lock wait (row and advisory locks) so a stuck lock cannot starve the pool; keep it well
+      # below hikari's connection-timeout (30 s). Flyway shares this datasource, so a blocked migration fails.
+      connection-init-sql: "SET lock_timeout = '${DB_LOCK_TIMEOUT:5s}'"
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The schema is owned by Flyway; validate catches entity/migration drift at startup.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+app:
+  rabbit:
+    # Durable consumer queue declared by LeaveCommandTopology (plus <queue>.dlq on the DLX).
+    queue: ${RABBITMQ_QUEUE:leave.command}
