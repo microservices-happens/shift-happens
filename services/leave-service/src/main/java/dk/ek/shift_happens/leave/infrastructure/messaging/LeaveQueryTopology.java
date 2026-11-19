@@ -25,7 +25,7 @@ import java.util.List;
 
 /**
  * Consumer topology of the query role (contracts/README.md): the durable queue {@code leave.projection} bound to
- * exactly the routing keys the projection handles (no wildcards), three attempts, then the message is republished to
+ * exactly the routing keys the projection handles (no wildcards), three attempts (1 s and 2 s apart), then the message is republished to
  * the dead-letter exchange with the queue name as routing key and lands in {@code <queue>.dlq}. No infinite requeue.
  */
 @Configuration
@@ -96,6 +96,8 @@ public class LeaveQueryTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
+                // 1 s, then 2 s: a short Mongo outage must not dead-letter a valid event.
+                .backOffOptions(1000, 2.0, 10000)
                 // Without an explicit key spring-amqp would republish with "error." + the original key.
                 .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))
                 .build());

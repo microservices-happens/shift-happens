@@ -39,9 +39,14 @@ import java.util.UUID;
  * <p>The database is a standalone mongod, so there are no multi-document transactions and nothing here relies on
  * one. Each write is a single-document operation that is idempotent and carries its own guard:
  * <ul>
- *   <li>a snapshot is an upsert whose filter demands {@code version < incoming} (and, for employees and leave types,
+ *   <li>a snapshot is an upsert whose filter demands {@code version < incoming} (and, for employees,
  *       {@code deleted != true}); when the document exists but the filter does not match, the upsert tries to insert
- *       the same {@code _id}, the duplicate-key error says "stale or tombstoned", and the snapshot is skipped;</li>
+ *       the same {@code _id}; a duplicate key on that insert is retried once as a plain update with the same filter
+ *       (mongod retries upsert duplicates itself only for equality-only filters), so competing consumers cannot lose
+ *       a newer snapshot, and a stale or tombstoned snapshot simply matches nothing;</li>
+ *   <li>leave types: {@code version} is the version of the snapshot fields; the tombstone sets a sticky
+ *       {@code deleted} and {@code deletedVersion} and never touches {@code version}, so the last name converges in
+ *       any order; a deleted type keeps serving its last name to the overview, as the command database does;</li>
  *   <li>a tombstone is an upsert that sets {@code deleted}, keeps the highest version and never removes the document;</li>
  *   <li>a ledger entry is inserted under {@code _id = leaveLedgerId}; a duplicate key means it was already applied.</li>
  * </ul>
@@ -90,15 +95,19 @@ class MongoReadModel implements ReadModelWriter, ReadModelReader {
 
     @Override
     public void applyLeaveType(LeaveTypeSnapshot snapshot, long version) {
-        upsertNewer(LEAVE_TYPES, snapshot.leaveTypeId(), version, true, new Document("leaveTypeName",
+        upsertNewer(LEAVE_TYPES, snapshot.leaveTypeId(), version, false, new Document("leaveTypeName",
                 snapshot.leaveTypeName()).append("leaveTypeDescription", snapshot.leaveTypeDescription())
-                .append("requiresApproval", snapshot.requiresApproval()).append("isPaidLeave", snapshot.isPaidLeave())
-                .append("deleted", false));
+                .append("requiresApproval", snapshot.requiresApproval()).append("isPaidLeave", snapshot.isPaidLeave()));
     }
 
     @Override
     public void tombstoneLeaveType(long leaveTypeId, long version, Instant deletedAt) {
-        tombstone(LEAVE_TYPES, leaveTypeId, version, deletedAt);
+        // Never touches "version" (the version of the snapshot fields); 0 only when it creates the document, so a
+        // later snapshot's "version < v" guard matches.
+        mongo.upsert(Query.query(Criteria.where("_id").is(leaveTypeId)),
+                new Update().set("deleted", true).set("deletedAt", instant(deletedAt))
+                        .max("deletedVersion", version).setOnInsert("version", 0L),
+                LEAVE_TYPES);
     }
 
     @Override
@@ -135,7 +144,9 @@ class MongoReadModel implements ReadModelWriter, ReadModelReader {
 
     /**
      * Only a newer version replaces the stored one. {@code guardDeleted}: a tombstoned document is never revived
-     * (employees and leave types). A rejected guard surfaces as a duplicate key on the upsert's insert and is skipped.
+     * (employees). A rejected guard surfaces as a duplicate key on the upsert's insert and is retried once as a plain
+     * update with the same filter, which then matches nothing (stale or tombstoned) or applies the snapshot (a
+     * concurrent consumer had inserted an older one).
      */
     private void upsertNewer(String collection, long id, long version, boolean guardDeleted, Document fields) {
         Criteria match = Criteria.where("_id").is(id).and("version").lt(version);
@@ -147,7 +158,9 @@ class MongoReadModel implements ReadModelWriter, ReadModelReader {
         try {
             mongo.upsert(new Query(match), update, collection);
         } catch (DuplicateKeyException stale) {
-            // the document exists with an equal or newer version, or is tombstoned: nothing to do
+            // Another consumer inserted the document first, or it is stale or tombstoned. Apply as a plain update:
+            // the same guard decides (no match = stale or tombstoned).
+            mongo.updateFirst(new Query(match), update, collection);
         }
     }
 
@@ -250,8 +263,8 @@ class MongoReadModel implements ReadModelWriter, ReadModelReader {
         if (leaveTypeIds.isEmpty()) {
             return names;
         }
-        for (Document document : mongo.find(Query.query(Criteria.where("_id").in(leaveTypeIds)
-                .and("deleted").ne(true)), Document.class, LEAVE_TYPES)) {
+        for (Document document : mongo.find(Query.query(Criteria.where("_id").in(leaveTypeIds)),
+                Document.class, LEAVE_TYPES)) {
             if (document.getString("leaveTypeName") != null) {
                 names.put(number(document, "_id"), document.getString("leaveTypeName"));
             }

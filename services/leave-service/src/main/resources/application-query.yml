@@ -22,6 +22,10 @@ spring:
     deserialization:
       # Event payloads keep decimals exact (ledger amounts); the balance is a sum of them.
       use-big-decimal-for-floats: true
+    datatype:
+      json-node:
+        # Keep 10.00 as 10.00 (Jackson's default would store and serve 1E+1): the query role answers like the command role.
+        strip-trailing-bigdecimal-zeroes: false
 
 app:
   rabbit:

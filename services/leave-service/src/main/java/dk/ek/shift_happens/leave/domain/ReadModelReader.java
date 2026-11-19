@@ -33,7 +33,8 @@ public interface ReadModelReader {
     /** Known employees (also deleted ones) among the given ids. */
     Map<Long, ProjectedEmployee> employees(Collection<Long> employeeIds);
 
-    /** Names of the leave types among the given ids that exist and are not deleted (a deleted type is hidden). */
+    /** Names of the leave types among the given ids whose name is known, deleted ones included (the command side keeps
+     * a deleted type's row and last name). */
     Map<Long, String> leaveTypeNames(Collection<Long> leaveTypeIds);
 
     /**

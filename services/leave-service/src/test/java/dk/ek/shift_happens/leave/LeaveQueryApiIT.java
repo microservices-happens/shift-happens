@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.leave;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import dk.ek.shift_happens.leave.infrastructure.messaging.ProjectionEnvelope;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -116,6 +117,22 @@ class LeaveQueryApiIT extends AbstractQueryIT {
         assertThat(reservation.path("transactionType").asText()).isEqualTo("RESERVATION");
         assertThat(getJson("/v1/leaveledgers/1").path("transactionType").asText()).isEqualTo("ACCRUAL");
         assertProblem(exchange(org.springframework.http.HttpMethod.GET, "/v1/leaveledgers/2"), HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void ledgerAmountsKeepTheDecimalsTheyWerePublishedWith() {
+        publish(Events.LEDGER, 803, 1, Events.ledger(803, 10, 1, "10.00", "10.00", "ACCRUAL"));
+        ProjectionEnvelope last = publish(Events.LEDGER, 804, 1, Events.ledger(804, 10, 1, "-2.50", "7.50", "ADJUSTMENT"));
+        awaitProcessed(last);
+        drain();
+
+        assertThat(http.getForObject("/v1/leaveledgers/803", String.class)).contains("\"changeAmountDays\":10.00");
+        assertThat(http.getForObject("/v1/leaveledgers/804", String.class)).contains("\"changeAmountDays\":-2.50");
+        assertThat(http.getForObject("/v1/leaveledgers", String.class))
+                .contains("\"changeAmountDays\":10.00").contains("\"changeAmountDays\":-2.50");
+        org.bson.Document stored = mongo.findById(803L, org.bson.Document.class, "ledger_entries");
+        assertThat(((org.bson.types.Decimal128) stored.get("changeAmountDays")).toString()).isEqualTo("10.00");
+        assertThat(((org.bson.types.Decimal128) stored.get("balanceAfterDays")).toString()).isEqualTo("10.00");
     }
 
     // ---- views ----

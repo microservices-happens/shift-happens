@@ -174,7 +174,7 @@ class LeaveProjectionIT extends AbstractQueryIT {
     }
 
     @Test
-    void aDeletedLeaveTypeIsHiddenFromTheTypeEndpointsAndTheViews() {
+    void aDeletedLeaveTypeIsHiddenFromTheTypeEndpointsAndItsRowsKeepItsLastName() {
         publishAndAwait(Events.TYPE_CREATED, 50, 1, Events.type(50, "Vacation"));
         publishAndAwait(Events.EMPLOYEE_CREATED, 10, 1, Events.employee(10, "Grace", "Hopper"));
         publishAndAwait(Events.SUBMITTED, 60, 1, Events.request(60, 10, 50, "Vacation", "2027-05-03", "2027-05-04", "PENDING"));
@@ -187,10 +187,46 @@ class LeaveProjectionIT extends AbstractQueryIT {
         assertThat(getJson("/v1/leavetypes")).isEmpty();
         assertThat(http.getForEntity("/v1/leavetypes/50", JsonNode.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(getJson("/v1/views/employee-leave-overview/leave-type/Holiday")).as("hidden in the views").isEmpty();
+        assertThat(textsOf(getJson("/v1/views/employee-leave-overview/leave-type/Holiday"), "leaveRequestId"))
+                .as("the command database keeps the deleted type's row and last name").containsExactly("60");
+        assertThat(getJson("/v1/views/employee-leave-overview/leave-type/Vacation")).isEmpty();
         assertThat(textsOf(getJson("/v1/views/employee-leave-overview"), "leaveTypeName"))
-                .as("the request keeps the name of its own snapshot").containsExactly("Vacation");
+                .as("the row keeps the type's last name, like the command database").containsExactly("Holiday");
         assertThat(getJson("/v1/leaverequests/60").path("leaveRequestId").asLong()).isEqualTo(60);
+    }
+
+    @Test
+    void aLeaveTypesLastNameWinsInAnyOrderEvenAfterItsTombstone() {
+        publishAndAwait(Events.EMPLOYEE_CREATED, 10, 1, Events.employee(10, "Grace", "Hopper"));
+        publishAndAwait(Events.SUBMITTED, 61, 1, Events.request(61, 10, 51, "First", "2027-05-03", "2027-05-04", "PENDING"));
+        publishAndAwait(Events.TYPE_DELETED, 51, 4, Events.tombstone("leaveType", 51));
+        publishAndAwait(Events.TYPE_UPDATED, 51, 3, Events.type(51, "Final"));
+        publishAndAwait(Events.TYPE_CREATED, 51, 1, Events.type(51, "First"));
+        publishAndAwait(Events.TYPE_UPDATED, 51, 2, Events.type(51, "Second"));
+
+        assertThat(textsOf(getJson("/v1/views/employee-leave-overview"), "leaveTypeName")).containsExactly("Final");
+        assertThat(textsOf(getJson("/v1/views/employee-leave-overview/leave-type/final"), "leaveRequestId"))
+                .containsExactly("61");
+        assertThat(http.getForEntity("/v1/leavetypes/51", JsonNode.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        Document type = doc("leave_types", 51);
+        assertThat(type.getBoolean("deleted")).isTrue();
+        assertThat(type.get("version")).isEqualTo(3L);
+        assertThat(type.get("deletedVersion")).isEqualTo(4L);
+    }
+
+    @Test
+    void anEqualVersionUnderANewEventIdIsIgnored() {
+        publishAndAwait(Events.EMPLOYEE_UPDATED, 32, 2, Events.employee(32, "Ada", "First"));
+        publishAndAwait(Events.EMPLOYEE_UPDATED, 32, 2, Events.employee(32, "Ada", "Second"));
+        publishAndAwait(Events.SUBMITTED, 43, 2, Events.request(43, 32, 9, "Vacation", "2027-05-03", "2027-05-04", "PENDING"));
+        publishAndAwait(Events.CANCELLED, 43, 2, Events.request(43, 32, 9, "Vacation", "2027-05-03", "2027-05-04", "CANCELLED"));
+        publishAndAwait(Events.TYPE_UPDATED, 9, 2, Events.type(9, "First"));
+        publishAndAwait(Events.TYPE_UPDATED, 9, 2, Events.type(9, "Second"));
+
+        assertThat(doc("employees", 32).getString("lastName")).isEqualTo("First");
+        assertThat(doc("leave_requests", 43).getString("requestStatus")).isEqualTo("PENDING");
+        assertThat(doc("leave_types", 9).getString("leaveTypeName")).isEqualTo("First");
     }
 
     // ---- unknown, poison, bindings ----
@@ -210,12 +246,15 @@ class LeaveProjectionIT extends AbstractQueryIT {
     void aPoisonMessageIsTriedThreeTimesThenDeadLetteredWithTheQueueNameAsRoutingKeyAndNothingElseIsDeadLettered(
             CapturedOutput output) throws Exception {
         UUID poisonId = UUID.randomUUID();
+        long startedAt = System.nanoTime();
         // No leaveLedgerId: it can never be applied.
         publish(envelope(poisonId, Events.LEDGER, 777, 1, Map.of("employeeId", 10, "leaveTypeId", 5,
                 "changeAmountDays", new BigDecimal("1"))));
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
                 assertThat(messagesIn(QUEUE + ".dlq")).isEqualTo(1));
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt).toMillis())
+                .as("three attempts, 1 s then 2 s apart").isGreaterThanOrEqualTo(2500);
         for (JsonNode queue : managementGet("/api/queues/%2F")) {
             String name = queue.path("name").asText();
             if (!name.equals(QUEUE + ".dlq")) {

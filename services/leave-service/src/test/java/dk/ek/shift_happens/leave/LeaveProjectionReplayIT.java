@@ -157,6 +157,8 @@ class LeaveProjectionReplayIT extends AbstractSagaIT {
                 .isEqualTo(HttpStatus.ACCEPTED);
         long r9 = submit(GRACE, sick, "2031-09-01", "2031-09-02");
         long r10 = submit(ADA, temp, "2031-10-06", "2031-10-06");
+        long r11 = submit(ADA, temp, "2031-11-03", "2031-11-03");
+        put("/v1/leavetypes/" + temp, Map.of("leaveTypeName", "Replay Temp final " + tag), String.class);
 
         // a leave type is renamed, another deleted while a request still uses it, which is cancelled afterwards
         put("/v1/leavetypes/" + sick, Map.of("leaveTypeName", "Replay Sick leave " + tag), String.class);
@@ -183,7 +185,7 @@ class LeaveProjectionReplayIT extends AbstractSagaIT {
                         + "AND published_at IS NULL", Integer.class, Timestamp.from(start))).isZero());
 
         typeIds.addAll(List.of(vacation, sick, parental, temp));
-        requestIds.addAll(List.of(r1, r2, r3, r4, r5, r6, r7, r8, r9, r10));
+        requestIds.addAll(List.of(r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11));
 
         List<Map.Entry<Instant, String>> timeline = new ArrayList<>();
         for (String payload : jdbc.queryForList("SELECT payload FROM outbox_event WHERE occurred_at >= ? "

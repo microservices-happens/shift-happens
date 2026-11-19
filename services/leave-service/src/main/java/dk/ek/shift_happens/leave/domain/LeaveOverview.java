@@ -11,8 +11,8 @@ import java.util.Map;
  *
  * <p>One row per leave request. Rows of a deleted (tombstoned) employee are left out, as the monolith's view joined the
  * employee table; they stay in /v1/leaverequests. An employee that is not known yet has no name. The leave type name
- * comes from the leave type when it is known and not deleted, else from the request's snapshot (a deleted type is
- * hidden, as it is from GET /v1/leavetypes).
+ * comes from the leave type whenever its name is known (also after it is deleted: the command side keeps the row and
+ * its name), else from the request's snapshot.
  */
 public final class LeaveOverview {
 
