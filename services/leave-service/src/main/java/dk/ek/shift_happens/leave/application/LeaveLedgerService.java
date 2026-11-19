@@ -66,8 +66,9 @@ public class LeaveLedgerService {
     /**
      * Saga step 1: reserves the days of the request, which needs a balance of at least that many days (else
      * 409 "Insufficient leave balance"). It locks the request row itself (re-entrant when the caller already holds
-     * it) and then the employee, and reads the ledger only after both locks. The caller must not already hold the
-     * employee lock: the lock order is request row, then employee. A saga attempt is reserved only once. A refused
+     * it) and then the employee, and reads the ledger only after both locks. Both locks are re-entrant: a caller may
+     * already hold them, but only if it took them in this order (request row, then employee), as
+     * {@code LeaveApprovalSagaService.retry} does. A saga attempt is reserved only once. A refused
      * reservation does not mark the caller's transaction rollback-only, so the caller can catch the exception and
      * go on. {@code causationId} is the eventId of the event that caused this step, or null.
      */
@@ -87,7 +88,8 @@ public class LeaveLedgerService {
 
     /**
      * Saga compensation: appends a REVERSAL that undoes the RESERVATION of one saga attempt. It locks the request row and
-     * then the employee itself (the caller must not already hold the employee lock) and looks the reservation up
+     * then the employee itself (both locks are re-entrant: a caller may already hold them, but only if it took them in
+     * this order, request row then employee) and looks the reservation up
      * only after both locks, so it sees a reservation another transaction has just committed. Idempotent: it
      * returns empty and appends nothing when the request is unknown, the attempt was never reserved or is already
      * reversed.

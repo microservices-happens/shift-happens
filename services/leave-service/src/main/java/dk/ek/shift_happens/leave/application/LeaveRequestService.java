@@ -85,12 +85,13 @@ public class LeaveRequestService {
      * DELETE: PENDING to CANCELLED; an already CANCELLED request is an idempotent no-op (no change, no event).
      * An APPROVED request is cancelled too: its reservation is reversed (REVERSAL ledger entry of the completed
      * saga attempt) and leave.request.cancelled.v1 tells Scheduling to drop the leave window. APPROVAL_PENDING is a
-     * 409: the saga is in flight. The request row lock is held first; the ledger then takes the employee lock.
+     * 409: the saga is in flight. APPROVED leave answers 409 from its startDate (UTC date) on: it can only be
+     * cancelled before its first day. The request row lock is held first; the ledger then takes the employee lock.
      */
     @Transactional
     public LeaveRequest cancel(long leaveRequestId, String correlationId) {
         LeaveRequest current = findForUpdate(leaveRequestId);
-        LeaveRequest cancelled = current.cancelled();
+        LeaveRequest cancelled = current.cancelled(LocalDate.now(clock));
         if (cancelled.equals(current)) {
             return current;
         }

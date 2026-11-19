@@ -51,12 +51,17 @@ abstract class AbstractSagaIT extends AbstractCommandIT {
 
     /** A PENDING request of 3 days (2034-01-10..12) for a fresh employee with the given ACCRUAL; returns its id. */
     protected long scenario(long employeeId, String accrual) {
+        return scenario(employeeId, accrual, LocalDate.of(2034, 1, 10), LocalDate.of(2034, 1, 12));
+    }
+
+    /** A PENDING request for the given dates for a fresh employee with the given ACCRUAL; returns its id. */
+    protected long scenario(long employeeId, String accrual, LocalDate start, LocalDate end) {
         long typeId = createLeaveType("Saga " + UUID.randomUUID());
         seedEmployee(employeeId);
         seedEmployee(MANAGER);
         ledger.recordManual(employeeId, typeId, TransactionType.ACCRUAL, new BigDecimal(accrual), null, null, null);
         return post("/v1/leaverequests", Map.of("employeeId", employeeId, "leaveTypeId", typeId,
-                "startDate", "2034-01-10", "endDate", "2034-01-12"), JsonNode.class)
+                "startDate", start.toString(), "endDate", end.toString()), JsonNode.class)
                 .getBody().path("leaveRequestId").asLong();
     }
 

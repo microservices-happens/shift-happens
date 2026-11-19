@@ -104,6 +104,8 @@ public class LeaveCommandTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
+                // 1 s, then 2 s: a lock-timeout spike must not dead-letter a valid saga reply
+                .backOffOptions(1000, 2.0, 10000)
                 // Republish with the queue name as routing key (without an explicit key spring-amqp would use
                 // "error." + the original key); the DLQ is bound with exactly that key.
                 .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))

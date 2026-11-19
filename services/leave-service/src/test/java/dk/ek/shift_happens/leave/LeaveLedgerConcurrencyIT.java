@@ -50,6 +50,17 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    /**
+     * Test-only: under shared host load the advisory-lock queue can exceed the 5 s production default; the parallel
+     * tests assert chain correctness, LockTimeoutIT asserts the bound. The service's @Transactional joins this one.
+     */
+    private <V> V withTestLockTimeout(java.util.function.Supplier<V> call) {
+        return new TransactionTemplate(transactionManager).execute(s -> {
+            jdbc.execute("SET LOCAL lock_timeout = '20s'");
+            return call.get();
+        });
+    }
+
     @Test
     void parallelAccrualsAndAdjustmentsGetConsecutiveNumbersAndAChainedBalance() throws Exception {
         long typeId = createLeaveType("Chain " + UUID.randomUUID());
@@ -71,11 +82,11 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
                             gate.await(15, TimeUnit.SECONDS);
                         }
                         // the mix: accruals of 2.5 and adjustments of -1.25 (the balance never goes below zero)
-                        return index % 3 == 0
+                        return withTestLockTimeout(() -> index % 3 == 0
                                 ? ledger.recordManual(employeeId, typeId, TransactionType.ADJUSTMENT,
                                         new BigDecimal("-1.25"), null, null, null)
                                 : ledger.recordManual(employeeId, typeId, TransactionType.ACCRUAL,
-                                        new BigDecimal("2.5"), null, null, null);
+                                        new BigDecimal("2.5"), null, null, null));
                     }));
                 }
                 for (Future<?> future : futures) {
@@ -104,8 +115,8 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
                     if (index < PARALLEL) {
                         gate.await(15, TimeUnit.SECONDS);
                     }
-                    return ledger.recordManual(employeeId, typeId, TransactionType.ACCRUAL, new BigDecimal("0.5"),
-                            null, null, null);
+                    return withTestLockTimeout(() -> ledger.recordManual(employeeId, typeId,
+                            TransactionType.ACCRUAL, new BigDecimal("0.5"), null, null, null));
                 }));
             }
             for (Future<?> future : futures) {

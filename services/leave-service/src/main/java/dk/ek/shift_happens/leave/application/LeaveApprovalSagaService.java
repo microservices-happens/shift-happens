@@ -2,6 +2,7 @@ package dk.ek.shift_happens.leave.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dk.ek.shift_happens.leave.domain.EmployeeReplicaRepository;
 import dk.ek.shift_happens.leave.domain.InsufficientLeaveBalanceException;
 import dk.ek.shift_happens.leave.domain.LeaveApprovalSaga;
 import dk.ek.shift_happens.leave.domain.LeaveApprovalSagaRepository;
@@ -12,6 +13,7 @@ import dk.ek.shift_happens.leave.domain.LeaveRequestSnapshot;
 import dk.ek.shift_happens.leave.domain.LeaveRequestStatus;
 import dk.ek.shift_happens.leave.domain.LeaveTypeRepository;
 import dk.ek.shift_happens.leave.domain.ProcessedEventLog;
+import dk.ek.shift_happens.leave.domain.SagaStatus;
 import dk.ek.shift_happens.leave.infrastructure.messaging.EventEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +54,7 @@ public class LeaveApprovalSagaService {
     private final LeaveApprovalSagaRepository sagas;
     private final LeaveRequestRepository requests;
     private final LeaveTypeRepository types;
+    private final EmployeeReplicaRepository employees;
     private final LeaveLedgerService ledger;
     private final ProcessedEventLog processedEvents;
     private final DomainEvents events;
@@ -60,18 +63,24 @@ public class LeaveApprovalSagaService {
     private final Duration timeout;
 
     LeaveApprovalSagaService(LeaveApprovalSagaRepository sagas, LeaveRequestRepository requests,
-                             LeaveTypeRepository types, LeaveLedgerService ledger,
+                             LeaveTypeRepository types, EmployeeReplicaRepository employees,
+                             LeaveLedgerService ledger,
                              ProcessedEventLog processedEvents, DomainEvents events, ObjectMapper objectMapper,
                              Clock clock, @Value("${app.saga.timeout}") String timeout) {
         this.sagas = sagas;
         this.requests = requests;
         this.types = types;
+        this.employees = employees;
         this.ledger = ledger;
         this.processedEvents = processedEvents;
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.timeout = Duration.parse(timeout);
+        if (this.timeout.isZero() || this.timeout.isNegative()) {
+            throw new IllegalArgumentException("SAGA_TIMEOUT (app.saga.timeout) must be a positive ISO-8601 duration "
+                    + "such as PT5M, was " + timeout);
+        }
     }
 
     /**
@@ -118,8 +127,17 @@ public class LeaveApprovalSagaService {
             case COMPLETE -> complete(request, saga, envelope);
             case COMPENSATE -> compensate(request, saga, reasonOf(envelope), envelope.eventId(), envelope);
             case RETRY -> retry(request, saga, envelope);
-            case IGNORE -> log.info("Ignoring {} for attempt {} of leave request {} ({}): nothing to do",
-                    envelope.eventType(), saga.attempt(), leaveRequestId, saga.status());
+            case IGNORE -> {
+                if (saga.status() == SagaStatus.TIMED_OUT && reply == LeaveApprovalSaga.Reply.COMPLETED && latest) {
+                    log.warn("Leave request {} stays REJECTED although Scheduling released the employee's shifts: "
+                            + "completed reply {} for timed-out attempt {} arrived after the last allowed attempt "
+                            + "(correlationId {}); the released assignments need manual follow-up", leaveRequestId,
+                            envelope.eventId(), saga.attempt(), saga.correlationId());
+                } else {
+                    log.info("Ignoring {} for attempt {} of leave request {} ({}): nothing to do",
+                            envelope.eventType(), saga.attempt(), leaveRequestId, saga.status());
+                }
+            }
         }
     }
 
@@ -156,11 +174,8 @@ public class LeaveApprovalSagaService {
                 saga.correlationId(), causationId);
         boolean fromReply = reply != null;
         if (reversal.isEmpty()) {
-            // Already compensated by someone else: do not publish a second rejected event.
-            log.warn("Attempt {} of leave request {} has no open reservation; nothing to compensate",
-                    saga.attempt(), request.leaveRequestId());
-            sagas.save(fromReply ? saga.compensated(clock.instant()) : saga.timedOut(clock.instant()));
-            return;
+            throw new IllegalStateException("attempt " + saga.attempt() + " of leave request "
+                    + request.leaveRequestId() + " is STARTED but has no open reservation");
         }
         LeaveRequest rejected = requests.save(request.rejectedBySaga(reason));
         sagas.save(fromReply ? saga.compensated(clock.instant()) : saga.timedOut(clock.instant()));
@@ -171,8 +186,8 @@ public class LeaveApprovalSagaService {
     /**
      * A completed reply of a timed-out attempt: Scheduling did release the employee after all, so the request must
      * not silently become APPROVED (its days were given back). Reserve again and start the next attempt; Scheduling
-     * answers the repeated approval-started with its stored reply. Without balance (or with a new overlapping
-     * request) the request stays REJECTED.
+     * answers the repeated approval-started with its stored reply. Without balance, with a new overlapping request
+     * or for an employee who is no longer active, the request stays REJECTED.
      */
     private void retry(LeaveRequest request, LeaveApprovalSaga saga, EventEnvelope reply) {
         if (request.status() != LeaveRequestStatus.REJECTED) {
@@ -183,11 +198,13 @@ public class LeaveApprovalSagaService {
         int next = saga.attempt() + 1;
         requests.lockEmployeeCalendar(request.employeeId()); // request row, then employee: the usual order
         try {
+            LeaveRequestService.requireActiveEmployee(employees, request.employeeId(), "employee");
             request.approvalRetried().requireNoOverlapWith(requests.findOccupyingByEmployeeId(request.employeeId()));
             ledger.reserve(request.leaveRequestId(), next, saga.correlationId(), reply.eventId());
         } catch (InsufficientLeaveBalanceException | LeaveRequestRejectedException e) {
-            log.warn("Not retrying leave request {} after the late completed reply: {}", request.leaveRequestId(),
-                    e.getMessage());
+            log.warn("Not retrying leave request {} after the late completed reply: it stays REJECTED although "
+                    + "Scheduling released the employee's shifts (correlationId {}): {}; the released assignments "
+                    + "need manual follow-up", request.leaveRequestId(), saga.correlationId(), e.getMessage());
             return;
         }
         begin(request.approvalRetried(), next, saga.correlationId(), reply.eventId());

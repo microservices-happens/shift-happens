@@ -126,7 +126,7 @@ class LeaveRequestTest {
 
     @Test
     void cancellingMovesToCancelledAndBumpsTheVersion() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
         assertThat(cancelled.status()).isEqualTo(LeaveRequestStatus.CANCELLED);
         assertThat(cancelled.aggregateVersion()).isEqualTo(2);
@@ -134,15 +134,15 @@ class LeaveRequestTest {
 
     @Test
     void cancellingACancelledRequestIsANoOp() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
-        assertThat(cancelled.cancelled()).isSameAs(cancelled);
-        assertThat(cancelled.cancelled().aggregateVersion()).isEqualTo(2);
+        assertThat(cancelled.cancelled(day(1).minusDays(1))).isSameAs(cancelled);
+        assertThat(cancelled.cancelled(day(1).minusDays(1)).aggregateVersion()).isEqualTo(2);
     }
 
     @Test
     void aCancelledRequestCanStillNotBeEditedOrRejected() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
         assertThatThrownBy(() -> cancelled.edited(null, null, null, "x"))
                 .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("CANCELLED");
@@ -174,12 +174,32 @@ class LeaveRequestTest {
     }
 
     @Test
+    void approvedLeaveCanOnlyBeCancelledBeforeItsFirstDay() {
+        LeaveRequest approved = saved(10, 5, 10, 12, LeaveRequestStatus.APPROVED);
+
+        LeaveRequest cancelled = approved.cancelled(day(10).minusDays(1));
+        assertThat(cancelled.status()).isEqualTo(LeaveRequestStatus.CANCELLED);
+        assertThat(cancelled.aggregateVersion()).isEqualTo(approved.aggregateVersion() + 1);
+        assertThatThrownBy(() -> approved.cancelled(day(10)))
+                .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("first day");
+        assertThatThrownBy(() -> approved.cancelled(day(10).plusDays(3)))
+                .isInstanceOf(LeaveRequestRejectedException.class);
+    }
+
+    @Test
+    void theStartDateRuleDoesNotApplyToPendingRequests() {
+        LeaveRequest request = saved(10, 5, 10, 12, LeaveRequestStatus.PENDING);
+
+        assertThat(request.cancelled(day(10).plusDays(10)).status()).isEqualTo(LeaveRequestStatus.CANCELLED);
+    }
+
+    @Test
     void onlyPendingAndApprovedRequestsCanBeCancelled() {
-        assertThat(saved(10, 5, 1, 5, LeaveRequestStatus.APPROVED).cancelled().status())
+        assertThat(saved(10, 5, 1, 5, LeaveRequestStatus.APPROVED).cancelled(day(1).minusDays(1)).status())
                 .isEqualTo(LeaveRequestStatus.CANCELLED);
-        assertThatThrownBy(saved(10, 5, 1, 5, LeaveRequestStatus.APPROVAL_PENDING)::cancelled)
+        assertThatThrownBy(() -> saved(10, 5, 1, 5, LeaveRequestStatus.APPROVAL_PENDING).cancelled(day(1).minusDays(1)))
                 .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("saga is in flight");
-        assertThatThrownBy(saved(10, 5, 1, 5, LeaveRequestStatus.REJECTED)::cancelled)
+        assertThatThrownBy(() -> saved(10, 5, 1, 5, LeaveRequestStatus.REJECTED).cancelled(day(1).minusDays(1)))
                 .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("REJECTED");
     }
 

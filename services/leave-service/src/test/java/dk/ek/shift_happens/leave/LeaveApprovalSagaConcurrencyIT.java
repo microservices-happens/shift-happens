@@ -55,9 +55,13 @@ class LeaveApprovalSagaConcurrencyIT extends AbstractSagaIT {
             UUID reply = reply(COMPLETED_REPLY, id, startedEventId(id, 1), null);
             await().atMost(Duration.ofSeconds(15)).until(() -> sessionsBlockedOnALock() > 0);
 
-            int timedOut = timeoutJob.runOnce();
+            long sagaId = (Long) saga(id, 1).get("leave_approval_saga_id");
+            long t0 = System.nanoTime();
+            boolean timedOut = sagaService.timeOut(sagaId, id); // must not throw: SKIP LOCKED, no lock_timeout wait
+            long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
 
-            assertThat(timedOut).as("the locked row is skipped").isZero();
+            assertThat(timedOut).as("the locked row is skipped").isFalse();
+            assertThat(elapsedMs).as("SKIP LOCKED does not wait for lock_timeout").isLessThan(1000);
             assertThat(saga(id, 1)).containsEntry("saga_status", "STARTED");
             commit.countDown();
             holder.get(15, TimeUnit.SECONDS);
@@ -185,7 +189,7 @@ class LeaveApprovalSagaConcurrencyIT extends AbstractSagaIT {
     }
 
     @Test
-    void aCancelRacingTheReplyThatApprovesSeesTheApprovedRequestAndCancelsIt() throws Exception {
+    void aCancelRacingTheReplyThatApprovesEndsConsistentWhicheverWins() throws Exception {
         long id = scenario(7106, "10");
         approve(id, null);
         ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -211,6 +215,8 @@ class LeaveApprovalSagaConcurrencyIT extends AbstractSagaIT {
             if (status == 409) {
                 assertThat(requestStatus(id)).isEqualTo("APPROVED");
                 assertThat(ledgerRows(7106)).hasSize(2);
+                assertThat(outboxEvents(CANCELLED, id)).isEmpty();
+                assertThat(outboxEvents(APPROVED, id)).hasSize(1);
             } else {
                 assertThat(status).isEqualTo(202);
                 assertThat(requestStatus(id)).isEqualTo("CANCELLED");
@@ -219,6 +225,45 @@ class LeaveApprovalSagaConcurrencyIT extends AbstractSagaIT {
             }
         } finally {
             pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void aTimeoutWaitingForTheEmployeeLockDoesNotHoldBackTheOutboxRelay() throws Exception {
+        long id = scenario(7130, "10");
+        approve(id, null);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Future<?> holder = pool.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(s -> {
+            requestRepository.lockEmployeeCalendar(7130);
+            held.countDown();
+            awaitLatch(release);
+        }));
+        try {
+            assertThat(held.await(15, TimeUnit.SECONDS)).isTrue();
+            makeOverdue(id);
+            // the background job (default poll 15 s) now waits for the employee lock
+            await().atMost(Duration.ofSeconds(40)).pollInterval(Duration.ofMillis(100)).until(() ->
+                    jdbc.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                            + "AND pid <> pg_backend_pid() AND wait_event_type = 'Lock' "
+                            + "AND wait_event = 'advisory'", Integer.class) > 0);
+
+            seedEmployee(7131);
+            long typeId = createLeaveType("Relay " + UUID.randomUUID());
+            long other = post("/v1/leaverequests", java.util.Map.of("employeeId", 7131, "leaveTypeId", typeId,
+                    "startDate", "2034-02-01", "endDate", "2034-02-02"), JsonNode.class)
+                    .getBody().path("leaveRequestId").asLong();
+
+            await().atMost(Duration.ofSeconds(2)).pollInterval(Duration.ofMillis(50)).until(() ->
+                    jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? "
+                            + "AND event_type = 'leave.request.submitted.v1' AND published_at IS NOT NULL",
+                            Integer.class, other) == 1);
+        } finally {
+            release.countDown();
+            holder.get(30, TimeUnit.SECONDS);
+            pool.shutdownNow();
+            expire(id);
         }
     }
 

@@ -5,6 +5,7 @@ import dk.ek.shift_happens.leave.domain.TransactionType;
 import dk.ek.shift_happens.leave.infrastructure.messaging.EventEnvelope;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +23,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -28,6 +32,8 @@ import static org.awaitility.Awaitility.await;
  * causationId = the eventId of the approval-started event they answer), exactly as scheduling-service does.
  */
 class LeaveApprovalSagaIT extends AbstractSagaIT {
+
+    private static final String FALLBACK_REASON = "Scheduling could not release the employee's shifts";
 
     // ---- 1. approve ----
 
@@ -150,7 +156,23 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
         awaitStatus(id, "REJECTED");
 
         assertThat(jdbc.queryForObject("SELECT rejection_reason FROM leave_request WHERE leave_request_id = ?",
-                String.class, id)).isNotBlank();
+                String.class, id)).isEqualTo(FALLBACK_REASON);
+        assertThat(outboxEvents(REJECTED, id).get(0).path("data").path("rejectionReason").asText())
+                .isEqualTo(FALLBACK_REASON);
+    }
+
+    @Test
+    void aRejectedReplyWithABlankReasonGetsTheFallbackReason() throws Exception {
+        long id = scenario(7036, "10");
+        approve(id, null);
+        reply(REJECTED_REPLY, id, startedEventId(id, 1), "  ");
+
+        awaitStatus(id, "REJECTED");
+
+        assertThat(jdbc.queryForObject("SELECT rejection_reason FROM leave_request WHERE leave_request_id = ?",
+                String.class, id)).isEqualTo(FALLBACK_REASON);
+        assertThat(outboxEvents(REJECTED, id).get(0).path("data").path("rejectionReason").asText())
+                .isEqualTo(FALLBACK_REASON);
     }
 
     // ---- 4. timeout ----
@@ -220,6 +242,8 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
         assertThat(((java.sql.Timestamp) second.get("deadline")).toInstant()).isAfter(Instant.now());
         assertThat(ledgerRows(7008)).containsExactly("ACCRUAL:10.00:null", "RESERVATION:-3.00:1", "REVERSAL:3.00:1",
                 "RESERVATION:-3.00:2");
+        assertThat(uuidOf(ledgerEvents(id).get(2).path("causationId"))).as("the retry reservation is caused by the late reply")
+                .isEqualTo(late);
         assertThat(balance(7008)).isEqualByComparingTo("7");
         assertThat(jdbc.queryForMap("SELECT rejection_reason, aggregate_version FROM leave_request "
                 + "WHERE leave_request_id = ?", id)).containsEntry("rejection_reason", null)
@@ -426,6 +450,9 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
         UUID reply = reply(COMPLETED_REPLY, 99_999_999L, UUID.randomUUID(), null);
 
         awaitProcessed(reply);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = 99999999 "
+                + "AND event_type LIKE 'leave.request.%'", Integer.class)).isZero();
     }
 
     @Test
@@ -461,7 +488,8 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
     @Test
     void approvingWithTooLittleBalanceIsAConflictAndWritesNothing() {
         long id = scenario(7021, "2"); // 3 days wanted
-        long ownEvents = jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ?", Long.class, id);
+        long ownEvents = jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? "
+                + "AND event_type LIKE 'leave.request.%'", Long.class, id);
 
         ResponseEntity<JsonNode> response = approve(id, null);
 
@@ -476,7 +504,8 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
         assertThat(sagaCount(id)).as("no saga").isZero();
         assertThat(ledgerRows(7021)).containsExactly("ACCRUAL:2.00:null");
         assertThat(outboxEvents(STARTED, id)).isEmpty();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ?", Long.class, id))
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? "
+                + "AND event_type LIKE 'leave.request.%'", Long.class, id))
                 .isEqualTo(ownEvents);
         assertThat(ledgerEvents(id)).isEmpty();
     }
@@ -607,5 +636,137 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
 
         assertThat(delete("/v1/leaverequests/" + id).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(outboxEvents(CANCELLED, id)).isEmpty();
+    }
+
+    // ---- review fixes (#47) ----
+
+    @Test
+    void aLateCompletedIsNotRetriedForAnEmployeeWhoIsNoLongerActive() throws Exception {
+        long id = scenario(7031, "10");
+        approve(id, null);
+        UUID firstStart = startedEventId(id, 1);
+        expire(id);
+        jdbc.update("UPDATE employee_replica SET deleted_at = now() WHERE employee_id = 7031");
+
+        UUID late = reply(COMPLETED_REPLY, id, firstStart, null);
+        awaitProcessed(late);
+
+        assertThat(requestStatus(id)).isEqualTo("REJECTED");
+        assertThat(sagaCount(id)).isEqualTo(1);
+        assertThat(outboxEvents(STARTED, id)).hasSize(1);
+        assertThat(ledgerRows(7031)).containsExactly("ACCRUAL:10.00:null", "RESERVATION:-3.00:1", "REVERSAL:3.00:1");
+        assertThat(balance(7031)).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void aStartedAttemptWhoseReservationIsAlreadyReversedIsNotHalfCompensated() throws Exception {
+        long id = scenario(7032, "10");
+        approve(id, null);
+        // the impossible state: the days of the attempt in flight were already given back
+        ledger.reverseReservation(id, 1, null, null);
+        jdbc.update("UPDATE leave_approval_saga SET deadline = now() + interval '1 day' WHERE leave_request_id = ?",
+                id);
+
+        UUID r = reply(REJECTED_REPLY, id, startedEventId(id, 1), "x");
+        awaitDeadLetter(r.toString());
+
+        assertThat(saga(id, 1)).containsEntry("saga_status", "STARTED");
+        assertThat(requestStatus(id)).isEqualTo("APPROVAL_PENDING");
+        assertThat(outboxEvents(REJECTED, id)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_events WHERE event_id = ?", Integer.class,
+                r)).isZero();
+    }
+
+    @Test
+    void cancellingApprovedLeaveThatHasStartedIsAConflictAndGivesNothingBack() throws Exception {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        long id = scenario(7033, "10", today.minusDays(1), today.plusDays(1));
+        approve(id, null);
+        reply(COMPLETED_REPLY, id, startedEventId(id, 1), null);
+        awaitStatus(id, "APPROVED");
+
+        ResponseEntity<String> response = delete("/v1/leaverequests/" + id);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getHeaders().getContentType().toString()).contains("problem+json");
+        assertThat(requestStatus(id)).isEqualTo("APPROVED");
+        assertThat(ledgerRows(7033)).containsExactly("ACCRUAL:10.00:null", "RESERVATION:-3.00:1");
+        assertThat(outboxEvents(CANCELLED, id)).isEmpty();
+    }
+
+    @Test
+    void cancellingApprovedLeaveThatStartsInTheFutureStillWorks() throws Exception {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        long id = scenario(7034, "10", today.plusDays(2), today.plusDays(4));
+        approve(id, null);
+        reply(COMPLETED_REPLY, id, startedEventId(id, 1), null);
+        awaitStatus(id, "APPROVED");
+
+        assertThat(delete("/v1/leaverequests/" + id).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        assertThat(requestStatus(id)).isEqualTo("CANCELLED");
+        assertThat(ledgerRows(7034)).containsExactly("ACCRUAL:10.00:null", "RESERVATION:-3.00:1", "REVERSAL:3.00:1");
+    }
+
+    @Test
+    void aReplyThatKeepsFailingIsRetriedWithBackoffBeforeItIsDeadLettered() {
+        UUID eventId = UUID.randomUUID();
+        long t0 = System.nanoTime();
+        publish(new EventEnvelope(eventId, COMPLETED_REPLY, Instant.now(), "scheduling-service", 5, 1,
+                UUID.randomUUID().toString(), UUID.randomUUID(), Map.of("employeeId", 1)));
+
+        awaitDeadLetter(eventId.toString());
+
+        long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
+        assertThat(elapsedMs).as("three attempts, 1 s then 2 s apart").isGreaterThanOrEqualTo(2500);
+    }
+
+    @Test
+    void aLateCompletedIsNotRetriedWhenTheEmployeeHasSinceRequestedOverlappingLeave() throws Exception {
+        long id = scenario(7035, "10");
+        approve(id, null);
+        UUID firstStart = startedEventId(id, 1);
+        expire(id);
+        ResponseEntity<JsonNode> overlapping = post("/v1/leaverequests", Map.of("employeeId", 7035,
+                "leaveTypeId", leaveTypeOf(id), "startDate", "2034-01-11", "endDate", "2034-01-11"), JsonNode.class);
+        assertThat(overlapping.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        long newRequest = overlapping.getBody().path("leaveRequestId").asLong();
+
+        UUID late = reply(COMPLETED_REPLY, id, firstStart, null);
+        awaitProcessed(late);
+
+        assertThat(requestStatus(id)).isEqualTo("REJECTED");
+        assertThat(sagaCount(id)).isEqualTo(1);
+        assertThat(outboxEvents(STARTED, id)).hasSize(1);
+        assertThat(ledgerRows(7035)).containsExactly("ACCRUAL:10.00:null", "RESERVATION:-3.00:1", "REVERSAL:3.00:1");
+        assertThat(requestStatus(newRequest)).isEqualTo("PENDING");
+    }
+
+    @Test
+    void theDatabaseAllowsOneStartedSagaPerRequest() {
+        long id = scenario(7037, "10");
+        approve(id, null);
+
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO leave_approval_saga (leave_request_id, attempt, saga_status, "
+                + "approval_started_event_id, correlation_id, deadline, created_at, updated_at) "
+                + "VALUES (?, 2, 'STARTED', ?, 'forged', now() + interval '1 day', now(), now())",
+                id, UUID.randomUUID()))
+                .isInstanceOf(DuplicateKeyException.class)
+                .hasMessageContaining("ux_leave_approval_saga_one_started");
+
+        assertThat(sagaCount(id)).isEqualTo(1);
+    }
+
+    @Test
+    void aReplyWhoseAggregateIdDiffersFromItsLeaveRequestIdIsDeadLettered() {
+        UUID eventId = UUID.randomUUID();
+        publish(new EventEnvelope(eventId, COMPLETED_REPLY, Instant.now(), "scheduling-service", 99_999_998, 1,
+                UUID.randomUUID().toString(), UUID.randomUUID(),
+                Map.of("leaveRequestId", 99_999_997, "employeeId", 1)));
+
+        awaitDeadLetter(eventId.toString());
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_events WHERE event_id = ?", Integer.class,
+                eventId)).isZero();
     }
 }

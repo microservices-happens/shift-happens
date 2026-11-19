@@ -21,6 +21,12 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  task:
+    scheduling:
+      # SagaTimeoutJob may wait up to DB_LOCK_TIMEOUT on an employee lock; with Boot's default single scheduler
+      # thread that would hold back OutboxRelay (every event). Two threads keep the two jobs independent.
+      pool:
+        size: 2
 
 app:
   rabbit:

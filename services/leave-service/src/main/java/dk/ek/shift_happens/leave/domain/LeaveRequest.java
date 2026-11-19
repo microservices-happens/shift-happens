@@ -58,9 +58,10 @@ public record LeaveRequest(
     /**
      * DELETE: PENDING or APPROVED to CANCELLED (soft, the row stays). Cancelling an already CANCELLED request is an
      * idempotent no-op and returns this instance. APPROVAL_PENDING cannot be cancelled: the saga is in flight and
-     * would have to be compensated first. REJECTED is final.
+     * would have to be compensated first. REJECTED is final. APPROVED leave can only be cancelled before its first
+     * day: from {@code startDate} on (today is the UTC date) the days are taken and are not given back.
      */
-    public LeaveRequest cancelled() {
+    public LeaveRequest cancelled(LocalDate today) {
         if (status == LeaveRequestStatus.CANCELLED) {
             return this;
         }
@@ -70,6 +71,10 @@ public record LeaveRequest(
         }
         if (status != LeaveRequestStatus.APPROVED) {
             requirePending("cancelled");
+        }
+        if (status == LeaveRequestStatus.APPROVED && !startDate.isAfter(today)) {
+            throw new LeaveRequestRejectedException("leave request " + leaveRequestId + " started on " + startDate
+                    + ": approved leave can only be cancelled before its first day");
         }
         return withStatus(LeaveRequestStatus.CANCELLED, decision, rejectionReason);
     }
