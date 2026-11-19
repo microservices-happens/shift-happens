@@ -3,9 +3,12 @@ package dk.ek.shift_happens.leave.application;
 import dk.ek.shift_happens.leave.domain.EmployeeReplica;
 import dk.ek.shift_happens.leave.domain.EmployeeReplicaRepository;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
+import dk.ek.shift_happens.leave.domain.LeaveApprovalSaga;
+import dk.ek.shift_happens.leave.domain.LeaveApprovalSagaRepository;
 import dk.ek.shift_happens.leave.domain.LeaveRequest;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRepository;
+import dk.ek.shift_happens.leave.domain.LeaveRequestStatus;
 import dk.ek.shift_happens.leave.domain.LeaveType;
 import dk.ek.shift_happens.leave.domain.LeaveTypeRepository;
 import org.springframework.context.annotation.Profile;
@@ -27,14 +30,19 @@ public class LeaveRequestService {
     private final LeaveTypeRepository types;
     private final EmployeeReplicaRepository employees;
     private final DomainEvents events;
+    private final LeaveLedgerService ledger;
+    private final LeaveApprovalSagaRepository sagas;
     private final Clock clock;
 
     LeaveRequestService(LeaveRequestRepository requests, LeaveTypeRepository types,
-                        EmployeeReplicaRepository employees, DomainEvents events, Clock clock) {
+                        EmployeeReplicaRepository employees, DomainEvents events, LeaveLedgerService ledger,
+                        LeaveApprovalSagaRepository sagas, Clock clock) {
         this.requests = requests;
         this.types = types;
         this.employees = employees;
         this.events = events;
+        this.ledger = ledger;
+        this.sagas = sagas;
         this.clock = clock;
     }
 
@@ -75,7 +83,9 @@ public class LeaveRequestService {
 
     /**
      * DELETE: PENDING to CANCELLED; an already CANCELLED request is an idempotent no-op (no change, no event).
-     * #47 extends this to APPROVED requests (with a REVERSAL ledger entry).
+     * An APPROVED request is cancelled too: its reservation is reversed (REVERSAL ledger entry of the completed
+     * saga attempt) and leave.request.cancelled.v1 tells Scheduling to drop the leave window. APPROVAL_PENDING is a
+     * 409: the saga is in flight. The request row lock is held first; the ledger then takes the employee lock.
      */
     @Transactional
     public LeaveRequest cancel(long leaveRequestId, String correlationId) {
@@ -85,6 +95,11 @@ public class LeaveRequestService {
             return current;
         }
         LeaveRequest saved = requests.save(cancelled);
+        if (current.status() == LeaveRequestStatus.APPROVED) {
+            LeaveApprovalSaga completed = sagas.findCompleted(leaveRequestId).orElseThrow(() ->
+                    new IllegalStateException("approved leave request " + leaveRequestId + " has no completed saga"));
+            ledger.reverseReservation(leaveRequestId, completed.attempt(), correlationId, null);
+        }
         events.append(DomainEvents.LEAVE_REQUEST_CANCELLED, saved.leaveRequestId(), saved.aggregateVersion(),
                 correlationId, saved.snapshot(leaveType(saved.leaveTypeId()).leaveTypeName()));
         return saved;

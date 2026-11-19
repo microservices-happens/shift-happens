@@ -26,8 +26,9 @@ import java.util.UUID;
  * balance, so two appends of one employee cannot both build on the same previous entry (duplicate numbers, lost
  * updates, a balance that goes negative). The lock order stays idempotency key, request row, employee.
  *
- * <p>{@link #reserve} and {@link #reverseReservation} are the two steps of the leave-approval saga (#47); no
- * endpoint calls them yet.
+ * <p>{@link #reserve} and {@link #reverseReservation} are the two steps of the leave-approval saga (#47). A
+ * request has one reservation and one reversal per saga attempt: a late completed reply after a timeout
+ * compensation reserves again as the next attempt.
  */
 @Service
 @Profile("command")
@@ -66,61 +67,66 @@ public class LeaveLedgerService {
      * Saga step 1: reserves the days of the request, which needs a balance of at least that many days (else
      * 409 "Insufficient leave balance"). It locks the request row itself (re-entrant when the caller already holds
      * it) and then the employee, and reads the ledger only after both locks. The caller must not already hold the
-     * employee lock: the lock order is request row, then employee. A request is reserved only once. A refused
+     * employee lock: the lock order is request row, then employee. A saga attempt is reserved only once. A refused
      * reservation does not mark the caller's transaction rollback-only, so the caller can catch the exception and
      * go on. {@code causationId} is the eventId of the event that caused this step, or null.
      */
     @Transactional(noRollbackFor = {InsufficientLeaveBalanceException.class, LeaveRequestRejectedException.class})
-    public LedgerEntry reserve(long leaveRequestId, String correlationId, UUID causationId) {
+    public LedgerEntry reserve(long leaveRequestId, int sagaAttempt, String correlationId, UUID causationId) {
         LeaveRequest request = requests.findByIdForUpdate(leaveRequestId)
                 .orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
         requests.lockEmployeeCalendar(request.employeeId()); // before the balance is read (see class comment)
-        if (ledger.findForLeaveRequest(leaveRequestId, TransactionType.RESERVATION).isPresent()) {
-            throw new LeaveRequestRejectedException("leave request " + leaveRequestId + " already has a reservation");
+        if (ledger.findForLeaveRequest(leaveRequestId, TransactionType.RESERVATION, sagaAttempt).isPresent()) {
+            throw new LeaveRequestRejectedException("leave request " + leaveRequestId + " already has a reservation "
+                    + "for saga attempt " + sagaAttempt);
         }
         return appendLocked(request.employeeId(), request.leaveTypeId(), TransactionType.RESERVATION,
                 BigDecimal.valueOf(request.days()).negate(), LedgerEntry.LEAVE_REQUEST, leaveRequestId,
-                correlationId, causationId);
+                correlationId, causationId, sagaAttempt);
     }
 
     /**
-     * Saga compensation: appends a REVERSAL that undoes the request's RESERVATION. It locks the request row and
+     * Saga compensation: appends a REVERSAL that undoes the RESERVATION of one saga attempt. It locks the request row and
      * then the employee itself (the caller must not already hold the employee lock) and looks the reservation up
      * only after both locks, so it sees a reservation another transaction has just committed. Idempotent: it
-     * returns empty and appends nothing when the request is unknown, was never reserved or is already reversed.
+     * returns empty and appends nothing when the request is unknown, the attempt was never reserved or is already
+     * reversed.
      */
     @Transactional
-    public Optional<LedgerEntry> reverseReservation(long leaveRequestId, String correlationId, UUID causationId) {
+    public Optional<LedgerEntry> reverseReservation(long leaveRequestId, int sagaAttempt, String correlationId,
+                                                    UUID causationId) {
         Optional<LeaveRequest> request = requests.findByIdForUpdate(leaveRequestId);
         if (request.isEmpty()) {
             return Optional.empty();
         }
         requests.lockEmployeeCalendar(request.get().employeeId());
-        Optional<LedgerEntry> reservation = ledger.findForLeaveRequest(leaveRequestId, TransactionType.RESERVATION);
-        if (reservation.isEmpty() || ledger.findForLeaveRequest(leaveRequestId, TransactionType.REVERSAL).isPresent()) {
+        Optional<LedgerEntry> reservation = ledger.findForLeaveRequest(leaveRequestId, TransactionType.RESERVATION,
+                sagaAttempt);
+        if (reservation.isEmpty()
+                || ledger.findForLeaveRequest(leaveRequestId, TransactionType.REVERSAL, sagaAttempt).isPresent()) {
             return Optional.empty();
         }
         LedgerEntry reserved = reservation.get();
         return Optional.of(appendLocked(reserved.employeeId(), reserved.leaveTypeId(), TransactionType.REVERSAL,
                 reserved.changeAmountDays().negate(), LedgerEntry.LEAVE_REQUEST, leaveRequestId, correlationId,
-                causationId));
+                causationId, sagaAttempt));
     }
 
     private LedgerEntry append(long employeeId, long leaveTypeId, TransactionType type, BigDecimal amount,
                                String referenceEntityType, Long referenceEntityId, String correlationId) {
         requests.lockEmployeeCalendar(employeeId);
         return appendLocked(employeeId, leaveTypeId, type, amount, referenceEntityType, referenceEntityId,
-                correlationId, null);
+                correlationId, null, null);
     }
 
     /** The employee lock is already held: read the balance, append, snapshot when due, publish. */
     private LedgerEntry appendLocked(long employeeId, long leaveTypeId, TransactionType type, BigDecimal amount,
                                      String referenceEntityType, Long referenceEntityId, String correlationId,
-                                     UUID causationId) {
+                                     UUID causationId, Integer sagaAttempt) {
         LeaveBalance balance = balance(employeeId, leaveTypeId);
         LedgerEntry next = LedgerEntry.next(employeeId, leaveTypeId, balance, type, amount, referenceEntityType,
                 referenceEntityId, clock.instant());
-        LedgerEntry saved = ledger.append(next);
+        LedgerEntry saved = ledger.append(next, sagaAttempt);
         if (saved.shouldSnapshot()) {
             ledger.saveSnapshot(saved.snapshot(clock.instant()));
         }

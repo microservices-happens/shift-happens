@@ -12,7 +12,7 @@ tests/cooperation/
 └── src/test/java/dk/ek/shift_happens/cooperation/
     ├── support/ServiceContainer.java        # starts services/<name> images on a shared network
     ├── EmployeeReplicationIT.java           # workforce → RabbitMQ → identity (enabled)
-    └── LeaveApprovalSagaIT.java             # leave saga (disabled until P3.1)
+    └── LeaveApprovalSagaIT.java             # leave saga, both outcomes (enabled)
 ```
 
 `EmployeeReplicationIT` is the first system-level cooperation test: it posts an employee to
@@ -20,8 +20,13 @@ workforce-service, and asserts that identity-service consumed `workforce.employe
 created the account. It starts RabbitMQ and one PostgreSQL per service, and reads each service's own
 database for the assertions — no mocks and no non-contract endpoints.
 
-`LeaveApprovalSagaIT` is the second one (both saga outcomes) and stays disabled until the saga
-exists (P3.1).
+`LeaveApprovalSagaIT` is the second one (P3.1): leave-service and scheduling-service, each with its own
+PostgreSQL, plus RabbitMQ. The employees reach both replicas as `workforce.employee.created.v1` events
+(published through the RabbitMQ management API), a manager approves a leave request through the Leave REST
+API, and the test asserts both saga outcomes in the services' own databases: the completed path (the
+overlapping assignment is `RELEASED_FOR_LEAVE`, the request `APPROVED`, `leave.request.approved.v1`
+published) and the compensation path (a shift that starts within 24 hours is LOCKED, so Scheduling answers
+`rejected`; Leave appends a `REVERSAL` and the request is `REJECTED`).
 
 ## Run it
 
@@ -29,6 +34,8 @@ exists (P3.1).
 # 1. Build the images the tests use (CI does this automatically)
 docker build -t shift-happens/identity-service:ci services/identity-service
 docker build -t shift-happens/workforce-service:ci services/workforce-service
+docker build -t shift-happens/leave-service:ci services/leave-service
+docker build -t shift-happens/scheduling-service:ci services/scheduling-service
 
 # 2. Run
 mvn -B -f tests/cooperation/pom.xml verify

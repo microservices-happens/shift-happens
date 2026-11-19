@@ -5,7 +5,6 @@ import dk.ek.shift_happens.leave.application.InvalidIdempotencyKeyException;
 import dk.ek.shift_happens.leave.application.LeaveApprovalNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveRequestNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveTypeNotFoundException;
-import dk.ek.shift_happens.leave.domain.ApprovalNotAvailableException;
 import dk.ek.shift_happens.leave.domain.InsufficientLeaveBalanceException;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
@@ -80,12 +79,6 @@ class ApiExceptionHandler {
     @ExceptionHandler(LeaveTypeConflictException.class)
     ProblemDetail leaveTypeConflict(LeaveTypeConflictException exception) {
         return problem(HttpStatus.CONFLICT, "Leave type conflict", "leave-type-conflict", exception.getMessage());
-    }
-
-    @ExceptionHandler(ApprovalNotAvailableException.class)
-    ProblemDetail approvalNotAvailable(ApprovalNotAvailableException exception) {
-        return problem(HttpStatus.CONFLICT, "Approval not available yet", "approval-not-available",
-                exception.getMessage());
     }
 
     /** The overlap exclusion constraint of V3 caught a concurrent request that the application check missed. */

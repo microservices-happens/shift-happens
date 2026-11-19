@@ -20,3 +20,9 @@ app:
   rabbit:
     # Durable consumer queue declared by LeaveCommandTopology (plus <queue>.dlq on the DLX).
     queue: ${RABBITMQ_QUEUE:leave.command}
+  saga:
+    # How long Scheduling may take to answer leave.request.approval-started.v1 (ISO-8601 duration) before the
+    # approval is compensated; the same variable as docker-compose.microservices.yml and the K8s manifests.
+    timeout: ${SAGA_TIMEOUT:PT5M}
+    # How often (ms) overdue sagas are looked for.
+    poll-delay: ${SAGA_TIMEOUT_POLL_DELAY:15000}

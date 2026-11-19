@@ -13,10 +13,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.util.UUID;
 
 /**
- * A manager decides about a leave request. REJECTED is final and publishes leave.request.rejected.v1;
- * APPROVED belongs to the leave-approval saga and is refused until #47 / P3.1 builds it.
+ * A manager decides about a leave request. REJECTED is final and publishes leave.request.rejected.v1. APPROVED
+ * starts the leave-approval saga (P3.1): in this one transaction the request becomes APPROVAL_PENDING, the days
+ * are reserved in the ledger, the saga attempt is stored with its deadline and leave.request.approval-started.v1
+ * is published. A refused reservation (not enough balance) rolls the whole decision back. Lock order: idempotency
+ * key, request row, then the employee (the ledger takes that lock itself).
  */
 @Service
 @Profile("command")
@@ -29,16 +33,20 @@ public class LeaveApprovalService {
     private final LeaveTypeRepository types;
     private final EmployeeReplicaRepository employees;
     private final DomainEvents events;
+    private final LeaveLedgerService ledger;
+    private final LeaveApprovalSagaService sagas;
     private final Clock clock;
 
     LeaveApprovalService(LeaveApprovalRepository approvals, LeaveRequestRepository requests,
                          LeaveTypeRepository types, EmployeeReplicaRepository employees, DomainEvents events,
-                         Clock clock) {
+                         LeaveLedgerService ledger, LeaveApprovalSagaService sagas, Clock clock) {
         this.approvals = approvals;
         this.requests = requests;
         this.types = types;
         this.employees = employees;
         this.events = events;
+        this.ledger = ledger;
+        this.sagas = sagas;
         this.clock = clock;
     }
 
@@ -53,7 +61,7 @@ public class LeaveApprovalService {
 
         LeaveDecision verdict = new LeaveDecision(approverEmployeeId, decision, comment, clock.instant());
         return decision == ApprovalDecision.APPROVED
-                ? startApprovalSaga(request, verdict)
+                ? startApprovalSaga(request, verdict, correlationId)
                 : reject(request, verdict, correlationId);
     }
 
@@ -66,10 +74,21 @@ public class LeaveApprovalService {
         return existing;
     }
 
-    /** The one place #47 replaces: today an APPROVED decision is refused without any state change or event. */
-    private LeaveApproval startApprovalSaga(LeaveRequest request, LeaveDecision approval) {
-        request.startApproval(approval);
-        throw new IllegalStateException("unreachable until the leave-approval saga exists (#47)");
+    /** Saga step 1; every refusal below throws before or rolls back, so nothing is half written. */
+    private LeaveApproval startApprovalSaga(LeaveRequest request, LeaveDecision approval, String correlationId) {
+        LeaveRequest started = request.approvalStarted(approval); // 409 unless PENDING
+        LeaveRequestService.requireActiveEmployee(employees, request.employeeId(), "employee");
+        String correlation = correlationId == null || correlationId.isBlank()
+                ? UUID.randomUUID().toString()
+                : correlationId;
+
+        LeaveApproval saved = approvals.save(new LeaveApproval(null, request.leaveRequestId(),
+                approval.approverEmployeeId(), approval.decision(), approval.comment(), approval.decisionDatetime()));
+        // 409 "Insufficient leave balance" propagates and rolls back the approval row as well
+        ledger.reserve(request.leaveRequestId(), 1, correlation, null);
+        // Saved after the approval, so the adapter joins the decision into the snapshot.
+        sagas.begin(started, 1, correlation, null);
+        return saved;
     }
 
     private LeaveApproval reject(LeaveRequest request, LeaveDecision rejection, String correlationId) {

@@ -1,9 +1,11 @@
 package dk.ek.shift_happens.leave.infrastructure.persistence;
 
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
@@ -20,6 +22,12 @@ interface LeaveRequestJpaRepository extends JpaRepository<LeaveRequestEntity, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from LeaveRequestEntity r where r.leaveRequestId = :id")
     Optional<LeaveRequestEntity> findForUpdate(@Param("id") long id);
+
+    /** Like {@link #findForUpdate} but a row that another transaction has locked is skipped (empty result). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2")) // -2 = SKIP LOCKED
+    @Query("select r from LeaveRequestEntity r where r.leaveRequestId = :id")
+    Optional<LeaveRequestEntity> findForUpdateSkipLocked(@Param("id") long id);
 
     /**
      * Transaction-scoped advisory lock, one-argument (bigint) form: a different keyspace from the idempotency

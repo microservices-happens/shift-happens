@@ -146,7 +146,7 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
                     futures.add(pool.submit(() -> {
                         gate.await(15, TimeUnit.SECONDS);
                         try {
-                            ledger.reserve(request.leaveRequestId(), null, null);
+                            ledger.reserve(request.leaveRequestId(), 1, null, null);
                             return true;
                         } catch (InsufficientLeaveBalanceException e) {
                             return false;
@@ -234,8 +234,8 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
 
         Optional<LedgerEntry> reversal = callWaitsWhile(requestId -> {
             requestRepository.findByIdForUpdate(requestId).orElseThrow(); // what the approval path holds
-            ledger.reserve(requestId, null, null);
-        }, id, () -> ledger.reverseReservation(id, null, null));
+            ledger.reserve(requestId, 1, null, null);
+        }, id, () -> ledger.reverseReservation(id, 1, null, null));
 
         assertThat(reversal).isPresent();
         assertThat(jdbc.queryForList("SELECT transaction_type FROM leave_ledger WHERE employee_id = 9107 "
@@ -251,7 +251,7 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
         long id = accruedEmployeeWithRequest(9108, typeId, "2033-04-01", "2033-04-03", "10");
 
         LedgerEntry entry = callWaitsWhile(requestId -> requestRepository.findByIdForUpdate(requestId).orElseThrow(),
-                id, () -> ledger.reserve(id, null, null));
+                id, () -> ledger.reserve(id, 1, null, null));
 
         assertThat(entry.transactionType()).isEqualTo(TransactionType.RESERVATION);
         assertChain(9108, typeId, 2);
@@ -261,11 +261,11 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
     void reverseWaitsForTheRowLockOfTheRequest() throws Exception {
         long typeId = createLeaveType("RowReverse " + UUID.randomUUID());
         long id = accruedEmployeeWithRequest(9109, typeId, "2033-05-01", "2033-05-03", "10");
-        ledger.reserve(id, null, null);
+        ledger.reserve(id, 1, null, null);
 
         Optional<LedgerEntry> reversal = callWaitsWhile(
                 requestId -> requestRepository.findByIdForUpdate(requestId).orElseThrow(),
-                id, () -> ledger.reverseReservation(id, null, null));
+                id, () -> ledger.reverseReservation(id, 1, null, null));
 
         assertThat(reversal).isPresent();
         assertChain(9109, typeId, 3);
@@ -275,10 +275,10 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
     void reverseWaitsForTheEmployeeLock() throws Exception {
         long typeId = createLeaveType("EmpReverse " + UUID.randomUUID());
         long id = accruedEmployeeWithRequest(9110, typeId, "2033-06-01", "2033-06-03", "10");
-        ledger.reserve(id, null, null);
+        ledger.reserve(id, 1, null, null);
 
         Optional<LedgerEntry> reversal = callWaitsWhile(requestRepository::lockEmployeeCalendar, 9110L,
-                () -> ledger.reverseReservation(id, null, null));
+                () -> ledger.reverseReservation(id, 1, null, null));
 
         assertThat(reversal).isPresent();
         assertChain(9110, typeId, 3);
@@ -288,7 +288,7 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
     void eightParallelReversesOfOneReservationAppendExactlyOneReversal() throws Exception {
         long typeId = createLeaveType("ParReverse " + UUID.randomUUID());
         long id = accruedEmployeeWithRequest(9111, typeId, "2033-07-01", "2033-07-03", "10");
-        ledger.reserve(id, null, null);
+        ledger.reserve(id, 1, null, null);
         ExecutorService pool = Executors.newFixedThreadPool(PARALLEL);
         try {
             CyclicBarrier gate = new CyclicBarrier(PARALLEL);
@@ -296,7 +296,7 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
             for (int i = 0; i < PARALLEL; i++) {
                 futures.add(pool.submit(() -> {
                     gate.await(15, TimeUnit.SECONDS);
-                    return ledger.reverseReservation(id, null, null).isPresent();
+                    return ledger.reverseReservation(id, 1, null, null).isPresent();
                 }));
             }
             int present = 0;
@@ -318,14 +318,14 @@ class LeaveLedgerConcurrencyIT extends AbstractCommandIT {
     void aReverseAmongParallelAccrualsKeepsTheChain() throws Exception {
         long typeId = createLeaveType("MixReverse " + UUID.randomUUID());
         long id = accruedEmployeeWithRequest(9112, typeId, "2033-08-01", "2033-08-03", "10");
-        ledger.reserve(id, null, null);
+        ledger.reserve(id, 1, null, null);
         ExecutorService pool = Executors.newFixedThreadPool(PARALLEL);
         try {
             CyclicBarrier gate = new CyclicBarrier(PARALLEL);
             List<Future<?>> futures = new ArrayList<>();
             futures.add(pool.submit(() -> {
                 gate.await(15, TimeUnit.SECONDS);
-                return ledger.reverseReservation(id, null, null);
+                return ledger.reverseReservation(id, 1, null, null);
             }));
             for (int i = 1; i < PARALLEL; i++) {
                 futures.add(pool.submit(() -> {

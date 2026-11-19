@@ -11,8 +11,8 @@ interface LeaveLedgerJpaRepository extends JpaRepository<LeaveLedgerEntity, Long
     List<LeaveLedgerEntity> findByEmployeeIdAndLeaveTypeIdAndEntryNumberGreaterThanOrderByEntryNumber(
             long employeeId, long leaveTypeId, long entryNumber);
 
-    Optional<LeaveLedgerEntity> findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionType(
-            String referenceEntityType, Long referenceEntityId, String transactionType);
+    Optional<LeaveLedgerEntity> findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionTypeAndSagaAttempt(
+            String referenceEntityType, Long referenceEntityId, String transactionType, Integer sagaAttempt);
 
     boolean existsByLeaveTypeId(long leaveTypeId);
 }

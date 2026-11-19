@@ -25,8 +25,8 @@ class JpaLeaveLedgerRepository implements LeaveLedgerRepository {
 
     /** Flushes so the generated id is known and a constraint violation surfaces inside the transaction. */
     @Override
-    public LedgerEntry append(LedgerEntry entry) {
-        return ledger.saveAndFlush(LeaveLedgerEntity.from(entry)).toDomain();
+    public LedgerEntry append(LedgerEntry entry, Integer sagaAttempt) {
+        return ledger.saveAndFlush(LeaveLedgerEntity.from(entry, sagaAttempt)).toDomain();
     }
 
     @Override
@@ -47,9 +47,9 @@ class JpaLeaveLedgerRepository implements LeaveLedgerRepository {
     }
 
     @Override
-    public Optional<LedgerEntry> findForLeaveRequest(long leaveRequestId, TransactionType type) {
-        return ledger.findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionType(
-                LedgerEntry.LEAVE_REQUEST, leaveRequestId, type.name()).map(LeaveLedgerEntity::toDomain);
+    public Optional<LedgerEntry> findForLeaveRequest(long leaveRequestId, TransactionType type, int sagaAttempt) {
+        return ledger.findFirstByReferenceEntityTypeAndReferenceEntityIdAndTransactionTypeAndSagaAttempt(
+                LedgerEntry.LEAVE_REQUEST, leaveRequestId, type.name(), sagaAttempt).map(LeaveLedgerEntity::toDomain);
     }
 
     @Override

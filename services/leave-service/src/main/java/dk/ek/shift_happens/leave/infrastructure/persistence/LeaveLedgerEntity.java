@@ -51,11 +51,15 @@ public class LeaveLedgerEntity {
     @Column(name = "transaction_datetime", nullable = false)
     private Instant transactionDatetime;
 
+    /** The leave-approval saga attempt of a RESERVATION or REVERSAL (V5), else null. */
+    @Column(name = "saga_attempt")
+    private Integer sagaAttempt;
+
     protected LeaveLedgerEntity() {
         // for JPA
     }
 
-    static LeaveLedgerEntity from(LedgerEntry entry) {
+    static LeaveLedgerEntity from(LedgerEntry entry, Integer sagaAttempt) {
         LeaveLedgerEntity entity = new LeaveLedgerEntity();
         entity.leaveLedgerId = entry.leaveLedgerId();
         entity.employeeId = entry.employeeId();
@@ -67,6 +71,7 @@ public class LeaveLedgerEntity {
         entity.referenceEntityType = entry.referenceEntityType();
         entity.referenceEntityId = entry.referenceEntityId();
         entity.transactionDatetime = entry.transactionDatetime();
+        entity.sagaAttempt = sagaAttempt;
         return entity;
     }
 

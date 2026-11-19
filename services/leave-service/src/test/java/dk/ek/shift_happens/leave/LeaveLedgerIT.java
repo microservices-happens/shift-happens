@@ -59,7 +59,7 @@ class LeaveLedgerIT extends AbstractCommandIT {
         // 2031-05-02 is a Friday, 2031-05-05 a Monday: 4 calendar days
         LeaveRequest request = request(4001, typeId, "2031-05-02", "2031-05-05");
 
-        LedgerEntry entry = ledger.reserve(request.leaveRequestId(), "corr-1", null);
+        LedgerEntry entry = ledger.reserve(request.leaveRequestId(), 1, "corr-1", null);
 
         assertThat(entry.transactionType()).isEqualTo(TransactionType.RESERVATION);
         assertThat(entry.changeAmountDays()).isEqualByComparingTo("-4");
@@ -89,7 +89,7 @@ class LeaveLedgerIT extends AbstractCommandIT {
         int events = jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE event_type = ?", Integer.class,
                 RECORDED);
 
-        assertThatThrownBy(() -> ledger.reserve(request.leaveRequestId(), null, null)).isInstanceOf(InsufficientLeaveBalanceException.class);
+        assertThatThrownBy(() -> ledger.reserve(request.leaveRequestId(), 1, null, null)).isInstanceOf(InsufficientLeaveBalanceException.class);
 
         assertThat(rows(4002, typeId)).isEqualTo(1);
         assertThat(sum(4002, typeId)).isEqualByComparingTo("3.5");
@@ -103,9 +103,9 @@ class LeaveLedgerIT extends AbstractCommandIT {
         seedEmployee(4003);
         ledger.recordManual(4003, typeId, TransactionType.ACCRUAL, new BigDecimal("10"), null, null, null);
         LeaveRequest request = request(4003, typeId, "2031-07-01", "2031-07-02");
-        ledger.reserve(request.leaveRequestId(), null, null);
+        ledger.reserve(request.leaveRequestId(), 1, null, null);
 
-        assertThatThrownBy(() -> ledger.reserve(request.leaveRequestId(), null, null)).isInstanceOf(LeaveRequestRejectedException.class);
+        assertThatThrownBy(() -> ledger.reserve(request.leaveRequestId(), 1, null, null)).isInstanceOf(LeaveRequestRejectedException.class);
 
         assertThat(sum(4003, typeId)).isEqualByComparingTo("8");
     }
@@ -116,10 +116,10 @@ class LeaveLedgerIT extends AbstractCommandIT {
         seedEmployee(4004);
         ledger.recordManual(4004, typeId, TransactionType.ACCRUAL, new BigDecimal("10"), null, null, null);
         LeaveRequest request = request(4004, typeId, "2031-08-01", "2031-08-03");
-        ledger.reserve(request.leaveRequestId(), null, null);
+        ledger.reserve(request.leaveRequestId(), 1, null, null);
 
-        Optional<LedgerEntry> reversal = ledger.reverseReservation(request.leaveRequestId(), "corr-2", null);
-        Optional<LedgerEntry> again = ledger.reverseReservation(request.leaveRequestId(), "corr-3", null);
+        Optional<LedgerEntry> reversal = ledger.reverseReservation(request.leaveRequestId(), 1, "corr-2", null);
+        Optional<LedgerEntry> again = ledger.reverseReservation(request.leaveRequestId(), 1, "corr-3", null);
 
         assertThat(reversal).isPresent();
         LedgerEntry entry = reversal.get();
@@ -141,22 +141,22 @@ class LeaveLedgerIT extends AbstractCommandIT {
         seedEmployee(4005);
         LeaveRequest request = request(4005, typeId, "2031-09-01", "2031-09-02");
 
-        assertThat(ledger.reverseReservation(request.leaveRequestId(), null, null)).isEmpty();
-        assertThat(ledger.reverseReservation(99_999_999L, null, null)).isEmpty();
+        assertThat(ledger.reverseReservation(request.leaveRequestId(), 1, null, null)).isEmpty();
+        assertThat(ledger.reverseReservation(99_999_999L, 1, null, null)).isEmpty();
         assertThat(rows(4005, typeId)).isZero();
     }
 
     @Test
-    void theDatabaseAllowsOneReservationAndOneReversalPerRequest() {
+    void theDatabaseAllowsOneReservationAndOneReversalPerSagaAttempt() {
         long typeId = createLeaveType("Backstop " + UUID.randomUUID());
         seedEmployee(4006);
         ledger.recordManual(4006, typeId, TransactionType.ACCRUAL, new BigDecimal("10"), null, null, null);
         LeaveRequest request = request(4006, typeId, "2031-10-01", "2031-10-02");
-        ledger.reserve(request.leaveRequestId(), null, null);
-        ledger.reverseReservation(request.leaveRequestId(), null, null);
+        ledger.reserve(request.leaveRequestId(), 1, null, null);
+        ledger.reverseReservation(request.leaveRequestId(), 1, null, null);
         String insert = "INSERT INTO leave_ledger (employee_id, leave_type_id, entry_number, change_amount_days, "
                 + "balance_after_days, transaction_type, reference_entity_type, reference_entity_id, "
-                + "transaction_datetime) VALUES (4006, ?, 4, ?, 7, ?, 'LEAVE_REQUEST', ?, now())";
+                + "transaction_datetime, saga_attempt) VALUES (4006, ?, 4, ?, 7, ?, 'LEAVE_REQUEST', ?, now(), 1)";
 
         assertThatThrownBy(() -> jdbc.update(insert, typeId, -1, "RESERVATION", request.leaveRequestId()))
                 .isInstanceOf(DuplicateKeyException.class)
@@ -168,8 +168,32 @@ class LeaveLedgerIT extends AbstractCommandIT {
     }
 
     @Test
+    void aLaterSagaAttemptReservesAndReversesAgainAndEachAttemptOnlyOnce() {
+        long typeId = createLeaveType("Attempts " + UUID.randomUUID());
+        seedEmployee(4012);
+        ledger.recordManual(4012, typeId, TransactionType.ACCRUAL, new BigDecimal("10"), null, null, null);
+        LeaveRequest request = request(4012, typeId, "2032-02-01", "2032-02-02");
+        long id = request.leaveRequestId();
+        ledger.reserve(id, 1, null, null);
+        ledger.reverseReservation(id, 1, null, null);
+
+        ledger.reserve(id, 2, null, null);
+
+        assertThat(sum(4012, typeId)).as("attempt 2 holds the days again").isEqualByComparingTo("8");
+        assertThatThrownBy(() -> ledger.reserve(id, 2, null, null)).isInstanceOf(LeaveRequestRejectedException.class)
+                .hasMessageContaining("attempt 2");
+        assertThat(ledger.reverseReservation(id, 1, null, null)).as("attempt 1 is already reversed").isEmpty();
+        assertThat(ledger.reverseReservation(id, 3, null, null)).as("attempt 3 was never reserved").isEmpty();
+        assertThat(ledger.reverseReservation(id, 2, null, null)).isPresent();
+        assertThat(sum(4012, typeId)).isEqualByComparingTo("10");
+        assertThat(jdbc.queryForList("SELECT transaction_type || saga_attempt FROM leave_ledger "
+                + "WHERE employee_id = 4012 AND saga_attempt IS NOT NULL ORDER BY entry_number", String.class))
+                .containsExactly("RESERVATION1", "REVERSAL1", "RESERVATION2", "REVERSAL2");
+    }
+
+    @Test
     void aReserveOfAnUnknownRequestIsNotFound() {
-        assertThatThrownBy(() -> ledger.reserve(99_999_999L, null, null))
+        assertThatThrownBy(() -> ledger.reserve(99_999_999L, 1, null, null))
                 .isInstanceOf(LeaveRequestNotFoundException.class);
     }
 
@@ -180,13 +204,13 @@ class LeaveLedgerIT extends AbstractCommandIT {
         LeaveRequest tooBig = request(4010, typeId, "2031-11-03", "2031-11-05"); // 3 days, balance 0
         LeaveRequest affordable = request(4010, typeId, "2031-12-01", "2031-12-01"); // 1 day
         ledger.recordManual(4010, typeId, TransactionType.ACCRUAL, new BigDecimal("1"), null, null, null);
-        ledger.reserve(affordable.leaveRequestId(), null, null);
+        ledger.reserve(affordable.leaveRequestId(), 1, null, null);
         String sentinel = "Sentinel " + UUID.randomUUID();
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            assertThatThrownBy(() -> ledger.reserve(tooBig.leaveRequestId(), null, null))
+            assertThatThrownBy(() -> ledger.reserve(tooBig.leaveRequestId(), 1, null, null))
                     .isInstanceOf(InsufficientLeaveBalanceException.class);
-            assertThatThrownBy(() -> ledger.reserve(affordable.leaveRequestId(), null, null))
+            assertThatThrownBy(() -> ledger.reserve(affordable.leaveRequestId(), 1, null, null))
                     .isInstanceOf(LeaveRequestRejectedException.class);
             jdbc.update("INSERT INTO leave_type (leave_type_name) VALUES (?)", sentinel);
         });
@@ -206,8 +230,8 @@ class LeaveLedgerIT extends AbstractCommandIT {
         UUID cause = UUID.randomUUID();
         UUID reverseCause = UUID.randomUUID();
 
-        LedgerEntry reserved = ledger.reserve(request.leaveRequestId(), "corr-r", cause);
-        LedgerEntry reversed = ledger.reverseReservation(request.leaveRequestId(), "corr-v", reverseCause).orElseThrow();
+        LedgerEntry reserved = ledger.reserve(request.leaveRequestId(), 1, "corr-r", cause);
+        LedgerEntry reversed = ledger.reverseReservation(request.leaveRequestId(), 1, "corr-v", reverseCause).orElseThrow();
 
         JsonNode reserveEvent = outboxEvents(RECORDED, reserved.leaveLedgerId()).get(0);
         assertThat(reserveEvent.path("eventType").asText()).isEqualTo(RECORDED);

@@ -56,15 +56,21 @@ public record LeaveRequest(
     }
 
     /**
-     * DELETE: PENDING to CANCELLED (soft, the row stays). Cancelling an already CANCELLED request is an
-     * idempotent no-op and returns this instance. Cancelling APPROVED leave, with a REVERSAL ledger entry, is
-     * added by #47.
+     * DELETE: PENDING or APPROVED to CANCELLED (soft, the row stays). Cancelling an already CANCELLED request is an
+     * idempotent no-op and returns this instance. APPROVAL_PENDING cannot be cancelled: the saga is in flight and
+     * would have to be compensated first. REJECTED is final.
      */
     public LeaveRequest cancelled() {
         if (status == LeaveRequestStatus.CANCELLED) {
             return this;
         }
-        requirePending("cancelled");
+        if (status == LeaveRequestStatus.APPROVAL_PENDING) {
+            throw new LeaveRequestRejectedException("leave request " + leaveRequestId + " is APPROVAL_PENDING: its "
+                    + "approval saga is in flight and the request cannot be cancelled until it has finished");
+        }
+        if (status != LeaveRequestStatus.APPROVED) {
+            requirePending("cancelled");
+        }
         return withStatus(LeaveRequestStatus.CANCELLED, decision, rejectionReason);
     }
 
@@ -77,12 +83,28 @@ public record LeaveRequest(
         return withStatus(LeaveRequestStatus.REJECTED, rejection, reasonText);
     }
 
-    /**
-     * A manager approves. This is the single place #47 replaces: approval will move the request to
-     * APPROVAL_PENDING and start the saga. Until then it always refuses and changes nothing.
-     */
-    public LeaveRequest startApproval(LeaveDecision approval) {
-        throw new ApprovalNotAvailableException();
+    /** A manager approves a PENDING request: it waits (APPROVAL_PENDING) for Scheduling to release the employee. */
+    public LeaveRequest approvalStarted(LeaveDecision approval) {
+        requirePending("approved");
+        return withStatus(LeaveRequestStatus.APPROVAL_PENDING, approval, null);
+    }
+
+    /** Saga step: Scheduling released the employee's assignments. */
+    public LeaveRequest approved() {
+        requireStatus(LeaveRequestStatus.APPROVAL_PENDING, "approved");
+        return withStatus(LeaveRequestStatus.APPROVED, decision, null);
+    }
+
+    /** Saga compensation (a refusal from Scheduling or a timeout): the manager's decision stays as it was. */
+    public LeaveRequest rejectedBySaga(String reasonText) {
+        requireStatus(LeaveRequestStatus.APPROVAL_PENDING, "rejected by the saga");
+        return withStatus(LeaveRequestStatus.REJECTED, decision, reasonText);
+    }
+
+    /** A late completed reply after a timeout compensation: REJECTED goes back to APPROVAL_PENDING, and only so. */
+    public LeaveRequest approvalRetried() {
+        requireStatus(LeaveRequestStatus.REJECTED, "retried");
+        return withStatus(LeaveRequestStatus.APPROVAL_PENDING, decision, null);
     }
 
     /** Calendar days of leave, both ends included: weekends count (1st-1st is 1 day, 1st-5th is 5). */
@@ -122,9 +144,13 @@ public record LeaveRequest(
     }
 
     private void requirePending(String action) {
-        if (!status.isPending()) {
+        requireStatus(LeaveRequestStatus.PENDING, action);
+    }
+
+    private void requireStatus(LeaveRequestStatus required, String action) {
+        if (status != required) {
             throw new LeaveRequestRejectedException("leave request " + leaveRequestId + " is " + status
-                    + " and cannot be " + action + "; only PENDING requests can");
+                    + " and cannot be " + action + "; only " + required + " requests can");
         }
     }
 
