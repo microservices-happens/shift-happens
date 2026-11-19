@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.leave.api.dto;
 
 import dk.ek.shift_happens.leave.domain.LeaveApproval;
+import dk.ek.shift_happens.leave.domain.LeaveApprovalView;
 
 import java.time.Instant;
 
@@ -12,6 +13,12 @@ public record LeaveApprovalResponse(
         String decision,
         String leaveComment,
         Instant decisionDatetime) {
+
+    public static LeaveApprovalResponse from(LeaveApprovalView approval) {
+        return new LeaveApprovalResponse(approval.leaveApprovalId(), approval.leaveRequestId(),
+                approval.approverEmployeeId(), approval.decision(), approval.leaveComment(),
+                approval.decisionDatetime());
+    }
 
     public static LeaveApprovalResponse from(LeaveApproval approval) {
         return new LeaveApprovalResponse(approval.leaveApprovalId(), approval.leaveRequestId(),

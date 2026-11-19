@@ -126,7 +126,7 @@ class LeaveRequestTest {
 
     @Test
     void cancellingMovesToCancelledAndBumpsTheVersion() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
         assertThat(cancelled.status()).isEqualTo(LeaveRequestStatus.CANCELLED);
         assertThat(cancelled.aggregateVersion()).isEqualTo(2);
@@ -134,15 +134,15 @@ class LeaveRequestTest {
 
     @Test
     void cancellingACancelledRequestIsANoOp() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
-        assertThat(cancelled.cancelled()).isSameAs(cancelled);
-        assertThat(cancelled.cancelled().aggregateVersion()).isEqualTo(2);
+        assertThat(cancelled.cancelled(day(1).minusDays(1))).isSameAs(cancelled);
+        assertThat(cancelled.cancelled(day(1).minusDays(1)).aggregateVersion()).isEqualTo(2);
     }
 
     @Test
     void aCancelledRequestCanStillNotBeEditedOrRejected() {
-        LeaveRequest cancelled = pending().cancelled();
+        LeaveRequest cancelled = pending().cancelled(day(1).minusDays(1));
 
         assertThatThrownBy(() -> cancelled.edited(null, null, null, "x"))
                 .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("CANCELLED");
@@ -161,17 +161,114 @@ class LeaveRequestTest {
     }
 
     @Test
-    void onlyPendingRequestsCanBeEditedCancelledOrRejected() {
+    void onlyPendingRequestsCanBeEditedOrRejected() {
         for (LeaveRequestStatus status : List.of(LeaveRequestStatus.APPROVAL_PENDING, LeaveRequestStatus.APPROVED,
                 LeaveRequestStatus.REJECTED)) {
             LeaveRequest request = saved(10, 5, 1, 5, status);
 
             assertThatThrownBy(() -> request.edited(null, null, null, "x"))
                     .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining(status.name());
-            assertThatThrownBy(request::cancelled).isInstanceOf(LeaveRequestRejectedException.class);
             assertThatThrownBy(() -> request.rejected(decision(ApprovalDecision.REJECTED, "no"), "default"))
                     .isInstanceOf(LeaveRequestRejectedException.class);
         }
+    }
+
+    @Test
+    void approvedLeaveCanOnlyBeCancelledBeforeItsFirstDay() {
+        LeaveRequest approved = saved(10, 5, 10, 12, LeaveRequestStatus.APPROVED);
+
+        LeaveRequest cancelled = approved.cancelled(day(10).minusDays(1));
+        assertThat(cancelled.status()).isEqualTo(LeaveRequestStatus.CANCELLED);
+        assertThat(cancelled.aggregateVersion()).isEqualTo(approved.aggregateVersion() + 1);
+        assertThatThrownBy(() -> approved.cancelled(day(10)))
+                .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("first day");
+        assertThatThrownBy(() -> approved.cancelled(day(10).plusDays(3)))
+                .isInstanceOf(LeaveRequestRejectedException.class);
+    }
+
+    @Test
+    void theStartDateRuleDoesNotApplyToPendingRequests() {
+        LeaveRequest request = saved(10, 5, 10, 12, LeaveRequestStatus.PENDING);
+
+        assertThat(request.cancelled(day(10).plusDays(10)).status()).isEqualTo(LeaveRequestStatus.CANCELLED);
+    }
+
+    @Test
+    void onlyPendingAndApprovedRequestsCanBeCancelled() {
+        assertThat(saved(10, 5, 1, 5, LeaveRequestStatus.APPROVED).cancelled(day(1).minusDays(1)).status())
+                .isEqualTo(LeaveRequestStatus.CANCELLED);
+        assertThatThrownBy(() -> saved(10, 5, 1, 5, LeaveRequestStatus.APPROVAL_PENDING).cancelled(day(1).minusDays(1)))
+                .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("saga is in flight");
+        assertThatThrownBy(() -> saved(10, 5, 1, 5, LeaveRequestStatus.REJECTED).cancelled(day(1).minusDays(1)))
+                .isInstanceOf(LeaveRequestRejectedException.class).hasMessageContaining("REJECTED");
+    }
+
+    @Test
+    void approvingMovesAPendingRequestToApprovalPendingWithTheDecision() {
+        LeaveDecision approval = decision(ApprovalDecision.APPROVED, "ok");
+
+        LeaveRequest started = pending().approvalStarted(approval);
+
+        assertThat(started.status()).isEqualTo(LeaveRequestStatus.APPROVAL_PENDING);
+        assertThat(started.aggregateVersion()).isEqualTo(2);
+        assertThat(started.decision()).isEqualTo(approval);
+        assertThat(started.rejectionReason()).isNull();
+    }
+
+    @Test
+    void onlyAPendingRequestCanBeApproved() {
+        for (LeaveRequestStatus status : List.of(LeaveRequestStatus.APPROVAL_PENDING, LeaveRequestStatus.APPROVED,
+                LeaveRequestStatus.REJECTED, LeaveRequestStatus.CANCELLED)) {
+            assertThatThrownBy(() -> saved(10, 5, 1, 5, status).approvalStarted(decision(ApprovalDecision.APPROVED, "ok")))
+                    .as(status.name()).isInstanceOf(LeaveRequestRejectedException.class)
+                    .hasMessageContaining(status.name());
+        }
+    }
+
+    @Test
+    void theSagaMovesApprovalPendingToApprovedOrRejectedAndKeepsTheManagersDecision() {
+        LeaveDecision approval = decision(ApprovalDecision.APPROVED, "ok");
+        LeaveRequest started = pending().approvalStarted(approval);
+
+        LeaveRequest approved = started.approved();
+        LeaveRequest rejected = started.rejectedBySaga("shift 3 is locked");
+
+        assertThat(approved.status()).isEqualTo(LeaveRequestStatus.APPROVED);
+        assertThat(approved.aggregateVersion()).isEqualTo(3);
+        assertThat(rejected.status()).isEqualTo(LeaveRequestStatus.REJECTED);
+        assertThat(rejected.rejectionReason()).isEqualTo("shift 3 is locked");
+        assertThat(rejected.decision()).isEqualTo(approval);
+    }
+
+    @Test
+    void theSagaStepsAreRefusedFromAnyOtherStatus() {
+        for (LeaveRequestStatus status : List.of(LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED,
+                LeaveRequestStatus.REJECTED, LeaveRequestStatus.CANCELLED)) {
+            LeaveRequest request = saved(10, 5, 1, 5, status);
+            assertThatThrownBy(request::approved).as("approved from %s", status)
+                    .isInstanceOf(LeaveRequestRejectedException.class);
+            assertThatThrownBy(() -> request.rejectedBySaga("x")).as("rejectedBySaga from %s", status)
+                    .isInstanceOf(LeaveRequestRejectedException.class);
+        }
+    }
+
+    @Test
+    void aRejectedRequestReturnsToApprovalPendingOnlyThroughTheRetry() {
+        LeaveRequest rejected = pending().approvalStarted(decision(ApprovalDecision.APPROVED, "ok"))
+                .rejectedBySaga("timeout");
+
+        LeaveRequest retried = rejected.approvalRetried();
+
+        assertThat(retried.status()).isEqualTo(LeaveRequestStatus.APPROVAL_PENDING);
+        assertThat(retried.rejectionReason()).isNull();
+        assertThat(retried.aggregateVersion()).isEqualTo(4);
+        for (LeaveRequestStatus status : List.of(LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVAL_PENDING,
+                LeaveRequestStatus.APPROVED, LeaveRequestStatus.CANCELLED)) {
+            assertThatThrownBy(saved(10, 5, 1, 5, status)::approvalRetried).as(status.name())
+                    .isInstanceOf(LeaveRequestRejectedException.class);
+        }
+        assertThatThrownBy(() -> rejected.approvalStarted(decision(ApprovalDecision.APPROVED, "again")))
+                .isInstanceOf(LeaveRequestRejectedException.class);
     }
 
     @Test
@@ -195,17 +292,6 @@ class LeaveRequestTest {
     }
 
     @Test
-    void approvingIsNotAvailableYetAndChangesNothing() {
-        LeaveRequest request = pending();
-
-        assertThatThrownBy(() -> request.startApproval(decision(ApprovalDecision.APPROVED, "ok")))
-                .isInstanceOf(ApprovalNotAvailableException.class)
-                .hasMessageContaining("P3.1");
-        assertThat(request.status()).isEqualTo(LeaveRequestStatus.PENDING);
-        assertThat(request.aggregateVersion()).isEqualTo(1);
-    }
-
-    @Test
     void theSnapshotCarriesTheContractFields() {
         LeaveDecision rejection = decision(ApprovalDecision.REJECTED, "no");
         LeaveRequest rejected = pending().rejected(rejection, "default");
@@ -225,5 +311,14 @@ class LeaveRequestTest {
         LeaveRequest unsaved = LeaveRequest.submit(5, 1, day(1), day(2), null, NOW);
 
         assertThatThrownBy(() -> unsaved.snapshot("Vacation")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void daysAreCalendarDaysInclusiveOfBothEnds() {
+        assertThat(saved(1, 5, 3, 3, LeaveRequestStatus.PENDING).days()).as("single day").isEqualTo(1);
+        assertThat(saved(1, 5, 1, 5, LeaveRequestStatus.PENDING).days()).as("1st to 5th").isEqualTo(5);
+        // 2027-03-05 is a Friday and 2027-03-08 a Monday: the weekend counts, so 4 days
+        assertThat(saved(1, 5, 5, 8, LeaveRequestStatus.PENDING).days()).as("across a weekend").isEqualTo(4);
+        assertThat(saved(1, 5, 1, 31, LeaveRequestStatus.PENDING).days()).as("a whole month").isEqualTo(31);
     }
 }

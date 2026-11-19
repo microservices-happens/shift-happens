@@ -18,9 +18,10 @@ class JpaLeaveTypeRepository implements LeaveTypeRepository {
         this.jpa = jpa;
     }
 
+    /** Flushes so a violation of the unique name index surfaces here, inside the transaction. */
     @Override
     public LeaveType save(LeaveType leaveType) {
-        return jpa.save(LeaveTypeEntity.from(leaveType)).toDomain();
+        return jpa.saveAndFlush(LeaveTypeEntity.from(leaveType)).toDomain();
     }
 
     @Override
@@ -29,12 +30,17 @@ class JpaLeaveTypeRepository implements LeaveTypeRepository {
     }
 
     @Override
-    public boolean existsByNameExcluding(String leaveTypeName, Long excludedLeaveTypeId) {
-        return jpa.existsByNameExcluding(leaveTypeName, excludedLeaveTypeId);
+    public Optional<LeaveType> findActiveById(long leaveTypeId) {
+        return findById(leaveTypeId).filter(type -> !type.isDeleted());
     }
 
     @Override
-    public void delete(long leaveTypeId) {
-        jpa.deleteById(leaveTypeId);
+    public Optional<LeaveType> findByIdForUpdate(long leaveTypeId) {
+        return jpa.findForUpdate(leaveTypeId).map(LeaveTypeEntity::toDomain);
+    }
+
+    @Override
+    public boolean existsByNameExcluding(String leaveTypeName, Long excludedLeaveTypeId) {
+        return jpa.existsByNameExcluding(leaveTypeName, excludedLeaveTypeId);
     }
 }

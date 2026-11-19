@@ -3,21 +3,29 @@ package dk.ek.shift_happens.leave.api;
 import dk.ek.shift_happens.leave.application.IdempotencyConflictException;
 import dk.ek.shift_happens.leave.application.InvalidIdempotencyKeyException;
 import dk.ek.shift_happens.leave.application.LeaveApprovalNotFoundException;
+import dk.ek.shift_happens.leave.application.LeaveLedgerEntryNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveRequestNotFoundException;
 import dk.ek.shift_happens.leave.application.LeaveTypeNotFoundException;
-import dk.ek.shift_happens.leave.domain.ApprovalNotAvailableException;
+import dk.ek.shift_happens.leave.domain.InsufficientLeaveBalanceException;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
 import dk.ek.shift_happens.leave.domain.LeaveTypeConflictException;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -64,21 +72,52 @@ class ApiExceptionHandler {
                 exception.getMessage());
     }
 
+    @ExceptionHandler(LeaveLedgerEntryNotFoundException.class)
+    ProblemDetail leaveLedgerEntryNotFound(LeaveLedgerEntryNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, "Leave ledger entry not found", "leave-ledger-entry-not-found",
+                exception.getMessage());
+    }
+
+    /** A path or query value of the wrong type, e.g. /v1/leaverequests/abc. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail wrongArgumentType(MethodArgumentTypeMismatchException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request", "invalid-request",
+                "'" + exception.getValue() + "' is not a valid value for " + exception.getName());
+    }
+
+    /** The query role has no write endpoints, and the command role has no PUT/DELETE on a collection, and so on. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ProblemDetail> methodNotAllowed(HttpRequestMethodNotSupportedException exception) {
+        ProblemDetail problem = problem(HttpStatus.METHOD_NOT_ALLOWED, "Method not allowed", "method-not-allowed",
+                exception.getMessage());
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (exception.getSupportedHttpMethods() != null && !exception.getSupportedHttpMethods().isEmpty()) {
+            response.allow(exception.getSupportedHttpMethods().toArray(new HttpMethod[0]));
+        }
+        return response.contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem);
+    }
+
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    ResponseEntity<ProblemDetail> noSuchRoute(Exception exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem(HttpStatus.NOT_FOUND, "Not found", "not-found", "there is no such endpoint"));
+    }
+
     @ExceptionHandler(LeaveRequestRejectedException.class)
     ProblemDetail leaveRejected(LeaveRequestRejectedException exception) {
         return problem(HttpStatus.CONFLICT, "Leave request rejected", "leave-request-rejected",
                 exception.getMessage());
     }
 
+    @ExceptionHandler(InsufficientLeaveBalanceException.class)
+    ProblemDetail insufficientBalance(InsufficientLeaveBalanceException exception) {
+        return problem(HttpStatus.CONFLICT, "Insufficient leave balance", "insufficient-leave-balance",
+                exception.getMessage());
+    }
+
     @ExceptionHandler(LeaveTypeConflictException.class)
     ProblemDetail leaveTypeConflict(LeaveTypeConflictException exception) {
         return problem(HttpStatus.CONFLICT, "Leave type conflict", "leave-type-conflict", exception.getMessage());
-    }
-
-    @ExceptionHandler(ApprovalNotAvailableException.class)
-    ProblemDetail approvalNotAvailable(ApprovalNotAvailableException exception) {
-        return problem(HttpStatus.CONFLICT, "Approval not available yet", "approval-not-available",
-                exception.getMessage());
     }
 
     /** The overlap exclusion constraint of V3 caught a concurrent request that the application check missed. */

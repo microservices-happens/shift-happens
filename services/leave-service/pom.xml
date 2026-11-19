@@ -20,8 +20,8 @@
         <java.version>21</java.version>
     </properties>
 
-    <!-- Command-side foundation only (outbox, idempotency, Postgres, RabbitMQ). Security, graphql and the
-         query role's data-mongodb are added when those slices land. -->
+    <!-- Command role (outbox, idempotency, Postgres, RabbitMQ) and query role (Mongo read model). Security and
+         graphql are added when those slices land. -->
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -58,9 +58,22 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Query role: MongoDB read model, used through MongoTemplate only. The command role excludes the autoconfig. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Contract test: validates published envelopes against contracts/events/*.schema.json. -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.6</version>
             <scope>test</scope>
         </dependency>
         <!-- Real engines in the integration tests: no H2, no embedded broker (.clinerules/30-testing.md). -->

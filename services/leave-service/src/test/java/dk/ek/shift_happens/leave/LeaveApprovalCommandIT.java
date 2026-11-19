@@ -12,7 +12,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Manager decisions: REJECTED is final and published, APPROVED is a clear 409 until the saga exists (#47). */
+/** Manager decisions: REJECTED is final and published; APPROVED starts the saga (see LeaveApprovalSagaIT). */
 class LeaveApprovalCommandIT extends AbstractCommandIT {
 
     private static final String REJECTED = "leave.request.rejected.v1";
@@ -47,6 +47,7 @@ class LeaveApprovalCommandIT extends AbstractCommandIT {
         assertThat(data.path("requestStatus").asText()).isEqualTo("REJECTED");
         assertThat(data.path("rejectionReason").asText()).isEqualTo("Too busy");
         JsonNode decision = data.path("decision");
+        assertThat(decision.path("leaveApprovalId").asLong()).isEqualTo(approval.path("leaveApprovalId").asLong());
         assertThat(decision.path("approverEmployeeId").asLong()).isEqualTo(990);
         assertThat(decision.path("decision").asText()).isEqualTo("REJECTED");
         assertThat(decision.path("comment").asText()).isEqualTo("Too busy");
@@ -62,25 +63,6 @@ class LeaveApprovalCommandIT extends AbstractCommandIT {
 
         assertThat(jdbc.queryForObject("SELECT rejection_reason FROM leave_request WHERE leave_request_id = ?",
                 String.class, id)).isEqualTo("Rejected by manager");
-    }
-
-    @Test
-    void approvingIsNotAvailableYetAndChangesNothing() {
-        long id = pendingRequest(903);
-        seedEmployee(990);
-
-        ResponseEntity<JsonNode> response = decide(id, 990, "APPROVED", "ok");
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(response.getHeaders().getContentType().toString()).contains("problem+json");
-        assertThat(response.getBody().path("title").asText()).isEqualTo("Approval not available yet");
-        assertThat(response.getBody().path("detail").asText()).contains("leave-approval saga").contains("P3.1");
-        assertThat(jdbc.queryForObject("SELECT request_status FROM leave_request WHERE leave_request_id = ?",
-                String.class, id)).isEqualTo("PENDING");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_approval WHERE leave_request_id = ?",
-                Integer.class, id)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? "
-                + "AND event_type <> 'leave.request.submitted.v1'", Integer.class, id)).isZero();
     }
 
     @Test

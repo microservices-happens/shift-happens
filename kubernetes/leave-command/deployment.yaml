@@ -48,6 +48,8 @@ spec:
               value: "leave.command"
             - name: SAGA_TIMEOUT
               value: "PT5M"
+            - name: SAGA_TIMEOUT_POLL_DELAY
+              value: "15000"
             - name: OUTBOX_ENABLED
               value: "true"
           readinessProbe:

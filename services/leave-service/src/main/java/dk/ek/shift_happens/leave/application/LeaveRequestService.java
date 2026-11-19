@@ -3,9 +3,12 @@ package dk.ek.shift_happens.leave.application;
 import dk.ek.shift_happens.leave.domain.EmployeeReplica;
 import dk.ek.shift_happens.leave.domain.EmployeeReplicaRepository;
 import dk.ek.shift_happens.leave.domain.InvalidLeaveRequestException;
+import dk.ek.shift_happens.leave.domain.LeaveApprovalSaga;
+import dk.ek.shift_happens.leave.domain.LeaveApprovalSagaRepository;
 import dk.ek.shift_happens.leave.domain.LeaveRequest;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRejectedException;
 import dk.ek.shift_happens.leave.domain.LeaveRequestRepository;
+import dk.ek.shift_happens.leave.domain.LeaveRequestStatus;
 import dk.ek.shift_happens.leave.domain.LeaveType;
 import dk.ek.shift_happens.leave.domain.LeaveTypeRepository;
 import org.springframework.context.annotation.Profile;
@@ -27,14 +30,19 @@ public class LeaveRequestService {
     private final LeaveTypeRepository types;
     private final EmployeeReplicaRepository employees;
     private final DomainEvents events;
+    private final LeaveLedgerService ledger;
+    private final LeaveApprovalSagaRepository sagas;
     private final Clock clock;
 
     LeaveRequestService(LeaveRequestRepository requests, LeaveTypeRepository types,
-                        EmployeeReplicaRepository employees, DomainEvents events, Clock clock) {
+                        EmployeeReplicaRepository employees, DomainEvents events, LeaveLedgerService ledger,
+                        LeaveApprovalSagaRepository sagas, Clock clock) {
         this.requests = requests;
         this.types = types;
         this.employees = employees;
         this.events = events;
+        this.ledger = ledger;
+        this.sagas = sagas;
         this.clock = clock;
     }
 
@@ -75,18 +83,26 @@ public class LeaveRequestService {
 
     /**
      * DELETE: PENDING to CANCELLED; an already CANCELLED request is an idempotent no-op (no change, no event).
-     * #47 extends this to APPROVED requests (with a REVERSAL ledger entry).
+     * An APPROVED request is cancelled too: its reservation is reversed (REVERSAL ledger entry of the completed
+     * saga attempt) and leave.request.cancelled.v1 tells Scheduling to drop the leave window. APPROVAL_PENDING is a
+     * 409: the saga is in flight. APPROVED leave answers 409 from its startDate (UTC date) on: it can only be
+     * cancelled before its first day. The request row lock is held first; the ledger then takes the employee lock.
      */
     @Transactional
     public LeaveRequest cancel(long leaveRequestId, String correlationId) {
         LeaveRequest current = findForUpdate(leaveRequestId);
-        LeaveRequest cancelled = current.cancelled();
+        LeaveRequest cancelled = current.cancelled(LocalDate.now(clock));
         if (cancelled.equals(current)) {
             return current;
         }
         LeaveRequest saved = requests.save(cancelled);
+        if (current.status() == LeaveRequestStatus.APPROVED) {
+            LeaveApprovalSaga completed = sagas.findCompleted(leaveRequestId).orElseThrow(() ->
+                    new IllegalStateException("approved leave request " + leaveRequestId + " has no completed saga"));
+            ledger.reverseReservation(leaveRequestId, completed.attempt(), correlationId, null);
+        }
         events.append(DomainEvents.LEAVE_REQUEST_CANCELLED, saved.leaveRequestId(), saved.aggregateVersion(),
-                correlationId, saved.snapshot(leaveType(saved.leaveTypeId()).leaveTypeName()));
+                correlationId, saved.snapshot(storedTypeName(saved.leaveTypeId())));
         return saved;
     }
 
@@ -94,9 +110,17 @@ public class LeaveRequestService {
         return requests.findByIdForUpdate(leaveRequestId).orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
     }
 
+    /** A new or edited request needs a type that exists and is not deleted: a deleted type counts as unknown. */
     private LeaveType leaveType(long leaveTypeId) {
-        return types.findById(leaveTypeId)
+        return types.findActiveById(leaveTypeId)
                 .orElseThrow(() -> new InvalidLeaveRequestException("unknown leaveTypeId " + leaveTypeId));
+    }
+
+    /** The name of the type the request already refers to; a soft-deleted type keeps its stored name. */
+    private String storedTypeName(long leaveTypeId) {
+        return types.findById(leaveTypeId)
+                .orElseThrow(() -> new IllegalStateException("leave type " + leaveTypeId + " is missing"))
+                .leaveTypeName();
     }
 
     /**

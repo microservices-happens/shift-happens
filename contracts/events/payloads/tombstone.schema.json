@@ -15,7 +15,8 @@
       "enum": [
         "employee",
         "shift",
-        "assignment"
+        "assignment",
+        "leaveType"
       ]
     },
     "entityId": {

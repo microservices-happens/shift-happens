@@ -14,6 +14,17 @@ public enum LeaveRequestStatus {
     /** The statuses that occupy the employee's calendar and therefore take part in the overlap rule. */
     public static final List<LeaveRequestStatus> OCCUPYING = List.of(PENDING, APPROVAL_PENDING, APPROVED);
 
+    /** The status named by a URL segment, case-insensitive; anything else is a 400, never "no rows". */
+    public static LeaveRequestStatus parse(String text) {
+        for (LeaveRequestStatus status : values()) {
+            if (status.name().equalsIgnoreCase(text == null ? null : text.strip())) {
+                return status;
+            }
+        }
+        throw new InvalidLeaveRequestException("unknown status '" + text + "'; expected one of "
+                + java.util.Arrays.toString(values()));
+    }
+
     public boolean isOccupying() {
         return OCCUPYING.contains(this);
     }

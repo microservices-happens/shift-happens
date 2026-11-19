@@ -8,3 +8,26 @@ spring:
       - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
       - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
       - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+  data:
+    mongodb:
+      host: ${MONGO_HOST:localhost}
+      port: ${MONGO_PORT:27017}
+      database: ${MONGO_DATABASE:leave_read}
+      username: ${MONGO_USERNAME:leave}
+      password: ${MONGO_PASSWORD:leave_read_dev}
+      authentication-database: ${MONGO_AUTH_DATABASE:admin}
+      # Indexes are created explicitly at startup (MongoIndexes), not from annotations.
+      auto-index-creation: false
+  jackson:
+    deserialization:
+      # Event payloads keep decimals exact (ledger amounts); the balance is a sum of them.
+      use-big-decimal-for-floats: true
+    datatype:
+      json-node:
+        # Keep 10.00 as 10.00 (Jackson's default would store and serve 1E+1): the query role answers like the command role.
+        strip-trailing-bigdecimal-zeroes: false
+
+app:
+  rabbit:
+    # Durable consumer queue declared by LeaveQueryTopology (plus <queue>.dlq on the DLX).
+    queue: ${RABBITMQ_QUEUE:leave.projection}

@@ -17,6 +17,12 @@ public interface LeaveRequestRepository {
     Optional<LeaveRequest> findByIdForUpdate(long leaveRequestId);
 
     /**
+     * Like {@link #findByIdForUpdate} but empty when another transaction holds the row lock (FOR UPDATE SKIP
+     * LOCKED), and also empty for an unknown id. For background jobs that retry later anyway.
+     */
+    Optional<LeaveRequest> findByIdForUpdateSkipLocked(long leaveRequestId);
+
+    /**
      * Serializes every change to one employee's calendar until the transaction ends, so the application's overlap
      * check cannot race with a concurrent request of the same employee.
      */

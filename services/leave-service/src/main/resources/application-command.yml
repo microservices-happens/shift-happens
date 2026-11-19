@@ -1,5 +1,11 @@
 # Command role: Postgres write model + transactional outbox; handles REST writes and saga messages.
 spring:
+  autoconfigure:
+    # The read model's MongoDB belongs to the query role; the command role must never start a Mongo client.
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:leave}
     username: ${DB_USER:leave}
@@ -15,8 +21,20 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+  task:
+    scheduling:
+      # SagaTimeoutJob may wait up to DB_LOCK_TIMEOUT on an employee lock; with Boot's default single scheduler
+      # thread that would hold back OutboxRelay (every event). Two threads keep the two jobs independent.
+      pool:
+        size: 2
 
 app:
   rabbit:
     # Durable consumer queue declared by LeaveCommandTopology (plus <queue>.dlq on the DLX).
     queue: ${RABBITMQ_QUEUE:leave.command}
+  saga:
+    # How long Scheduling may take to answer leave.request.approval-started.v1 (ISO-8601 duration) before the
+    # approval is compensated; the same variable as docker-compose.microservices.yml and the K8s manifests.
+    timeout: ${SAGA_TIMEOUT:PT5M}
+    # How often (ms) overdue sagas are looked for.
+    poll-delay: ${SAGA_TIMEOUT_POLL_DELAY:15000}

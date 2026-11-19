@@ -42,6 +42,11 @@ class JpaLeaveRequestRepository implements LeaveRequestRepository {
     }
 
     @Override
+    public Optional<LeaveRequest> findByIdForUpdateSkipLocked(long leaveRequestId) {
+        return jpa.findForUpdateSkipLocked(leaveRequestId).map(this::withDecision);
+    }
+
+    @Override
     public void lockEmployeeCalendar(long employeeId) {
         jpa.lockEmployeeCalendar(employeeId);
     }

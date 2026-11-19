@@ -254,6 +254,7 @@ services:
       DB_PASSWORD: ${LEAVE_DB_PASSWORD:-leave_dev}
       RABBITMQ_QUEUE: leave.command
       SAGA_TIMEOUT: PT5M
+      SAGA_TIMEOUT_POLL_DELAY: "15000"
       OUTBOX_ENABLED: "true"
     expose: ["8080"]
     networks: [service-bus, leave-write-data]

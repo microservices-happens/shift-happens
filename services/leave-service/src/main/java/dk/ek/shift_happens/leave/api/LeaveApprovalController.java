@@ -17,8 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * A manager's decision about a leave request (contracts/openapi/leave.yaml). REJECTED is implemented;
- * APPROVED starts the leave-approval saga and answers 409 until #47 / P3.1 builds it. DELETE of an approval
+ * A manager's decision about a leave request (contracts/openapi/leave.yaml). REJECTED is final;
+ * APPROVED starts the leave-approval saga (P3.1) and answers 202 while Scheduling still has to answer, or 409 when
+ * the request is not PENDING or the balance is too low. PUT is always a 409: a stored decision is final. DELETE of an approval
  * is not implemented: no use case needs it and the catalog defines no event for it.
  */
 @RestController

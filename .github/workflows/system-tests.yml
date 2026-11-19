@@ -9,8 +9,8 @@
 # file, and the test job downloads all of them and `docker load`s them. That is also the data-sharing
 # demonstration described in docs/ci-demo.md.
 #
-# When the leave-approval saga test is enabled (P3.1), add leave-service and scheduling-service to
-# the matrix below; the test class documents the rest.
+# The matrix builds the four services the cooperation tests start: identity + workforce
+# (EmployeeReplicationIT) and leave + scheduling (LeaveApprovalSagaIT, P3.1).
 name: system-tests
 
 on:
@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [identity-service, workforce-service]
+        service: [identity-service, workforce-service, leave-service, scheduling-service]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -86,7 +86,7 @@ jobs:
           for image in images/*.tgz; do gzip -dc "$image" | docker load; done
           docker images
 
-      - name: Cooperation tests (two services + RabbitMQ, in containers)
+      - name: Cooperation tests (services + RabbitMQ, in containers)
         run: mvn -B -f tests/cooperation/pom.xml verify -Dmaven.wagon.http.retryHandler.count=3
 
       - name: Upload the test reports

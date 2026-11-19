@@ -549,6 +549,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/views/employee-leave-overview/leave-type/{leaveTypeName}:
@@ -714,8 +716,11 @@ components:
       - decision
       properties:
         leaveApprovalId:
-          type: integer
+          type:
+          - integer
+          - 'null'
           readOnly: true
+          description: null only for a decision published before decision.leaveApprovalId existed; such an approval is listed but cannot be fetched by id.
         leaveRequestId:
           type: integer
         approverEmployeeId:
@@ -775,7 +780,10 @@ components:
         employeeId:
           type: integer
         employeeName:
-          type: string
+          type:
+          - string
+          - 'null'
+          description: '"first last"; null while leave-query has not received the employee yet.'
         leaveRequestId:
           type: integer
         leaveTypeName:

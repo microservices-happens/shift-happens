@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://shift-happens.local/contracts/events/payloads/leave-request.schema.json",
   "title": "LeaveRequestSnapshot",
-  "description": "data of leave.request.submitted.v1, leave.request.approval-started.v1, leave.request.approved.v1 and leave.request.rejected.v1 (full snapshot). decision is null while pending.",
+  "description": "data of leave.request.submitted.v1, leave.request.approval-started.v1, leave.request.approved.v1, leave.request.rejected.v1 and leave.request.cancelled.v1 (full snapshot). The employee withdrew a PENDING or APPROVED request (requestStatus CANCELLED) in leave.request.cancelled.v1. decision is null while pending.",
   "type": "object",
   "required": [
     "leaveRequestId",
@@ -68,6 +68,10 @@
         "decisionDatetime"
       ],
       "properties": {
+        "leaveApprovalId": {
+          "type": "integer",
+          "description": "Id of the stored approval row (GET /v1/leaveapprovals/{id}). Optional so snapshots published before it existed stay valid."
+        },
         "approverEmployeeId": {
           "type": "integer"
         },

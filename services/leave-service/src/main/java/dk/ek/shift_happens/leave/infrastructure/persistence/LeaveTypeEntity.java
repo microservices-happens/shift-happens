@@ -8,7 +8,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** JPA mapping for leave_type (V3__leave_domain.sql). */
+import java.time.Instant;
+
+/** JPA mapping for leave_type (V3__leave_domain.sql, V6__leave_type_events.sql). */
 @Entity
 @Table(name = "leave_type")
 public class LeaveTypeEntity {
@@ -30,6 +32,12 @@ public class LeaveTypeEntity {
     @Column(name = "is_paid_leave", nullable = false)
     private boolean paidLeave;
 
+    @Column(name = "aggregate_version", nullable = false)
+    private long aggregateVersion;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     protected LeaveTypeEntity() {
         // for JPA
     }
@@ -41,10 +49,13 @@ public class LeaveTypeEntity {
         entity.leaveTypeDescription = type.leaveTypeDescription();
         entity.requiresApproval = type.requiresApproval();
         entity.paidLeave = type.paidLeave();
+        entity.aggregateVersion = type.aggregateVersion();
+        entity.deletedAt = type.deletedAt();
         return entity;
     }
 
     LeaveType toDomain() {
-        return new LeaveType(leaveTypeId, leaveTypeName, leaveTypeDescription, requiresApproval, paidLeave);
+        return new LeaveType(leaveTypeId, leaveTypeName, leaveTypeDescription, requiresApproval, paidLeave,
+                aggregateVersion, deletedAt);
     }
 }

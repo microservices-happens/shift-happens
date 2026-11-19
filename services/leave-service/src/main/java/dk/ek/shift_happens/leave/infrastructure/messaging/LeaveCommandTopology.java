@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Profile;
  *   <li>no infinite requeue.</li>
  * </ul>
  *
- * <p>The saga replies (scheduling.leave-release.*) are bound by the saga ticket, not here.
+ * <p>The saga replies (scheduling.leave-release.completed/rejected.v1) are bound here too, by exact key.
  */
 @Configuration
 @Profile("command")
@@ -35,6 +35,8 @@ public class LeaveCommandTopology {
     static final String EMPLOYEE_CREATED = "workforce.employee.created.v1";
     static final String EMPLOYEE_UPDATED = "workforce.employee.updated.v1";
     static final String EMPLOYEE_DELETED = "workforce.employee.deleted.v1";
+    static final String LEAVE_RELEASE_COMPLETED = "scheduling.leave-release.completed.v1";
+    static final String LEAVE_RELEASE_REJECTED = "scheduling.leave-release.rejected.v1";
 
     /**
      * Dead-lettered messages (rejected by the container or republished by the recoverer) leave with the queue
@@ -67,6 +69,16 @@ public class LeaveCommandTopology {
     }
 
     @Bean
+    Binding leaveCommandLeaveReleaseCompletedBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(LEAVE_RELEASE_COMPLETED);
+    }
+
+    @Bean
+    Binding leaveCommandLeaveReleaseRejectedBinding(Queue leaveCommandQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(leaveCommandQueue).to(eventsExchange).with(LEAVE_RELEASE_REJECTED);
+    }
+
+    @Bean
     Queue leaveCommandDeadLetterQueue(@Value("${app.rabbit.queue}") String name) {
         return QueueBuilder.durable(name + ".dlq").build();
     }
@@ -92,6 +104,8 @@ public class LeaveCommandTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
+                // 1 s, then 2 s: a lock-timeout spike must not dead-letter a valid saga reply
+                .backOffOptions(1000, 2.0, 10000)
                 // Republish with the queue name as routing key (without an explicit key spring-amqp would use
                 // "error." + the original key); the DLQ is bound with exactly that key.
                 .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))
