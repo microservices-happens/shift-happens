@@ -352,6 +352,54 @@ channels:
           autoDelete: false
           vhost: shift-happens
         bindingVersion: 0.3.0
+  leaveTypeCreatedV1:
+    address: leave.type.created.v1
+    description: Routing key leave.type.created.v1 on exchange shift-happens.events.
+    messages:
+      leaveTypeCreatedV1:
+        $ref: '#/components/messages/leaveTypeCreatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveTypeUpdatedV1:
+    address: leave.type.updated.v1
+    description: Routing key leave.type.updated.v1 on exchange shift-happens.events.
+    messages:
+      leaveTypeUpdatedV1:
+        $ref: '#/components/messages/leaveTypeUpdatedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
+  leaveTypeDeletedV1:
+    address: leave.type.deleted.v1
+    description: Routing key leave.type.deleted.v1 on exchange shift-happens.events.
+    messages:
+      leaveTypeDeletedV1:
+        $ref: '#/components/messages/leaveTypeDeletedV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: shift-happens.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: shift-happens
+        bindingVersion: 0.3.0
   aiReplacementSuggestedV1:
     address: ai.replacement.suggested.v1
     description: Routing key ai.replacement.suggested.v1 on exchange shift-happens.events.
@@ -1310,6 +1358,19 @@ operations:
       amqp:
         ack: true
         bindingVersion: 0.3.0
+  leave_projection__leaveRequestCancelledV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveRequestCancelledV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveRequestCancelledV1/messages/leaveRequestCancelledV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
   audit_events__leaveRequestCancelledV1:
     action: receive
     channel:
@@ -1428,6 +1489,72 @@ operations:
     - name: audit-service
     messages:
     - $ref: '#/channels/leaveLedgerEntryRecordedV1/messages/leaveLedgerEntryRecordedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveTypeCreatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveTypeCreatedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveTypeCreatedV1/messages/leaveTypeCreatedV1'
+  leave_projection__leaveTypeCreatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveTypeCreatedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveTypeCreatedV1/messages/leaveTypeCreatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveTypeUpdatedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveTypeUpdatedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveTypeUpdatedV1/messages/leaveTypeUpdatedV1'
+  leave_projection__leaveTypeUpdatedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveTypeUpdatedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveTypeUpdatedV1/messages/leaveTypeUpdatedV1'
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+  publish_leaveTypeDeletedV1:
+    action: send
+    channel:
+      $ref: '#/channels/leaveTypeDeletedV1'
+    summary: leave-service publishes (via transactional outbox)
+    tags:
+    - name: leave-service
+    messages:
+    - $ref: '#/channels/leaveTypeDeletedV1/messages/leaveTypeDeletedV1'
+  leave_projection__leaveTypeDeletedV1:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveTypeDeletedV1'
+    summary: leave-query consumes from queue leave.projection
+    tags:
+    - name: leave-query
+    messages:
+    - $ref: '#/channels/leaveTypeDeletedV1/messages/leaveTypeDeletedV1'
     bindings:
       amqp:
         ack: true
@@ -1795,7 +1922,7 @@ components:
     leaveRequestCancelledV1:
       name: leave.request.cancelled.v1
       title: leave.request.cancelled.v1
-      summary: The employee withdrew approved leave, so the released assignments are no longer justified
+      summary: The employee withdrew a PENDING or APPROVED request (requestStatus CANCELLED)
       contentType: application/json
       correlationId:
         location: $message.payload#/correlationId
@@ -1840,6 +1967,54 @@ components:
               const: leave.ledger.entry-recorded.v1
             data:
               $ref: ./events/payloads/ledger-entry.schema.json
+    leaveTypeCreatedV1:
+      name: leave.type.created.v1
+      title: leave.type.created.v1
+      summary: Leave type created
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.type.created.v1
+            data:
+              $ref: ./events/payloads/leave-type.schema.json
+    leaveTypeUpdatedV1:
+      name: leave.type.updated.v1
+      title: leave.type.updated.v1
+      summary: Leave type changed
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.type.updated.v1
+            data:
+              $ref: ./events/payloads/leave-type.schema.json
+    leaveTypeDeletedV1:
+      name: leave.type.deleted.v1
+      title: leave.type.deleted.v1
+      summary: Leave type soft-deleted (tombstone)
+      contentType: application/json
+      correlationId:
+        location: $message.payload#/correlationId
+      payload:
+        allOf:
+        - $ref: ./events/envelope.schema.json
+        - type: object
+          properties:
+            eventType:
+              const: leave.type.deleted.v1
+            data:
+              $ref: ./events/payloads/tombstone.schema.json
     aiReplacementSuggestedV1:
       name: ai.replacement.suggested.v1
       title: ai.replacement.suggested.v1

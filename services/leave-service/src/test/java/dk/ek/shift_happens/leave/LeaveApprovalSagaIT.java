@@ -67,6 +67,8 @@ class LeaveApprovalSagaIT extends AbstractSagaIT {
         assertThat(data.path("requestStatus").asText()).isEqualTo("APPROVAL_PENDING");
         assertThat(data.path("decision").path("decision").asText()).isEqualTo("APPROVED");
         assertThat(data.path("decision").path("approverEmployeeId").asLong()).isEqualTo(MANAGER);
+        assertThat(data.path("decision").path("leaveApprovalId").asLong()).isEqualTo(response.getBody()
+                .path("leaveApprovalId").asLong()).isPositive();
         assertThat(data.path("startDate").asText()).isEqualTo("2034-01-10");
 
         List<JsonNode> recorded = ledgerEvents(id);

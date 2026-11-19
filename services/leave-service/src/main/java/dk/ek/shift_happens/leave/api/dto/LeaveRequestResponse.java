@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.leave.api.dto;
 
 import dk.ek.shift_happens.leave.domain.LeaveRequest;
+import dk.ek.shift_happens.leave.domain.LeaveRequestSnapshot;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -16,6 +17,12 @@ public record LeaveRequestResponse(
         String reason,
         String rejectionReason,
         Instant requestedDatetime) {
+
+    public static LeaveRequestResponse from(LeaveRequestSnapshot request) {
+        return new LeaveRequestResponse(request.leaveRequestId(), request.employeeId(), request.leaveTypeId(),
+                request.startDate(), request.endDate(), request.requestStatus(), request.reason(),
+                request.rejectionReason(), request.requestedDatetime());
+    }
 
     public static LeaveRequestResponse from(LeaveRequest request) {
         return new LeaveRequestResponse(request.leaveRequestId(), request.employeeId(), request.leaveTypeId(),

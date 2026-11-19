@@ -22,6 +22,6 @@ public record LeaveApproval(
     }
 
     public LeaveDecision toDecision() {
-        return new LeaveDecision(approverEmployeeId, decision, leaveComment, decisionDatetime);
+        return new LeaveDecision(approverEmployeeId, decision, leaveComment, decisionDatetime, leaveApprovalId);
     }
 }

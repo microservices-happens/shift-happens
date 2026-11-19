@@ -23,6 +23,9 @@ public class DomainEvents {
     public static final String LEAVE_REQUEST_REJECTED = "leave.request.rejected.v1";
     public static final String LEAVE_REQUEST_CANCELLED = "leave.request.cancelled.v1";
     public static final String LEAVE_LEDGER_ENTRY_RECORDED = "leave.ledger.entry-recorded.v1";
+    public static final String LEAVE_TYPE_CREATED = "leave.type.created.v1";
+    public static final String LEAVE_TYPE_UPDATED = "leave.type.updated.v1";
+    public static final String LEAVE_TYPE_DELETED = "leave.type.deleted.v1";
 
     private final EventOutbox outbox;
     private final String producer;

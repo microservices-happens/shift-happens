@@ -48,6 +48,17 @@ class PersistenceFoundationIT extends AbstractCommandIT {
         assertThat(processedEventLog.contains(eventId)).isTrue();
     }
 
+    // The command ITs have no MongoDB container: a Mongo client or the read model starting here would fail them,
+    // and this pins that the Mongo autoconfiguration stays excluded in the command role.
+    @Test
+    void theCommandRoleStartsNoMongoAndNoQueryBeans(@Autowired org.springframework.context.ApplicationContext context) {
+        assertThat(context.getBeanNamesForType(org.springframework.data.mongodb.core.MongoTemplate.class)).isEmpty();
+        assertThat(context.getBeanNamesForType(com.mongodb.client.MongoClient.class)).isEmpty();
+        assertThat(context.getBeanNamesForType(org.springframework.data.mongodb.MongoDatabaseFactory.class)).isEmpty();
+        assertThat(java.util.Arrays.asList(context.getBeanDefinitionNames()))
+                .doesNotContain("leaveQueryController", "leaveQueryListener", "projectionService", "mongoReadModel");
+    }
+
     // The gateway, Compose and Kubernetes probes route traffic based on GET /health
     // (contracts/README.md). If this path moves, the service silently drops out of rotation.
     @Test

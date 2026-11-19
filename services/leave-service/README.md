@@ -6,9 +6,9 @@
 | Role | Compose | Store | API |
 |---|---|---|---|
 | `command` | `leave-command` | `leave-write-db` (Postgres, Flyway) + outbox + employee replica + saga table | REST POST/PUT/PATCH/DELETE |
-| `query` | `leave-query` | `leave-read-db` (MongoDB) | REST GET (balances, overviews) |
+| `query` | `leave-query` | `leave-read-db` (MongoDB), fed by events | REST GET (leave types, requests, approvals, ledger, balances, overviews) |
 
-> **Status:** the command side has its foundation (transactional outbox + relay, DLX topology, `processed_events`, `Idempotency-Key`, RFC 9457 problem+json, the employee replica fed by `workforce.employee.*`, the `leave.command` queue) and, since #44, the **write API for leave types, leave requests and leave approvals** (see "Command API (#44)") and, since #45, the **immutable ledger with balance snapshots** and `POST /v1/leaveledgers` (see "Immutable ledger + snapshot"). Since #47 / P3.1 the **leave-approval saga** is live: `APPROVED` decisions start it, Scheduling's replies complete or compensate it, a timeout compensates it, and approved leave can be cancelled (see "Leave-approval saga"). Still missing: the query role and all GET endpoints (#46), and JWT security with role checks (P2.1). The sections below describe the target design.
+> **Status:** the command side has its foundation (transactional outbox + relay, DLX topology, `processed_events`, `Idempotency-Key`, RFC 9457 problem+json, the employee replica fed by `workforce.employee.*`, the `leave.command` queue) and, since #44, the **write API for leave types, leave requests and leave approvals** (see "Command API (#44)") and, since #45, the **immutable ledger with balance snapshots** and `POST /v1/leaveledgers` (see "Immutable ledger + snapshot"). Since #47 / P3.1 the **leave-approval saga** is live: `APPROVED` decisions start it, Scheduling's replies complete or compensate it, a timeout compensates it, and approved leave can be cancelled (see "Leave-approval saga"). Since #46 / P2.15 the **query role** is live: a MongoDB read model fed by `leave.projection` serves every GET (see "Query role (#46)"), and leave types publish `leave.type.*.v1` and are soft-deleted. Still missing: JWT security with role checks (P2.1).
 
 REST contract: [`contracts/openapi/leave.yaml`](../../contracts/openapi/leave.yaml).
 
@@ -17,16 +17,16 @@ Writes only; GETs belong to the query role (#46). POST, PUT and PATCH answer `20
 
 | Endpoint | Rules | Event |
 |---|---|---|
-| `POST /v1/leavetypes` (`Idempotency-Key`) | name unique ignoring case (`409`); `requiresApproval` and `isPaidLeave` default to `true` | none (not in the catalog) |
-| `PUT /v1/leavetypes/{id}` | same validation; `404` when missing | none |
-| `DELETE /v1/leavetypes/{id}` | hard delete; `409` while any leave request or ledger entry uses the type | none |
-| `POST /v1/leaverequests` (`Idempotency-Key`) | `endDate >= startDate` (`400`); leave type must exist (`400`); employee must be active in the replica (`409`, the replica may lag); no overlap with the employee's PENDING / APPROVAL_PENDING / APPROVED requests (`409`). `endDate` is the last day of leave, so 1st-5th and 5th-7th overlap. Always starts `PENDING`, even when the type does not require approval (auto-approval is out of scope) | `leave.request.submitted.v1` |
-| `PATCH /v1/leaverequests/{id}` | only while `PENDING` (`409`); optional `leaveTypeId`, `startDate`, `endDate`, `reason`; the same field validations as POST (`endDate >= startDate`, leave type must exist); the employee is not re-checked, since `employeeId` cannot change; overlap ignores itself; a PATCH that changes nothing returns the current request (`202`, no version bump, no event); no `Idempotency-Key` (as in scheduling's PUT) | `leave.request.submitted.v1` again, with a higher `aggregateVersion` |
+| `POST /v1/leavetypes` (`Idempotency-Key`) | name unique ignoring case among the types that are not deleted (`409`); `requiresApproval` and `isPaidLeave` default to `true` | `leave.type.created.v1` (version 1) |
+| `PUT /v1/leavetypes/{id}` | same validation; `404` when missing or deleted; a PUT that changes nothing returns the type (`202`, no version bump, no event); the row is locked (`PESSIMISTIC_WRITE`) so a PUT racing a DELETE ends in one consistent order | `leave.type.updated.v1` (version + 1) |
+| `DELETE /v1/leavetypes/{id}` | **soft delete** (`deleted_at`, version + 1), empty `202`. Allowed while requests or ledger entries use the type: they keep working (an existing request can still be approved, rejected or cancelled and keeps publishing the stored name). A repeated DELETE is a `202` no-op (no second event); an unknown id is `404`. A deleted type counts as unknown for new requests, for editing a request (`PATCH`) and for `POST /v1/leaveledgers` (`400` "unknown leaveTypeId"); its name can be reused (the unique index only covers types that are not deleted) | `leave.type.deleted.v1` (tombstone, `entityType` `leaveType`) |
+| `POST /v1/leaverequests` (`Idempotency-Key`) | `endDate >= startDate` (`400`); leave type must exist and not be deleted (`400`); employee must be active in the replica (`409`, the replica may lag); no overlap with the employee's PENDING / APPROVAL_PENDING / APPROVED requests (`409`). `endDate` is the last day of leave, so 1st-5th and 5th-7th overlap. Always starts `PENDING`, even when the type does not require approval (auto-approval is out of scope) | `leave.request.submitted.v1` |
+| `PATCH /v1/leaverequests/{id}` | only while `PENDING` (`409`); optional `leaveTypeId`, `startDate`, `endDate`, `reason`; the same field validations as POST (`endDate >= startDate`, leave type must exist); the employee is not re-checked, since `employeeId` cannot change; overlap ignores itself; a PATCH that changes nothing returns the current request (`202`, no version bump, no event); no `Idempotency-Key` (as in scheduling's PUT) | `leave.request.submitted.v1` again, with a higher `aggregateVersion`; the type of the edited request must not be deleted (`400`) |
 | `DELETE /v1/leaverequests/{id}` | `PENDING` becomes `CANCELLED` (the row stays). `APPROVED` becomes `CANCELLED` too, in the same transaction a `REVERSAL` ledger entry gives back the reservation of the saga attempt that completed. `APPROVAL_PENDING` is `409` (the saga is in flight; wait for the outcome), `REJECTED` is `409`. A repeated DELETE on a `CANCELLED` request is an idempotent `202` no-op (no change, no second event, no second reversal) | `leave.request.cancelled.v1` (first cancel only; Scheduling drops the leave window of an approved one) |
-| `POST /v1/leaveapprovals` (`Idempotency-Key`) | approver must be active in the replica (`409`), unknown `leaveRequestId` is `404`. `REJECTED`: request must be `PENDING` (`409`), becomes `REJECTED` with `rejectionReason` = comment (default "Rejected by manager") | `leave.request.rejected.v1` with the `decision` object |
+| `POST /v1/leaveapprovals` (`Idempotency-Key`) | approver must be active in the replica (`409`), unknown `leaveRequestId` is `404`. `REJECTED`: request must be `PENDING` (`409`), becomes `REJECTED` with `rejectionReason` = comment (default "Rejected by manager") | `leave.request.rejected.v1` with the `decision` object (every snapshot with a decision carries `decision.leaveApprovalId`, the id of the stored approval) |
 | | **`APPROVED` starts the saga** (`202`; the final outcome arrives later): the request must be `PENDING` (else `409`, e.g. "leave request 7 is CANCELLED and cannot be approved") and its employee active in the replica (`409`). One transaction stores the approval, moves the request to `APPROVAL_PENDING`, reserves the days (every leave type needs a balance; too little is `409` "Insufficient leave balance" and **nothing** is written), stores saga attempt 1 with its deadline and publishes the events | `leave.request.approval-started.v1` (+ `leave.ledger.entry-recorded.v1` of the reservation) |
 | `PUT /v1/leaveapprovals/{id}` | every stored decision is final (a `REJECTED` one is final, an `APPROVED` one belongs to a saga that cannot be redirected), so `404` when missing, otherwise `409` | none |
-| `POST /v1/leaveledgers` (`Idempotency-Key`) | manual `ACCRUAL` (amount > 0) or `ADJUSTMENT` (amount ≠ 0, either sign) only; `RESERVATION`/`REVERSAL` by hand is `400`. At most 2 decimals and at most 99999.99 (`400`); leave type must exist (`400`); employee must be active in the replica (`409`); an entry that would make the balance of that employee and leave type negative is `409` "Insufficient leave balance" and writes nothing. `referenceEntityType`/`referenceEntityId` are optional and stored as given. No PUT, PATCH or DELETE exists (append-only) | `leave.ledger.entry-recorded.v1` |
+| `POST /v1/leaveledgers` (`Idempotency-Key`) | manual `ACCRUAL` (amount > 0) or `ADJUSTMENT` (amount ≠ 0, either sign) only; `RESERVATION`/`REVERSAL` by hand is `400`. At most 2 decimals and at most 99999.99 (`400`); leave type must exist and not be deleted (`400`); employee must be active in the replica (`409`); an entry that would make the balance of that employee and leave type negative is `409` "Insufficient leave balance" and writes nothing. `referenceEntityType`/`referenceEntityId` are optional and stored as given. No PUT, PATCH or DELETE exists (append-only) | `leave.ledger.entry-recorded.v1` |
 
 `aggregateVersion` starts at 1 and increments on every change of a request. `DELETE /v1/leaveapprovals/{id}` is not implemented. Role checks (Administrator/Manager) wait for the JWT work (P2.1). 
 
@@ -51,7 +51,7 @@ Ledger rows are never updated or deleted, in the application **and** in the data
 - `causationId` (nullable) is the `eventId` that caused the step and goes into the envelope of the `entry-recorded` event; hand-posted entries have none.
 - `reserve` and `reverseReservation` are called by the saga only (approve, reply, timeout, cancel of approved leave). Submitting does not check the balance; approving does.
 - Every append publishes `leave.ledger.entry-recorded.v1` (`aggregateId` = `leaveLedgerId`, `aggregateVersion` 1, `data` as in `ledger-entry.schema.json`) through the outbox in the same transaction.
-- A leave type with ledger entries cannot be deleted (`409`; the foreign key backs it up).
+- A leave type with ledger entries can be deleted (soft delete); its entries stay and no new entry can be posted for it.
 
 ## Leave-approval saga (orchestrator)
 See [`catalog.md`](../../contracts/events/catalog.md#flow-leave-approval-saga-orchestrated-by-leave-command). Scheduling's half (`LeaveReleaseService`) answers every `approval-started` with a stored reply and republishes the same reply when it sees the request again.
@@ -73,8 +73,42 @@ See [`catalog.md`](../../contracts/events/catalog.md#flow-leave-approval-saga-or
 - **State machine of a request:** `PENDING` -> `APPROVAL_PENDING` (approve) | `REJECTED` (manager) | `CANCELLED`; `APPROVAL_PENDING` -> `APPROVED` | `REJECTED`; `APPROVED` -> `CANCELLED`; `REJECTED` -> `APPROVAL_PENDING` only through the retry above.
 - After a compensation the request keeps the manager's `decision` (`APPROVED`) in its snapshot; `requestStatus` and `rejectionReason` tell the outcome.
 
+## Query role (#46)
+`APP_ROLE=query` starts no PostgreSQL, JPA, Flyway or outbox (the autoconfigurations are excluded in `application-query.yml`) and the command role starts no Mongo client (excluded in `application-command.yml`). The read model is written only by the `leave.projection` consumer and read through `MongoTemplate` (no Spring Data repositories). Configuration: `MONGO_HOST`, `MONGO_PORT`, `MONGO_DATABASE` (default `leave_read`), `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_AUTH_DATABASE`, `RABBITMQ_QUEUE` (default `leave.projection`); indexes are created at startup (`auto-index-creation` is off).
+
+### Endpoints (GET only)
+`POST`, `PUT`, `PATCH` and `DELETE` are `405` problem+json (with an `Allow` header); unknown routes are `404` problem+json; a non-numeric id is `400`.
+
+| Endpoint | Answer |
+|---|---|
+| `GET /v1/leavetypes`, `/{id}` | types that are not deleted, sorted by id; `404` when unknown or deleted |
+| `GET /v1/leaverequests`, `/{id}` | the `LeaveRequest` schema, sorted by id; `404` |
+| `GET /v1/leaveapprovals`, `/{id}`, `/request/{leaveRequestId}` | derived from the `decision` of the request snapshots (a request has one final decision); `leaveComment` = `decision.comment`; the list is sorted by approval id, `/request/{id}` is an array (empty when there is no decision). A decision published before `leaveApprovalId` existed is listed with `leaveApprovalId: null` and cannot be fetched by id |
+| `GET /v1/leaveledgers`, `/{id}` | the `LeaveLedgerEntry` schema, sorted by id; `404` |
+| `GET /v1/views/employee-leave-overview` (+ `/employee/{employeeId}`, `/status/{status}`, `/leave-type/{leaveTypeName}`) | one row per leave request, sorted by employee, start date, request: `employeeName` ("first last", `null` while the employee is not known), `leaveTypeName` (the leave type's current name; for a deleted or unknown type the name in the request's snapshot), `requestStatus`, `balanceDays`. `status` is one of the five statuses, case-insensitive, else `400`; the leave type name is matched case-insensitively. Rows of a deleted (tombstoned) employee are left out, as the monolith's view joined the employee table; they stay in `/v1/leaverequests` |
+
+**Balance** = the sum of `changeAmountDays` of the ledger entries of (employee, leave type), computed by an aggregation when asked (Decimal128, shown with 2 decimals, `0.00` without entries). It is never "the latest `balanceAfterDays` that arrived", so the arrival order of events cannot matter.
+
+### Collections
+`employees` (`_id` employeeId, firstName, lastName, version, deleted; **never salary or contact data**), `leave_types` (snapshot, version, deleted), `leave_requests` (full snapshot incl. `decision`, version), `ledger_entries` (`_id` leaveLedgerId, amounts as Decimal128, `balanceAfterDays` as received), `processed_events` (`_id` eventId). Dates are stored as ISO-8601 strings.
+
+### Idempotency without transactions
+Mongo is a standalone `mongod` in Compose and Kubernetes: **no multi-document transactions**. This deviates from "record the `eventId` in the same transaction as the change" on purpose, and is safe because every write is idempotent and guarded on its own (see `MongoReadModel`):
+- a snapshot is `updateOne({_id, version < incoming, deleted != true}, {$set …}, upsert)`; when the document exists but the filter does not match, the upsert's insert hits the duplicate `_id` and the snapshot is skipped (stale or tombstoned);
+- a tombstone (employee, leave type) sets `deleted: true` and `version = max(version, incoming)` and keeps the document; it is stored even when the create never arrived, and it always wins (no later snapshot revives it);
+- a ledger entry is inserted under `_id = leaveLedgerId`; a duplicate key means it was already applied;
+- the `eventId` is recorded in `processed_events` **after** the change and checked first as a fast path; a crash in between only means the event is applied twice, with no effect.
+
+Order-independence is the acceptance criterion (see `LeaveProjectionReplayIT`, which feeds the real outbox envelopes of a scenario in several orders and with duplicates and compares the read model with the command database).
+
+### Queue and failures
+Queue `leave.projection` (durable, dead-letter exchange `shift-happens.dlx` with `x-dead-letter-routing-key` = the queue name), bound to exactly the twelve keys above. The listener dispatches on the exact `eventType`; a type it does not handle is recorded as processed and ignored (debug log). Three attempts, then the message is republished to `shift-happens.dlx` with the queue name as routing key and lands in `leave.projection.dlq` (bound with exactly that key).
+
+### Rebuilding the read model
+The projection is order-independent and the command side never deletes `outbox_event` rows, so the read model can be rebuilt: stop `leave-query`, drop the `leave_read` database, purge `leave.projection` (and its `.dlq`), start `leave-query`, then republish the envelopes kept in `outbox_event` (`payload` column, original `eventId`s) to the exchange `shift-happens.events` with `eventType` as routing key. Workforce's employee events are not in leave's outbox: replay them from Workforce (or until then the overview shows `employeeName: null`). Events published before this release for leave types do not exist (`V6` does not backfill existing types).
+
 ## Publishes (outbox)
-`leave.ledger.entry-recorded.v1` (every ledger append), `leave.request.submitted.v1` (submit and every changing edit), `leave.request.approval-started.v1` (approve, and every retry), `leave.request.approved.v1` (saga completed), `leave.request.rejected.v1` (manager rejection or saga compensation) and `leave.request.cancelled.v1` (cancel of a `PENDING` or `APPROVED` request; a repeated DELETE is a `202` no-op and publishes nothing).
+`leave.type.created.v1`, `leave.type.updated.v1` (a PUT that changes something) and `leave.type.deleted.v1` (tombstone of the soft delete); consumer: `leave.projection` only (audit's owner decides whether to subscribe to them), `leave.ledger.entry-recorded.v1` (every ledger append), `leave.request.submitted.v1` (submit and every changing edit), `leave.request.approval-started.v1` (approve, and every retry), `leave.request.approved.v1` (saga completed), `leave.request.rejected.v1` (manager rejection or saga compensation) and `leave.request.cancelled.v1` (cancel of a `PENDING` or `APPROVED` request; a repeated DELETE is a `202` no-op and publishes nothing).
 
 The relay polls the outbox every `OUTBOX_RELAY_DELAY` ms (default `2000`).
 
@@ -85,9 +119,9 @@ Environment variables only (names as in `docker-compose.microservices.yml`). Bes
 | Queue | Role | Routing keys |
 |---|---|---|
 | `leave.command` | command | exact keys `workforce.employee.created.v1`, `workforce.employee.updated.v1`, `workforce.employee.deleted.v1` (local employee replica for validating requests); `scheduling.leave-release.completed.v1` and `scheduling.leave-release.rejected.v1` (the saga replies) |
-| `leave.projection` | query | `leave.*`, `workforce.employee.*` |
+| `leave.projection` | query | exact keys `workforce.employee.{created,updated,deleted}.v1`, `leave.request.{submitted,approval-started,approved,rejected,cancelled}.v1`, `leave.ledger.entry-recorded.v1`, `leave.type.{created,updated,deleted}.v1` (no wildcards) |
 
-A message that fails three times (or cannot be converted) is republished to the dead-letter exchange `shift-happens.dlx` with routing key `leave.command` (the queue name) and lands in `leave.command.dlq`; it is never requeued forever.
+A message that fails three times (or cannot be converted) is republished to the dead-letter exchange `shift-happens.dlx` with the queue name as routing key (`leave.command`, `leave.projection`) and lands in `<queue>.dlq`; it is never requeued forever.
 
 > **Upgrading a local broker:** the arguments (`x-dead-letter-routing-key`) and bindings of `leave.command` changed. RabbitMQ refuses to redeclare a queue with different arguments, so delete the existing `leave.command` **and** `leave.command.dlq` queues (RabbitAdmin never removes the old `#` binding of the DLQ; or run `docker compose -f docker-compose.microservices.yml down -v`) before starting the service.
 
@@ -96,4 +130,4 @@ A message that fails three times (or cannot be converted) is republished to the 
 
 ## Done when
 - [x] Both saga outcomes are covered by a cooperation test (Leave + Scheduling + RabbitMQ in Testcontainers): `tests/cooperation/.../LeaveApprovalSagaIT`.
-- [ ] The balance in the read model equals the sum of the ledger after replay in any order.
+- [x] The balance in the read model equals the sum of the ledger after replay in any order: `LeaveProjectionReplayIT` (original order, reverse, seven seeded shuffles, duplicates).

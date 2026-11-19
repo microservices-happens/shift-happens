@@ -1,5 +1,11 @@
 # Command role: Postgres write model + transactional outbox; handles REST writes and saga messages.
 spring:
+  autoconfigure:
+    # The read model's MongoDB belongs to the query role; the command role must never start a Mongo client.
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:leave}
     username: ${DB_USER:leave}

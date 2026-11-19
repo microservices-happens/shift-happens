@@ -4,7 +4,6 @@ import dk.ek.shift_happens.leave.api.dto.LeaveTypeRequest;
 import dk.ek.shift_happens.leave.api.dto.LeaveTypeResponse;
 import dk.ek.shift_happens.leave.application.IdempotencyService;
 import dk.ek.shift_happens.leave.application.LeaveTypeService;
-import dk.ek.shift_happens.leave.domain.LeaveType;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -19,8 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Leave types, from contracts/openapi/leave.yaml. Writes only: reads belong to the query role (#46).
- * The catalog defines no leave-type events, so none of these publish anything.
+ * Leave types, from contracts/openapi/leave.yaml. Writes only: reads belong to the query role (#46). Every change
+ * publishes leave.type.{created,updated,deleted}.v1; DELETE is a soft delete.
  */
 @RestController
 @RequestMapping("/v1/leavetypes")
@@ -38,27 +37,32 @@ public class LeaveTypeController {
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @Valid @RequestBody LeaveTypeRequest request) {
+            @Valid @RequestBody LeaveTypeRequest request,
+            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
 
         return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(LeaveTypeResponse.from(leaveTypes.create(toDomain(request)))));
+                .body(LeaveTypeResponse.from(leaveTypes.create(request.leaveTypeName().strip(),
+                        request.leaveTypeDescription(), request.requiresApprovalOrDefault(),
+                        request.paidLeaveOrDefault(), correlationId))));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<LeaveTypeResponse> replace(@PathVariable long id,
-                                                     @Valid @RequestBody LeaveTypeRequest request) {
+    public ResponseEntity<LeaveTypeResponse> replace(
+            @PathVariable long id,
+            @Valid @RequestBody LeaveTypeRequest request,
+            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
+
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(LeaveTypeResponse.from(leaveTypes.replace(id, toDomain(request))));
+                .body(LeaveTypeResponse.from(leaveTypes.replace(id, request.leaveTypeName().strip(),
+                        request.leaveTypeDescription(), request.requiresApprovalOrDefault(),
+                        request.paidLeaveOrDefault(), correlationId)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable long id) {
-        leaveTypes.delete(id);
+    public ResponseEntity<Void> delete(
+            @PathVariable long id,
+            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
+        leaveTypes.delete(id, correlationId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
-    }
-
-    private static LeaveType toDomain(LeaveTypeRequest request) {
-        return new LeaveType(null, request.leaveTypeName().strip(), request.leaveTypeDescription(),
-                request.requiresApprovalOrDefault(), request.paidLeaveOrDefault());
     }
 }

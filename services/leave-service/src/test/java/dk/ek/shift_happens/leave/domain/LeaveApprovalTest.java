@@ -22,10 +22,11 @@ class LeaveApprovalTest {
     }
 
     @Test
-    void theDecisionObjectOfTheEventComesFromTheApproval() {
+    void theDecisionObjectOfTheEventComesFromTheApprovalAndCarriesItsId() {
         LeaveApproval approval = new LeaveApproval(3L, 10, 99, ApprovalDecision.REJECTED, "no", NOW);
 
-        assertThat(approval.toDecision()).isEqualTo(new LeaveDecision(99, ApprovalDecision.REJECTED, "no", NOW));
+        assertThat(approval.toDecision())
+                .isEqualTo(new LeaveDecision(99, ApprovalDecision.REJECTED, "no", NOW, 3L));
     }
 
     @Test

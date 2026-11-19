@@ -325,17 +325,16 @@ class LeaveLedgerCommandIT extends AbstractCommandIT {
     }
 
     @Test
-    void aLeaveTypeWithLedgerEntriesCannotBeDeleted() {
+    void aLeaveTypeWithLedgerEntriesIsSoftDeletedAndItsEntriesStay() {
         long typeId = createLeaveType("Referenced " + UUID.randomUUID());
         seedEmployee(2017);
         accrue(2017, typeId, "1");
 
         ResponseEntity<String> response = delete("/v1/leavetypes/" + typeId);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(response.getHeaders().getContentType().toString()).contains("problem+json");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_type WHERE leave_type_id = ?", Integer.class,
-                typeId)).isEqualTo(1);
-        assertThat(rows(2017, typeId)).isEqualTo(1);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM leave_type WHERE leave_type_id = ? "
+                + "AND deleted_at IS NOT NULL", Integer.class, typeId)).isEqualTo(1);
+        assertThat(rows(2017, typeId)).as("the ledger is immutable: its entries stay").isEqualTo(1);
     }
 }

@@ -260,6 +260,8 @@ abstract class AbstractSagaIT extends AbstractCommandIT {
                     .path("required"))).isSubsetOf(fieldNames(schema.path("properties").path("decision")
                     .path("properties")));
             Instant.parse(decision.path("decisionDatetime").asText());
+            assertThat(decision.path("leaveApprovalId").isIntegralNumber())
+                    .as("every snapshot with a decision carries the id of the stored approval").isTrue();
         }
     }
 }

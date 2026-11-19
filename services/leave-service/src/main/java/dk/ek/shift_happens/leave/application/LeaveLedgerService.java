@@ -57,7 +57,7 @@ public class LeaveLedgerService {
                                     String referenceEntityType, Long referenceEntityId, String correlationId) {
         LedgerEntry.requireManual(type);
         LedgerEntry.requireValidAmount(type, amount);
-        types.findById(leaveTypeId)
+        types.findActiveById(leaveTypeId) // a deleted type counts as unknown
                 .orElseThrow(() -> new InvalidLeaveRequestException("unknown leaveTypeId " + leaveTypeId));
         LeaveRequestService.requireActiveEmployee(employees, employeeId, "employee");
         return append(employeeId, leaveTypeId, type, amount, referenceEntityType, referenceEntityId, correlationId);

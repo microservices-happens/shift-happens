@@ -47,6 +47,7 @@ class LeaveApprovalCommandIT extends AbstractCommandIT {
         assertThat(data.path("requestStatus").asText()).isEqualTo("REJECTED");
         assertThat(data.path("rejectionReason").asText()).isEqualTo("Too busy");
         JsonNode decision = data.path("decision");
+        assertThat(decision.path("leaveApprovalId").asLong()).isEqualTo(approval.path("leaveApprovalId").asLong());
         assertThat(decision.path("approverEmployeeId").asLong()).isEqualTo(990);
         assertThat(decision.path("decision").asText()).isEqualTo("REJECTED");
         assertThat(decision.path("comment").asText()).isEqualTo("Too busy");

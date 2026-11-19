@@ -101,7 +101,7 @@ public class LeaveRequestService {
             ledger.reverseReservation(leaveRequestId, completed.attempt(), correlationId, null);
         }
         events.append(DomainEvents.LEAVE_REQUEST_CANCELLED, saved.leaveRequestId(), saved.aggregateVersion(),
-                correlationId, saved.snapshot(leaveType(saved.leaveTypeId()).leaveTypeName()));
+                correlationId, saved.snapshot(storedTypeName(saved.leaveTypeId())));
         return saved;
     }
 
@@ -109,9 +109,17 @@ public class LeaveRequestService {
         return requests.findByIdForUpdate(leaveRequestId).orElseThrow(() -> new LeaveRequestNotFoundException(leaveRequestId));
     }
 
+    /** A new or edited request needs a type that exists and is not deleted: a deleted type counts as unknown. */
     private LeaveType leaveType(long leaveTypeId) {
-        return types.findById(leaveTypeId)
+        return types.findActiveById(leaveTypeId)
                 .orElseThrow(() -> new InvalidLeaveRequestException("unknown leaveTypeId " + leaveTypeId));
+    }
+
+    /** The name of the type the request already refers to; a soft-deleted type keeps its stored name. */
+    private String storedTypeName(long leaveTypeId) {
+        return types.findById(leaveTypeId)
+                .orElseThrow(() -> new IllegalStateException("leave type " + leaveTypeId + " is missing"))
+                .leaveTypeName();
     }
 
     /**

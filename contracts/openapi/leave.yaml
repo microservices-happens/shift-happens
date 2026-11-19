@@ -549,6 +549,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EmployeeLeaveOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/views/employee-leave-overview/leave-type/{leaveTypeName}:
