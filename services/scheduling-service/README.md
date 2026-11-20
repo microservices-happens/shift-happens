@@ -8,7 +8,7 @@
 | `command` | `scheduling-command` | `scheduling-write-db` (Postgres, Flyway) + outbox + employee replica | REST writes: [`openapi/scheduling.yaml`](../../contracts/openapi/scheduling.yaml) |
 | `query` | `scheduling-query` | `scheduling-read-db` (MongoDB) + projection log | GraphQL reads: [`graphql/scheduling.graphql`](../../contracts/graphql/scheduling.graphql) |
 
-**Why CQRS here:** writes are small, validated transactions (assign, swap, approve). Reads are wide, nested views such as a week's schedule with assignments, employee names and AI suggestions. Mongo documents shaped for those views, served over GraphQL, avoid multi-table joins on every page load. The two roles also scale independently, since reads far outnumber writes.
+**Why CQRS here:** writes are small, validated transactions (assign, swap, approve). Reads are wide, nested views such as a week's schedule with assignments, employee names and AI suggestions. Mongo documents shaped for those views, served over GraphQL, avoid multi-table joins on every page load. The two roles also scale independently, since reads far outnumber writes. Measured (P3.6, [`docs/measurements/cqrs-read-model.md`](../../docs/measurements/cqrs-read-model.md)): at one year of data the joins are **not** slower than the read model, so the justification is availability and isolation of the read side, not query latency. `CqrsReadModelBenchmarkIT` repeats the measurement in every `mvn verify` (60 to 90 s, no latency assertions).
 
 **Why swaps live here:** a swap only reassigns an existing assignment. Approval and reassignment are one local transaction, so no saga is needed.
 
