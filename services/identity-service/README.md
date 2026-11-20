@@ -9,9 +9,16 @@
   (bound to `workforce.employee.*.v1`, dead-lettered to `shift-happens.dlx` after three attempts).
 - Upserts the local `account` row, keeps the highest `aggregateVersion`, keeps tombstoned accounts
   as disabled, and de-duplicates on `eventId` (`processed_events`).
-- Tests: `AccountTest` (version/tombstone rules), `IdentityApplicationIT` (RabbitMQ → account table,
-  including duplicate, out-of-order and tombstone cases), plus the system test
-  `tests/cooperation/EmployeeReplicationIT`.
+- The handler is commutative (P3.3): the same events give the same row in any arrival order.
+  `snapshot_version` (V4) is the version of the snapshot the workforce fields come from, and
+  `aggregate_version` the highest version seen. A tombstone newer than every snapshot
+  (`aggregate_version > snapshot_version`) keeps the account disabled; a snapshot that arrives after
+  it still refreshes the fields, and a tombstone that arrives before the create is stored as a row
+  without email and role, so the late create cannot enable the account.
+- Tests: `AccountTest` (version/tombstone rules), `EmployeeProjectionShuffledOrderTest` (every order
+  of one employee's events, seeded shuffles with redeliveries across employees, same end state),
+  `IdentityApplicationIT` (RabbitMQ → account table, including duplicate, out-of-order and tombstone
+  cases), plus the system test `tests/cooperation/EmployeeReplicationIT`.
 
 ## Implemented so far (local login, P2.1)
 
@@ -120,7 +127,7 @@ REST: [`contracts/openapi/identity.yaml`](../../contracts/openapi/identity.yaml)
 ## Consumes
 | Queue | Routing keys | Handling |
 |---|---|---|
-| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it. Keeps the highest `aggregateVersion` |
+| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it, also when it arrives before the create. Keeps the highest `aggregateVersion`; the result does not depend on arrival order |
 
 ## Publishes
 Nothing.
