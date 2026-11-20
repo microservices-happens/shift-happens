@@ -622,6 +622,10 @@ The development environment is defined in docker-compose.microservices.yml. The 
 ●      **Networks** mirror the production security boundaries: databases sit on internal networks reachable only by their owning service, services share an internal service-bus network, and only the gateway is exposed.  
 ●      Every service exposes GET /health, which Compose uses for health checks.
 
+![Figure 3.1: Docker Compose development environment](diagrams/compose.png)
+
+*Figure 3.1: The Docker Compose development environment, drawn from docker-compose.microservices.yml. Containers are grouped by profile, with the gateway and the ports published on the host, each service's own database, RabbitMQ, and the CQRS command and query containers that run the same image with different APP\_ROLE values. Source: docs/diagrams/compose.drawio.*
+
  
 
 ## **3.2. Local Kubernetes deployment simulating a production-like environment** {#3.2.-local-kubernetes-deployment-simulating-a-production-like-environment}
@@ -633,7 +637,9 @@ The production-like environment is a local Kubernetes cluster (kind or minikube)
 ●      An NGINX Ingress with the same routing rules as the local gateway.  
 ●      Infrastructure (ingress controller, KEDA, RabbitMQ, PostgreSQL, MongoDB, Ollama, observability stack) is installed with Helm charts.
 
-*\[Insert the Kubernetes deployment diagram here.\]*
+![Figure 3.2: Local Kubernetes deployment](diagrams/kubernetes.png)
+
+*Figure 3.2: The local Kubernetes deployment, drawn from the plain manifests in kubernetes/ (the older Kustomize scaffold in k8s/ is not deployed; issue #64 decides which folder stays). It shows the Deployments, Services and NodePorts, the ConfigMaps, the per-service Secrets, the persistent volumes, and where the images come from (GHCR and Docker Hub). Ingress, autoscaling and the observability stack are planned and shown dashed. Source: docs/diagrams/kubernetes.drawio.*
 
 ### **3.2.1. Description of used technologies** {#3.2.1.-description-of-used-technologies}
 
@@ -652,7 +658,9 @@ The CI/CD pipeline uses GitHub Actions in the monorepo. Path filters make sure t
 
 Any failing step fails the pipeline, and pull requests can only be merged into main when the pipeline is green.
 
-*\[Insert the CI/CD pipeline diagram here.\]*
+![Figure 3.3: CI/CD pipelines](diagrams/ci-cd.png)
+
+*Figure 3.3: The CI/CD pipelines, drawn from the workflows in .github/workflows/ (ci, codeql, system-tests and nightly-shift-risk). It shows the triggers, the jobs with their conditions and dependencies, and image publishing to GHCR on main. No workflow deploys to a cluster. Source: docs/diagrams/ci-cd.drawio.*
 
 ### **3.2.3. Logging and Monitoring** {#3.2.3.-logging-and-monitoring}
 
