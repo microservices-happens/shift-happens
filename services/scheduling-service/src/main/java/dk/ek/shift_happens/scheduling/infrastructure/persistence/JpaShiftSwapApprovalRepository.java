@@ -24,7 +24,17 @@ class JpaShiftSwapApprovalRepository implements ShiftSwapApprovalRepository {
     }
 
     @Override
+    public Optional<ShiftSwapApproval> findById(long shiftSwapApprovalId) {
+        return jpa.findById(shiftSwapApprovalId).map(ShiftSwapApprovalEntity::toDomain);
+    }
+
+    @Override
     public Optional<ShiftSwapApproval> findByShiftSwapId(long shiftSwapId) {
         return jpa.findByShiftSwapId(shiftSwapId).map(ShiftSwapApprovalEntity::toDomain);
+    }
+
+    @Override
+    public void delete(ShiftSwapApproval approval) {
+        jpa.deleteById(approval.shiftSwapApprovalId());
     }
 }

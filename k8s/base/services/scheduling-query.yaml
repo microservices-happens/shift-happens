@@ -24,6 +24,21 @@ spec:
               value: scheduling-query
             - name: APP_ROLE
               value: query
+            # Read model. MONGO_PASSWORD lives in the scheduling-query-secrets secret.
+            - name: MONGO_HOST
+              value: scheduling-read-db
+            - name: MONGO_PORT
+              value: "27017"
+            - name: MONGO_DATABASE
+              value: scheduling_read
+            - name: MONGO_USERNAME
+              value: scheduling
+            - name: MONGO_AUTH_DATABASE
+              value: admin
+            - name: RABBITMQ_QUEUE
+              value: scheduling.projection
+            - name: GRAPHQL_PATH
+              value: /graphql
           readinessProbe: { httpGet: { path: /health/readiness, port: 8080 }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /health/liveness, port: 8080 }, initialDelaySeconds: 30, periodSeconds: 10 }
           resources:
