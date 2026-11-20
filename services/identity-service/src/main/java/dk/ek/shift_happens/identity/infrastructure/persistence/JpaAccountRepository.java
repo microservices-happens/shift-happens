@@ -22,9 +22,24 @@ class JpaAccountRepository implements AccountRepository {
     }
 
     @Override
+    public Optional<Account> findByEmail(String email) {
+        return jpa.findByEmailIgnoreCase(email).map(AccountEntity::toDomain);
+    }
+
+    @Override
     public Account save(Account account) {
         AccountEntity entity = jpa.findByEmployeeId(account.employeeId()).orElseGet(AccountEntity::new);
         entity.apply(account);
         return jpa.save(entity).toDomain();
+    }
+
+    @Override
+    public boolean setPasswordHash(long employeeId, String passwordHash) {
+        return jpa.updatePasswordHash(employeeId, passwordHash) == 1;
+    }
+
+    @Override
+    public boolean setPasswordHashIfUnset(long employeeId, String passwordHash) {
+        return jpa.updatePasswordHashIfNull(employeeId, passwordHash) == 1;
     }
 }

@@ -42,7 +42,12 @@ The current application remains the runnable monolith. The target microservice a
 
 `identity-service` and `workforce-service` already contain their first vertical slice (employee
 replication over RabbitMQ); the other five are still **walking skeletons** that build, pass their
-test and serve `GET /health`. Build one with `cd services/<name> && mvn verify`.
+test and serve `GET /health`. Build one with `./mvnw -B -f services/<name>/pom.xml verify`.
+
+The integration tests (`*IT`) start PostgreSQL and RabbitMQ with Testcontainers, so Docker must be
+running. Docker Desktop works out of the box. With **Colima** (or another Docker context), run
+`source scripts/docker-env.sh` once per shell first; it points Testcontainers at the active
+`docker context`.
 
 ---
 

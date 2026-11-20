@@ -55,6 +55,7 @@ class IdentityApplicationIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        registry.add("app.password.pepper", () -> "it-pepper");
     }
 
     @Autowired

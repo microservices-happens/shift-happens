@@ -29,6 +29,17 @@ public class AccountEntity {
     @Column(name = "email", nullable = false, length = 255)
     private String email;
 
+    @Column(name = "first_name", length = 100)
+    private String firstName;
+
+    @Column(name = "last_name", length = 100)
+    private String lastName;
+
+    // updatable = false: the projection saves the whole row, and it must never wipe or restore a
+    // password. Passwords change only through AccountRepository.setPasswordHash*.
+    @Column(name = "password_hash", length = 255, updatable = false)
+    private String passwordHash;
+
     @Column(name = "role", nullable = false, length = 20)
     private String role;
 
@@ -49,6 +60,9 @@ public class AccountEntity {
         this.employeeId = account.employeeId();
         this.employeeNumber = account.employeeNumber();
         this.email = account.email();
+        this.firstName = account.firstName();
+        this.lastName = account.lastName();
+        this.passwordHash = account.passwordHash();
         this.role = account.role();
         this.active = account.active();
         this.aggregateVersion = account.aggregateVersion();
@@ -56,6 +70,7 @@ public class AccountEntity {
     }
 
     Account toDomain() {
-        return new Account(accountId, employeeId, employeeNumber, email, role, active, aggregateVersion);
+        return new Account(accountId, employeeId, employeeNumber, email, firstName, lastName, role, active,
+                aggregateVersion, passwordHash);
     }
 }

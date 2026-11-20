@@ -44,6 +44,12 @@ spec:
                   key: IDENTITY_DB_PASSWORD
             - name: RABBITMQ_QUEUE
               value: "identity.accounts"
+            # Required: identity-service does not start without the pepper.
+            - name: PASSWORD_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: shift-happens-secrets
+                  key: PASSWORD_PEPPER
             - name: OIDC_REDIRECT_BASE_URL
               value: "https://localhost:8443/api/v1/auth/oidc"
             - name: OIDC_GOOGLE_CLIENT_ID
