@@ -98,6 +98,12 @@ This is the only source of employee data for other services. Nobody calls Workfo
 ## Consumes
 Nothing.
 
+## Correlation id (P1.6)
+
+`config/CorrelationIdFilter` takes `X-Correlation-Id` from the request (a token of up to 128
+`[A-Za-z0-9._:-]` characters) or generates a UUID, puts it in the MDC as `correlationId`, and echoes
+it on the response. Every log line prints it (`logging.pattern.correlation`). Published events carry the request's id (or a new one for scheduled jobs).
+
 ## Extract from monolith
 `employee`, `employeecontract`, `employeejobrole`, `department`, `jobrole` and `worklocation`. `EmployeeDto.loginPassword` is removed: passwords now live in identity-service.
 

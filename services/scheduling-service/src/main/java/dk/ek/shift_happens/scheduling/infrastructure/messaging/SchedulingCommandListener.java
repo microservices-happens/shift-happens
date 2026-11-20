@@ -5,6 +5,7 @@ import dk.ek.shift_happens.scheduling.application.LeaveReleaseService;
 import dk.ek.shift_happens.scheduling.application.LeaveWindowService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -40,8 +41,16 @@ public class SchedulingCommandListener {
 
     @RabbitListener(queues = "${app.rabbit.queue}")
     public void onEvent(EventEnvelope envelope) {
-        log.info("Received {} for aggregate {} (v{}), correlation {}", envelope.eventType(),
-                envelope.aggregateId(), envelope.aggregateVersion(), envelope.correlationId());
+        // P1.6: the event's correlation id is in every log line and every event written while it is
+        // handled.
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", envelope.correlationId())) {
+            dispatch(envelope);
+        }
+    }
+
+    private void dispatch(EventEnvelope envelope) {
+        log.info("Received {} for aggregate {} (v{})", envelope.eventType(),
+                envelope.aggregateId(), envelope.aggregateVersion());
 
         String eventType = envelope.eventType();
         if (eventType.startsWith("workforce.employee.")) {

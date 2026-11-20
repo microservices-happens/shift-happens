@@ -57,6 +57,12 @@ Idempotent by `eventId`: a redelivery does not call the LLM again.
 ## Provides
 Only `GET /health`. The suggestions reach the frontend through Scheduling's GraphQL API.
 
+## Correlation id (P1.6)
+
+`config/CorrelationIdFilter` takes `X-Correlation-Id` from the request (a token of up to 128
+`[A-Za-z0-9._:-]` characters) or generates a UUID, puts it in the MDC as `correlationId`, and echoes
+it on the response. Every log line prints it (`logging.pattern.correlation`). The understaffed event's `correlationId` is in the MDC while it is handled and is copied into `ai.replacement.suggested.v1`.
+
 Security (P1.7): `GET /health` is public; any other path needs a Bearer JWT from identity-service, validated
 against the JWKS at `JWT_JWKS_URL` (cached) with `iss` and `exp` checked. The service has no other endpoint
 today, so the general rules of `contracts/README.md` apply to whatever is added: `GET` needs any valid token,

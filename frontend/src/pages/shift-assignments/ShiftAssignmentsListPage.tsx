@@ -1,21 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  deleteShiftAssignment,
-  listShiftAssignments,
-} from '../../api/shiftAssignments';
-import { listEmployees } from '../../api/employees';
-import { listShifts } from '../../api/shifts';
+import { useQuery } from '@apollo/client/react';
+import { deleteShiftAssignment } from '../../api/shiftAssignments';
 import { listDepartments } from '../../api/departments';
-import type {
-  Department,
-  Employee,
-  Shift,
-  ShiftAssignment,
-} from '../../api/types';
+import type { Department } from '../../api/types';
 import { ApiError } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
+import { graphqlErrorMessage } from '../../graphql/client';
+import {
+  ShiftsWithAssignmentsDocument,
+  type ShiftsWithAssignmentsQuery,
+} from '../../graphql/generated';
+import { FUTURE_WEEKS, PAST_WEEKS, scheduleWindow } from '../../graphql/time';
+
+type ListShift = ShiftsWithAssignmentsQuery['shifts'][number];
+type ListEmployee = ListShift['assignments'][number]['employee'];
 
 const AVATAR_COLORS = [
   '#6366f1',
@@ -34,19 +34,24 @@ function avatarColor(id: number): string {
   return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length];
 }
 
-function employeeInitials(e: Employee | undefined): string {
-  if (!e) return '?';
+function employeeInitials(e: ListEmployee): string {
   const f = e.firstName?.[0] ?? '';
   const l = e.lastName?.[0] ?? '';
   return (f + l).toUpperCase() || '?';
 }
 
 function statusPillClass(status: string | null): string {
-  const s = (status ?? '').toLowerCase();
-  if (s.includes('complete') || s.includes('checked_out')) return 'pill pill-success';
-  if (s.includes('cancel') || s.includes('no_show')) return 'pill pill-danger';
-  if (s.includes('checked_in') || s.includes('active')) return 'pill pill-brand';
-  return 'pill pill-neutral';
+  switch (status) {
+    case 'APPROVED':
+      return 'pill pill-success';
+    case 'SWAPPED':
+      return 'pill pill-brand';
+    case 'CANCELLED':
+    case 'RELEASED_FOR_LEAVE':
+      return 'pill pill-danger';
+    default:
+      return 'pill pill-neutral';
+  }
 }
 
 function formatStatus(status: string | null): string {
@@ -78,49 +83,41 @@ export default function ShiftAssignmentsListPage() {
   const { user } = useAuth();
   const mayWrite = canWrite(user?.roleName);
 
-  const [assignments, setAssignments] = useState<ShiftAssignment[] | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // There is no "all assignments" query in the contract: assignments are read through
+  // shifts(from, to) { assignments }, over a fixed window around the current week.
+  const [range] = useState(() => scheduleWindow());
+  const { data, error: queryError, refetch } = useQuery(ShiftsWithAssignmentsDocument, {
+    variables: range,
+  });
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const error = queryError
+    ? graphqlErrorMessage(queryError, 'Failed to load shift assignments')
+    : deleteError;
 
+  const assignments = useMemo(
+    () =>
+      data
+        ? data.shifts
+            .flatMap((shift) => shift.assignments.map((assignment) => ({ shift, assignment })))
+            .sort((x, y) => x.shift.startDatetime.localeCompare(y.shift.startDatetime))
+        : null,
+    [data]
+  );
+
+  const [departments, setDepartments] = useState<Department[]>([]);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      listShiftAssignments(),
-      listEmployees(),
-      listShifts(),
-      listDepartments(),
-    ])
-      .then(([a, e, s, d]) => {
-        if (cancelled) return;
-        setAssignments(a);
-        setEmployees(e);
-        setShifts(s);
-        setDepartments(d);
+    listDepartments()
+      .then((d) => {
+        if (!cancelled) setDepartments(d);
       })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiError ? err.message : 'Failed to load shift assignments'
-        );
+      .catch(() => {
+        /* department names are decoration */
       });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  const empById = useMemo(() => {
-    const m = new Map<number, Employee>();
-    for (const e of employees) m.set(e.employeeId, e);
-    return m;
-  }, [employees]);
-
-  const shiftById = useMemo(() => {
-    const m = new Map<number, Shift>();
-    for (const s of shifts) m.set(s.shiftId, s);
-    return m;
-  }, [shifts]);
 
   const deptById = useMemo(() => {
     const m = new Map<number, Department>();
@@ -130,13 +127,12 @@ export default function ShiftAssignmentsListPage() {
 
   async function handleDelete(id: number, label: string) {
     if (!confirm(`Delete assignment for "${label}"?`)) return;
+    setDeleteError(null);
     try {
       await deleteShiftAssignment(id);
-      setAssignments(
-        (prev) => prev?.filter((a) => a.shiftAssignmentId !== id) ?? null
-      );
+      void refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Delete failed');
+      setDeleteError(err instanceof ApiError ? err.message : 'Delete failed');
     }
   }
 
@@ -146,7 +142,7 @@ export default function ShiftAssignmentsListPage() {
         <div>
           <h1 className="page-title">Shift Assignments</h1>
           <p className="page-subtitle">
-            Who's scheduled where — and whether they've clocked in.
+            Who's scheduled where, from {PAST_WEEKS} weeks back to {FUTURE_WEEKS} weeks ahead.
           </p>
         </div>
         {mayWrite && (
@@ -186,59 +182,54 @@ export default function ShiftAssignmentsListPage() {
                   </td>
                 </tr>
               )}
-              {assignments.map((a) => {
-                const emp = empById.get(a.employeeId);
-                const shift = shiftById.get(a.shiftId);
-                const dept = shift ? deptById.get(shift.departmentId) : undefined;
-                const empLabel = emp
-                  ? `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim()
-                  : `#${a.employeeId}`;
+              {assignments.map(({ shift, assignment: a }) => {
+                const emp = a.employee;
+                const dept = deptById.get(shift.departmentId);
+                const empLabel = `${emp.firstName} ${emp.lastName}`.trim();
+                const editPath = `/shift-assignments/${a.shiftAssignmentId}?shiftId=${shift.shiftId}`;
                 return (
                   <tr key={a.shiftAssignmentId}>
                     <td>
                       <Link
-                        to={`/shift-assignments/${a.shiftAssignmentId}`}
+                        to={editPath}
                         className="name-cell hover:no-underline"
                       >
                         <span
                           className="avatar"
-                          style={{ background: avatarColor(a.employeeId) }}
+                          style={{ background: avatarColor(emp.employeeId) }}
                         >
                           {employeeInitials(emp)}
                         </span>
                         <span>
                           <span className="name-cell-primary">{empLabel}</span>
                           <span className="name-cell-secondary">
-                            {emp?.email ?? ''}
+                            Employee #{emp.employeeId}
                           </span>
                         </span>
                       </Link>
                     </td>
                     <td>
                       <div className="name-cell-primary">
-                        {shift?.shiftName ?? `Shift #${a.shiftId}`}
+                        {shift.shiftName}
                       </div>
                       <div className="name-cell-secondary">
                         {dept?.departmentName ?? ''}
                       </div>
                     </td>
                     <td className="text-slate-500">
-                      {formatRange(
-                        shift?.startDatetime ?? null,
-                        shift?.endDatetime ?? null
-                      )}
+                      {formatRange(shift.startDatetime, shift.endDatetime)}
                     </td>
                     <td>
-                      <span className={statusPillClass(a.assignmentStatus)}>
+                      <span className={statusPillClass(a.status)}>
                         <span className="pill-dot" />
-                        {formatStatus(a.assignmentStatus)}
+                        {formatStatus(a.status)}
                       </span>
                     </td>
                     <td className="data-table-actions">
                       {mayWrite && (
                         <>
                           <Link
-                            to={`/shift-assignments/${a.shiftAssignmentId}`}
+                            to={editPath}
                             className="btn btn-sm"
                           >
                             Edit

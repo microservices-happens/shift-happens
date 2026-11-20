@@ -7,6 +7,7 @@ import dk.ek.shift_happens.workforce.domain.EmployeeSnapshot;
 import dk.ek.shift_happens.workforce.domain.NewEmployee;
 import dk.ek.shift_happens.workforce.infrastructure.messaging.EventEnvelope;
 import dk.ek.shift_happens.workforce.infrastructure.persistence.EmployeeTermsRepository;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -127,9 +128,21 @@ public class EmployeeService {
                 producer,
                 employeeId,
                 version,
-                correlationId == null || correlationId.isBlank() ? UUID.randomUUID().toString() : correlationId,
+                correlationIdOf(correlationId),
                 null,
                 data));
+    }
+
+    /**
+     * The caller's id, else the one CorrelationIdFilter put in the MDC for this request, else a new one
+     * (scheduled jobs have neither).
+     */
+    static String correlationIdOf(String correlationId) {
+        if (correlationId != null && !correlationId.isBlank()) {
+            return correlationId;
+        }
+        String fromMdc = MDC.get("correlationId");
+        return fromMdc != null && !fromMdc.isBlank() ? fromMdc : UUID.randomUUID().toString();
     }
 
     private record EmployeeTombstone(String entityType, long entityId, Instant deletedAt) {

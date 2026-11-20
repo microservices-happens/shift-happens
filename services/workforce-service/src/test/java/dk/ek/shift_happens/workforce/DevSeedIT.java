@@ -88,6 +88,8 @@ class DevSeedIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     @Autowired
@@ -109,6 +111,8 @@ class DevSeedIT {
 
     @BeforeEach
     void bindATestQueue() {
+        // The API needs a token since P1.7; reading and creating employees is allowed for an Administrator.
+        TestJwks.authorizeByDefault(http, "Administrator");
         Queue queue = new Queue(TEST_QUEUE, true, false, false);
         rabbitAdmin.declareQueue(queue);
         rabbitAdmin.declareBinding(BindingBuilder.bind(queue).to(eventsExchange).with("workforce.employee.#"));

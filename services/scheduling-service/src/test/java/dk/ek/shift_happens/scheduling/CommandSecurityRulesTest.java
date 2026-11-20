@@ -120,11 +120,11 @@ class CommandSecurityRulesTest {
 
     @Test
     void aManagerAndAnAdministratorMayWrite() throws Exception {
-        mvc.perform(as(delete("/v1/shifts/1"), TestJwks.manager())).andExpect(status().isAccepted());
-        mvc.perform(as(delete("/v1/shifts/2"), TestJwks.administrator())).andExpect(status().isAccepted());
+        mvc.perform(as(delete("/v1/shifts/1").header("X-Correlation-Id", "corr-1"), TestJwks.manager())).andExpect(status().isAccepted());
+        mvc.perform(as(delete("/v1/shifts/2").header("X-Correlation-Id", "corr-2"), TestJwks.administrator())).andExpect(status().isAccepted());
 
-        verify(shifts).delete(1, null);
-        verify(shifts).delete(2, null);
+        verify(shifts).delete(1, "corr-1");
+        verify(shifts).delete(2, "corr-2");
     }
 
     @Test
@@ -172,7 +172,7 @@ class CommandSecurityRulesTest {
 
     @Test
     void theJwksIsFetchedOnceAndThenCached() throws Exception {
-        mvc.perform(as(delete("/v1/shifts/1"), TestJwks.manager())).andExpect(status().isAccepted());
+        mvc.perform(as(delete("/v1/shifts/1").header("X-Correlation-Id", "corr-1"), TestJwks.manager())).andExpect(status().isAccepted());
         int afterTheFirstToken = TestJwks.fetches();
 
         for (int i = 2; i < 7; i++) {

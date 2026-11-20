@@ -1,19 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  createShift,
-  deleteShift,
-  getShift,
-  updateShift,
-} from '../../api/shifts';
+import { useQuery } from '@apollo/client/react';
+import { createShift, deleteShift, updateShift } from '../../api/shifts';
 import { listDepartments } from '../../api/departments';
 import { listWorkLocations } from '../../api/workLocations';
 import type { Department, NewShift, WorkLocation } from '../../api/types';
 import { ApiError } from '../../api/types';
+import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
+import { graphqlErrorMessage } from '../../graphql/client';
+import { ShiftByIdDocument, type ShiftStatus } from '../../graphql/generated';
+import { fromLocalInput, toLocalInput } from '../../graphql/time';
 
-const STATUSES = ['SCHEDULED', 'COMPLETED', 'CANCELLED'] as const;
+// ShiftStatus of contracts/graphql/scheduling.graphql, which scheduling-command also enforces.
+const STATUSES: readonly ShiftStatus[] = ['PLANNED', 'PUBLISHED', 'LOCKED', 'CANCELLED'];
+
+function localToDateTime(dateISO: string, time: string): string {
+  return fromLocalInput(`${dateISO}T${time}`) ?? `${dateISO}T${time}:00Z`;
+}
 
 function buildEmpty(dateISO: string | null): NewShift {
   const baseDate = dateISO ?? new Date().toISOString().slice(0, 10);
@@ -21,9 +26,9 @@ function buildEmpty(dateISO: string | null): NewShift {
     departmentId: 0,
     workLocationId: 0,
     shiftName: '',
-    startDatetime: `${baseDate}T09:00:00`,
-    endDatetime: `${baseDate}T17:00:00`,
-    shiftStatus: 'SCHEDULED',
+    startDatetime: localToDateTime(baseDate, '09:00'),
+    endDatetime: localToDateTime(baseDate, '17:00'),
+    shiftStatus: 'PLANNED',
   };
 }
 
@@ -39,9 +44,10 @@ export default function ShiftFormPage() {
   const mayWrite = canWrite(user?.roleName);
 
   const [form, setForm] = useState<NewShift>(() => buildEmpty(presetDate));
+  // One Idempotency-Key per submission of this form; a retry of the same data reuses it.
+  const createAction = useIdempotentAction();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [locations, setLocations] = useState<WorkLocation[]>([]);
-  const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,33 +72,33 @@ export default function ShiftFormPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (isNew || numericId === null) return;
-    let cancelled = false;
-    setLoading(true);
-    getShift(numericId)
-      .then((s) => {
-        if (cancelled) return;
-        setForm({
-          departmentId: s.departmentId,
-          workLocationId: s.workLocationId,
-          shiftName: s.shiftName,
-          startDatetime: s.startDatetime,
-          endDatetime: s.endDatetime,
-          shiftStatus: s.shiftStatus,
-        });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Failed to load shift');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isNew, numericId]);
+  // Reads are GraphQL: shift(shiftId) on scheduling-query.
+  const { data, loading, error: queryError } = useQuery(ShiftByIdDocument, {
+    variables: { shiftId: numericId ?? 0 },
+    skip: isNew || numericId === null,
+    fetchPolicy: 'network-only',
+  });
+
+  // Copy the loaded shift into the form once per result (state adjusted during render, not in an effect).
+  const loaded = data?.shift ?? null;
+  const [formFrom, setFormFrom] = useState<typeof loaded>(null);
+  if (loaded && loaded !== formFrom) {
+    setFormFrom(loaded);
+    setForm({
+      departmentId: loaded.departmentId,
+      workLocationId: loaded.workLocationId,
+      shiftName: loaded.shiftName,
+      startDatetime: loaded.startDatetime,
+      endDatetime: loaded.endDatetime,
+      shiftStatus: loaded.status,
+    });
+  }
+
+  const loadError = queryError
+    ? graphqlErrorMessage(queryError, 'Failed to load shift')
+    : data && !data.shift
+      ? 'Shift not found (or not visible to you).'
+      : null;
 
   function update<K extends keyof NewShift>(key: K, value: NewShift[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -104,7 +110,7 @@ export default function ShiftFormPage() {
     setError(null);
     setSubmitting(true);
     try {
-      if (isNew) await createShift(form);
+      if (isNew) await createAction.run(form, (key) => createShift(form, key));
       else if (numericId !== null) await updateShift(numericId, form);
       navigate('/shifts');
     } catch (err) {
@@ -125,12 +131,12 @@ export default function ShiftFormPage() {
     }
   }
 
-  if (loading) return <div className="page page-muted">Loading…</div>;
+  if (loading && !data) return <div className="page page-muted">Loading…</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{isNew ? 'New shift' : 'Edit shift'}</h1>
-      {error && <div className="alert alert-error">{error}</div>}
+      {(error ?? loadError) && <div className="alert alert-error">{error ?? loadError}</div>}
       <form className="form-grid" onSubmit={handleSubmit}>
         <label className="form-field">
           <span>Shift name</span>
@@ -195,8 +201,8 @@ export default function ShiftFormPage() {
           <input
             type="datetime-local"
             required
-            value={(form.startDatetime ?? '').slice(0, 16)}
-            onChange={(e) => update('startDatetime', `${e.target.value}:00`)}
+            value={toLocalInput(form.startDatetime)}
+            onChange={(e) => update('startDatetime', fromLocalInput(e.target.value) ?? '')}
             disabled={!mayWrite}
           />
         </label>
@@ -205,8 +211,8 @@ export default function ShiftFormPage() {
           <input
             type="datetime-local"
             required
-            value={(form.endDatetime ?? '').slice(0, 16)}
-            onChange={(e) => update('endDatetime', `${e.target.value}:00`)}
+            value={toLocalInput(form.endDatetime)}
+            onChange={(e) => update('endDatetime', fromLocalInput(e.target.value) ?? '')}
             disabled={!mayWrite}
           />
         </label>
