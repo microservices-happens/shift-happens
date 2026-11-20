@@ -17,6 +17,7 @@ tests/cooperation/
 ├── pom.xml                                  # JUnit 5, Testcontainers, AssertJ, Awaitility
 └── src/test/java/dk/ek/shift_happens/cooperation/
     ├── support/ServiceContainer.java        # starts services/<name> images on a shared network
+    ├── support/TestTokens.java              # test RSA key, JWKS server and token minter (no identity needed)
     ├── EmployeeReplicationIT.java           # workforce → RabbitMQ → identity (enabled)
     └── LeaveApprovalSagaIT.java             # leave saga, both outcomes (enabled)
 ```
@@ -26,6 +27,12 @@ workforce-service, and asserts that identity-service consumed `workforce.employe
 created the account. It starts RabbitMQ and one PostgreSQL per service, and reads each service's own
 database for the assertions — no mocks and no non-contract endpoints.
 
+It is also the cooperation proof of the security baseline (P1.7): the POST to workforce carries a JWT
+that identity-service issued at `POST /v1/auth/login`, and workforce validates it against identity's JWKS
+(`JWT_JWKS_URL`); the same POST without a token is a `401`. The first Administrator cannot be created
+through workforce (that write needs a token), so its `workforce.employee.created.v1` event is published
+through the RabbitMQ management API and identity's first-admin bootstrap gives it a password.
+
 `LeaveApprovalSagaIT` is the second one (P3.1): leave-service and scheduling-service, each with its own
 PostgreSQL, plus RabbitMQ. The employees reach both replicas as `workforce.employee.created.v1` events
 (published through the RabbitMQ management API), a manager approves a leave request through the Leave REST
@@ -33,6 +40,8 @@ API, and the test asserts both saga outcomes in the services' own databases: the
 overlapping assignment is `RELEASED_FOR_LEAVE`, the request `APPROVED`, `leave.request.approved.v1`
 published) and the compensation path (a shift that starts within 24 hours is LOCKED, so Scheduling answers
 `rejected`; Leave appends a `REVERSAL` and the request is `REJECTED`).
+Scheduling validates the JWT on its writes, and identity is not part of this test, so
+`support/TestTokens` serves a JWKS on the test network and signs the Manager token the test sends.
 
 ## Run it
 

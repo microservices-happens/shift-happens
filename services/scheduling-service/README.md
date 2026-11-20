@@ -66,7 +66,7 @@ GraphQL contract from its Mongo read model.
 | Query role (P2.10) | `scheduling.projection` is bound to `scheduling.#`, `workforce.employee.#` and `ai.replacement.suggested.v1`; shifts, assignments, employees, swaps and AI suggestions are separate Mongo documents with version-guarded upserts; a tombstone is retained and never cleared; every applied event is logged so the read model can be rebuilt |
 | GraphQL (P2.11) | `/graphql` serves the contract's SDL (copied to `graphql/scheduling.graphqls`, guarded by a drift test) from the read model, with nested shift -> assignments -> employee -> suggestions in one request |
 | Visibility | an Employee sees only their own shifts, schedule and swaps (a `FORBIDDEN` GraphQL error for somebody else's schedule); Manager and Administrator see everything |
-| JWT (query role) | `spring-boot-starter-oauth2-resource-server`, signature checked against `JWT_JWKS_URL` and `iss` validated; `role` becomes `ROLE_<role>`; Security ITs cover `401` for missing and forged tokens |
+| JWT (both roles, P1.7) | `spring-boot-starter-oauth2-resource-server`, signature checked against `JWT_JWKS_URL` (fetched on the first token, then cached by Nimbus) and `iss` validated; `role` becomes `ROLE_<role>`. Query role: every request needs a valid token. Command role: writes need `Administrator` or `Manager`; an `Employee` may only `POST /v1/shiftswaps` with `employeeFromId` = the token's `employeeId`; `401`/`403` are problem+json. `CommandSecurityRulesTest` (no containers), `ViewerTest` and the ITs cover missing, forged, expired and foreign tokens and the role rules |
 | GraphiQL (P8.3) | served at `/graphiql` only when the `dev` profile is active (`APP_ROLE=query,dev`) |
 
 - Events match `contracts/events/payloads/{shift,assignment,swap,tombstone,leave-release,understaffed}.schema.json`; saga replies also set `causationId` to the event that triggered them.
@@ -81,7 +81,6 @@ GraphQL contract from its Mongo read model.
 
 | Gap | Reason |
 |---|---|
-| JWT + role rules on the **command** role (P1.7) | Needs Identity's JWKS (P2.1). The query role already validates tokens; the command role has an explicit `permitAll` chain until P1.7 replaces it, because its tests would otherwise need a token issuer that does not exist yet |
 | Reversal of a published swap decision | The event catalog has no `swap.updated` / `swap.reverted`, so a decision can be corrected but not undone, and DELETE only removes the decision record |
 
 ## Read model (query role)

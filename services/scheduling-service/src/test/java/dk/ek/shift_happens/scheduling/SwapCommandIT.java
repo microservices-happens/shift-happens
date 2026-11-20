@@ -71,6 +71,38 @@ class SwapCommandIT extends AbstractCommandIT {
     }
 
     @Test
+    void anEmployeeTokenMayRequestASwapForTheirOwnAssignmentOnly() {
+        Long own = assignedShift(431, 432);
+        Long somebodyElses = assignedShift(433, 434);
+
+        ResponseEntity<ShiftSwapResponse> allowed = postWith(TestJwks.bearer(TestJwks.employee(431)),
+                "/v1/shiftswaps", new CreateShiftSwapRequest(own, 431, 432, "holiday"), ShiftSwapResponse.class);
+        // employeeFromId (433) is not the employeeId of the token (431).
+        ResponseEntity<String> refused = postWith(TestJwks.bearer(TestJwks.employee(431)),
+                "/v1/shiftswaps", new CreateShiftSwapRequest(somebodyElses, 433, 434, "holiday"), String.class);
+
+        assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(refused.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM shift_swap WHERE original_shift_assignment_id = ?",
+                Integer.class, somebodyElses)).isZero();
+    }
+
+    @Test
+    void anEmployeeTokenMayNotDecideASwap() {
+        Long assignmentId = assignedShift(435, 436);
+        Long shiftSwapId = requestSwap(assignmentId, 435, 436);
+
+        ResponseEntity<String> response = postWith(TestJwks.bearer(TestJwks.employee(436)),
+                "/v1/shiftswapapprovals", new CreateShiftSwapApprovalRequest(shiftSwapId, 436, "APPROVED", "mine"),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(jdbc.queryForObject("SELECT swap_status FROM shift_swap WHERE shift_swap_id = ?", String.class,
+                shiftSwapId)).isEqualTo("PENDING");
+    }
+
+    @Test
     void aColleagueWithoutTheJobRoleIsRejected() {
         Long assignmentId = assignedShift(405, 0);
         addEmployee(406, "ACTIVE", List.of(99L));
