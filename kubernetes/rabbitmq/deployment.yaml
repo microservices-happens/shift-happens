@@ -30,8 +30,8 @@ spec:
             - name: RABBITMQ_DEFAULT_PASS
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
-                  key: RABBITMQ_PASSWORD
+                  name: rabbitmq-secrets
+                  key: RABBITMQ_DEFAULT_PASS
             - name: RABBITMQ_DEFAULT_VHOST
               value: "shift-happens"
           readinessProbe:

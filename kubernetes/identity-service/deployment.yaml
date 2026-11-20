@@ -14,6 +14,10 @@ spec:
       labels:
         app: identity-service
     spec:
+      # The image runs as non-root uid 10001. fsGroup gives the process group 10001, which owns the
+      # mounted signing key (mode 0440), so the key is readable without making it world-readable.
+      securityContext:
+        fsGroup: 10001
       containers:
         - name: identity-service
           image: ghcr.io/microservices-happens/identity-service:main
@@ -27,7 +31,7 @@ spec:
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: identity-service-secrets
                   key: RABBITMQ_PASSWORD
             - name: DB_HOST
               value: "identity-db"
@@ -40,16 +44,30 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
-                  key: IDENTITY_DB_PASSWORD
+                  name: identity-service-secrets
+                  key: DB_PASSWORD
             - name: RABBITMQ_QUEUE
               value: "identity.accounts"
             # Required: identity-service does not start without the pepper.
             - name: PASSWORD_PEPPER
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: identity-service-secrets
                   key: PASSWORD_PEPPER
+            # RS256 signing key, mounted from the secret below, so tokens survive a pod restart.
+            - name: JWT_PRIVATE_KEY_PATH
+              value: "/etc/identity-service/jwt/private-key.pem"
+            # First-admin bootstrap. Both empty = off (see services/identity-service/README.md).
+            - name: BOOTSTRAP_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: identity-service-secrets
+                  key: BOOTSTRAP_ADMIN_EMAIL
+            - name: BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-service-secrets
+                  key: BOOTSTRAP_ADMIN_PASSWORD
             - name: OIDC_REDIRECT_BASE_URL
               value: "https://localhost:8443/api/v1/auth/oidc"
             - name: OIDC_GOOGLE_CLIENT_ID
@@ -57,14 +75,14 @@ spec:
             - name: OIDC_GOOGLE_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: identity-service-secrets
                   key: OIDC_GOOGLE_CLIENT_SECRET
             - name: OIDC_GITHUB_CLIENT_ID
               value: ""
             - name: OIDC_GITHUB_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: identity-service-secrets
                   key: OIDC_GITHUB_CLIENT_SECRET
             - name: FRONTEND_LOGIN_CALLBACK_URL
               value: "https://localhost:8443/login/callback"
@@ -83,3 +101,15 @@ spec:
             limits:
               cpu: 1000m
               memory: 640Mi
+          volumeMounts:
+            - name: jwt-signing-key
+              mountPath: /etc/identity-service/jwt
+              readOnly: true
+      volumes:
+        - name: jwt-signing-key
+          secret:
+            secretName: identity-service-secrets
+            defaultMode: 0440
+            items:
+              - key: jwt-private-key.pem
+                path: private-key.pem
