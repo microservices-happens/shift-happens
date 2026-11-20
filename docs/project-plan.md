@@ -56,16 +56,16 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 - [x] P1.2 `docker-compose.microservices.yml` (infrastructure + all services)
 - [x] P1.3 CI skeleton: per-service unit/integration/image gates, contract lint, CodeQL, Dependabot, cooperation-test and frontend workflows
 - [ ] P1.4 GitHub Projects board, branch protection on `main` (green CI + 1 review, required checks listed in `implementation-plan.md` §3), CODEOWNERS filled in
-- [ ] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `ci.yml`
+- [x] P1.5 SonarQube Cloud project + `SONAR_TOKEN`; enable the quality gate step in `ci.yml`
 - [ ] P1.6 Shared conventions in code (copied per service, no shared library): the event envelope class, the correlation-id filter, and the problem+json error handler. Write them once, then copy them
 - [ ] P1.7 Security baseline in every service: `spring-boot-starter-oauth2-resource-server` validating the JWT from `JWT_JWKS_URL`, and role rules per `contracts/README.md`
 - [ ] P1.8 Messaging baseline: Spring AMQP, exchange/queue/DLX declarations, transactional outbox table + relay, `processed_events` table for idempotent consumers
-- [ ] P1.9 Flyway in every Postgres-backed service (`V1__init.sql`); a seed script for local data (port from the monolith)
+- [x] P1.9 Flyway in every Postgres-backed service (`V1__init.sql`); a seed script for local data (port from the monolith)
 
 ### P2: Core services (parallel, one owner each)
 **Identity**
 - [x] P2.1 Accounts table, `POST /v1/auth/login`, RS256 signing, `/.well-known/jwks.json`
-- [ ] P2.2 Consume `workforce.employee.*` → create/update/disable accounts
+- [x] P2.2 Consume `workforce.employee.*` → create/update/disable accounts
 - [x] P2.3 OIDC login with Google and GitHub (authorization code + PKCE), with email matching → JWT redirect
 - [x] P2.4 `PUT /v1/auth/accounts/{id}/password`
 
@@ -75,11 +75,11 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 
 **Scheduling**
 - [x] P2.7 Command role: shifts, required roles, assignments, approvals (REST, Postgres, outbox)
-- [ ] P2.8 Employee replica from `workforce.employee.*`; qualification check on assign
-- [ ] P2.9 Shift swaps: request + approval in one transaction
+- [x] P2.8 Employee replica from `workforce.employee.*`; qualification check on assign
+- [x] P2.9 Shift swaps: request + approval in one transaction
 - [x] P2.10 Query role: Mongo projection from `scheduling.*` + `workforce.employee.*`
 - [x] P2.11 GraphQL API (`contracts/graphql/scheduling.graphql`) with role-based filtering
-- [ ] P2.12 Publish `scheduling.shift.understaffed.v1` with candidate filtering
+- [x] P2.12 Publish `scheduling.shift.understaffed.v1` with candidate filtering
 
 **Leave**
 - [x] P2.13 Leave types, requests, approvals (REST, Postgres, outbox); employee replica
@@ -89,14 +89,14 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 ### P3: Distributed-systems patterns (must be demonstrable)
 - [x] P3.1 **Saga:** leave approval (Leave orchestrator, saga table, timeout) ↔ Scheduling release/lock rule, with compensation by `REVERSAL` + rejection
 - [ ] P3.2 **Idempotent operations:** `Idempotency-Key` on every POST (store key → response for 24 h; 409 when the body differs); the frontend sends a key per user action
-- [ ] P3.3 **Commutative handlers:** version-based upsert in all projections/replicas; a test that applies the same events in shuffled order and gets the same state
-- [ ] P3.4 **Tombstones:** soft delete + `*.deleted.v1`; consumers keep the tombstone
-- [ ] P3.5 **Snapshot pattern:** snapshot events (done by design) + ledger balance snapshots (P2.14)
+- [x] P3.3 **Commutative handlers:** version-based upsert in all projections/replicas; a test that applies the same events in shuffled order and gets the same state
+- [x] P3.4 **Tombstones:** soft delete + `*.deleted.v1`; consumers keep the tombstone
+- [x] P3.5 **Snapshot pattern:** snapshot events (done by design) + ledger balance snapshots (P2.14)
 - [ ] P3.6 **CQRS justification** written in the report with measurements (e.g. schedule query latency with vs without the read model)
-- [ ] P3.7 Caching: JWKS cache; short-lived GraphQL response cache (optional)
+- [x] P3.7 Caching: JWKS cache; short-lived GraphQL response cache (optional)
 
 ### P4: AI, notification, audit, serverless
-- [ ] P4.1 ai-service: consume `shift.understaffed`, call Ollama (Spring AI), validate the JSON output, fall back to rules, publish `ai.replacement.suggested`
+- [x] P4.1 ai-service: consume `shift.understaffed`, call Ollama (Spring AI), validate the JSON output, fall back to rules, publish `ai.replacement.suggested`
 - [ ] P4.2 Ollama in Compose (`--profile ai`) and in Kubernetes; pick the model and measure latency
 - [ ] P4.3 notification-service: store notifications from events; `GET/PATCH /v1/notifications`; publish `notification.email.requested`
 - [ ] P4.4 email-function: drain `email.send`, send via SMTP, exit; KEDA ScaledJob in Kubernetes
@@ -105,36 +105,36 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 ### P5: Frontend (existing React app)
 - [ ] P5.1 API base URL `/api/v1`; generated TypeScript types from the OpenAPI files (e.g. `openapi-typescript`)
 - [ ] P5.2 Apollo Client for `/api/graphql`; move the schedule pages (my shifts, week view, understaffed + AI suggestions) to GraphQL
-- [ ] P5.3 "Log in with Google/GitHub" buttons and a `/login/callback` route that reads the token from the URL fragment
+- [x] P5.3 "Log in with Google/GitHub" buttons and a `/login/callback` route that reads the token from the URL fragment
 - [ ] P5.4 `Idempotency-Key` on every POST; UI for saga states (`APPROVAL_PENDING`) and AI suggestions
 - [ ] P5.5 Notifications (polling `GET /api/v1/notifications`)
 
 ### P6: Testing and quality (every test runs in CI and fails the pipeline)
-- [ ] P6.1 Unit tests for the core business rules in **every** service (e.g. swap eligibility, ledger balance, saga state machine, AI output validation)
-- [ ] P6.2 Integration: REST/GraphQL API test (MockMvc/WebTestClient + security)
-- [ ] P6.3 Integration: messaging (Testcontainers RabbitMQ; outbox → queue → consumer)
-- [ ] P6.4 Integration: database (Testcontainers Postgres/Mongo; Flyway migrations)
-- [ ] P6.5 **Cooperation test** (`tests/cooperation`): Leave + Scheduling + RabbitMQ in containers, both saga outcomes; optionally Scheduling → AI (stub LLM)
-- [ ] P6.6 Security tests: 401 (missing/expired/forged JWT), 403 (wrong role), OIDC with an unknown email refused, idempotency replay
-- [ ] P6.7 Static analysis in CI: SonarQube Cloud quality gate, CodeQL, Trivy (images), ESLint (frontend)
+- [x] P6.1 Unit tests for the core business rules in **every** service (e.g. swap eligibility, ledger balance, saga state machine, AI output validation)
+- [x] P6.2 Integration: REST/GraphQL API test (MockMvc/WebTestClient + security)
+- [x] P6.3 Integration: messaging (Testcontainers RabbitMQ; outbox → queue → consumer)
+- [x] P6.4 Integration: database (Testcontainers Postgres/Mongo; Flyway migrations)
+- [x] P6.5 **Cooperation test** (`tests/cooperation`): Leave + Scheduling + RabbitMQ in containers, both saga outcomes; optionally Scheduling → AI (stub LLM)
+- [x] P6.6 Security tests: 401 (missing/expired/forged JWT), 403 (wrong role), OIDC with an unknown email refused, idempotency replay
+- [x] P6.7 Static analysis in CI: SonarQube Cloud quality gate, CodeQL, Trivy (images), ESLint (frontend)
 - [x] P6.8 Add the cooperation-test job to CI (harness + `ServiceStartupSmokeIT` run; `LeaveApprovalSagaIT` is enabled by P3.1)
 
 ### P7: Kubernetes, CI/CD and operations
 - [ ] P7.1 Local cluster (kind or minikube) + Helm infrastructure (`k8s/infrastructure/README.md`): ingress-nginx, KEDA, RabbitMQ, Postgres, Mongo, Ollama
-- [ ] P7.2 Kustomize base/overlay working (`kubectl apply -k k8s/overlays/local`); secrets per service
+- [x] P7.2 Kustomize base/overlay working (`kubectl apply -k k8s/overlays/local`); secrets per service
 - [ ] P7.3 Autoscaling: HPA on the query roles; KEDA ScaledObject on a queue consumer + ScaledJob for email-function; a demo with load
 - [ ] P7.4 Observability: OTel agent in every service → Prometheus, Loki, Tempo, Grafana; dashboard (RED metrics, queue depth, DLQ, saga timeouts, LLM fallback rate)
 - [ ] P7.5 CD: push images to GHCR on `main`; deploy to the local cluster (manual workflow or self-hosted runner) + smoke test
 - [ ] P7.6 Semver tags per service (`<service>/vX.Y.Z`), with images tagged by version + SHA
 
 ### P8: Documentation (continuous, in the same PR as the code)
-- [ ] P8.1 README for each service: purpose, APIs, events, how to run and test (skeletons exist)
+- [x] P8.1 README for each service: purpose, APIs, events, how to run and test (skeletons exist)
 - [x] P8.2 Swagger UI per service (springdoc), served from the contract
 - [x] P8.3 GraphQL docs: GraphiQL on scheduling-query + SDL in `contracts/graphql`
-- [ ] P8.4 AsyncAPI HTML generated in CI from `contracts/asyncapi.yaml` (published as a CI artifact or on GitHub Pages)
+- [x] P8.4 AsyncAPI HTML generated in CI from `contracts/asyncapi.yaml` (published as a CI artifact or on GitHub Pages)
 - [ ] P8.5 Monorepo README: an **installation procedure** from clone to a running Compose stack and Kubernetes (the course requires this for onboarding)
 - [ ] P8.6 GitHub Wiki: how-tos (local Kubernetes, troubleshooting, adding a new event)
-- [ ] P8.7 ADR for every major decision taken later
+- [x] P8.7 ADR for every major decision taken later
 
 ### P9: Report and final delivery (WISEflow)
 Map each report section to its source so writing is mostly assembling:
