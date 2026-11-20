@@ -1,5 +1,11 @@
 # System-level cooperation tests
 
+`SchedulingAiIT` runs Scheduling-command and AI with separate PostgreSQL databases,
+RabbitMQ and an Ollama HTTP stub. Cancelling an assignment through REST produces
+an understaffing event, which AI consumes to publish a replacement suggestion.
+Build `shift-happens/scheduling-service:ci` and `shift-happens/ai-service:ci`, then run
+`mvn -f tests/cooperation/pom.xml -Dit.test=SchedulingAiIT verify`.
+
 These tests start **two or more real service containers plus RabbitMQ** on one Docker network and
 verify that the services cooperate, normally through messaging. They do not test UI or end-to-end
 user flows (course requirement, §5 of the final project description).
