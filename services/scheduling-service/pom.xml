@@ -20,6 +20,8 @@
         <java.version>21</java.version>
         <!-- Where the hand-written contract lives; the Dockerfile overrides it (see Dockerfile). -->
         <contracts.openapi.dir>${project.basedir}/../../contracts/openapi</contracts.openapi.dir>
+        <!-- CqrsReadModelBenchmarkIT (P3.6) is a measurement, not a gate: run it with -Dcqrs.benchmark=true. -->
+        <cqrs.benchmark>false</cqrs.benchmark>
     </properties>
 
     <!-- Only what the implemented slice needs. The query role adds data-mongodb and graphql when it
@@ -154,6 +156,9 @@
                     <includes>
                         <include>**/*IT.java</include>
                     </includes>
+                    <systemPropertyVariables>
+                        <cqrs.benchmark>${cqrs.benchmark}</cqrs.benchmark>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>
