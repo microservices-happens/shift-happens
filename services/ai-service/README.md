@@ -57,6 +57,11 @@ Idempotent by `eventId`: a redelivery does not call the LLM again.
 ## Provides
 Only `GET /health`. The suggestions reach the frontend through Scheduling's GraphQL API.
 
+Security (P1.7): `GET /health` is public; any other path needs a Bearer JWT from identity-service, validated
+against the JWKS at `JWT_JWKS_URL` (cached) with `iss` and `exp` checked. The service has no other endpoint
+today, so the general rules of `contracts/README.md` apply to whatever is added: `GET` needs any valid token,
+writes need `Administrator` or `Manager`. `SecurityRulesTest` covers this without containers.
+
 ## Done when
 - [x] Tests cover rejected candidate IDs and fallback for malformed model output.
 - [x] Unit test verifies that the Ollama client times out when the HTTP endpoint stalls.

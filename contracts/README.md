@@ -8,6 +8,7 @@ This folder is the single source of truth for how the Shift Happens frontend and
 | GraphQL API (frontend → Scheduling reads) | GraphQL SDL | `graphql/scheduling.graphql` |
 | Events (service ↔ service) | AsyncAPI 3.1 + JSON Schema | `asyncapi.yaml`, `events/envelope.schema.json`, `events/payloads/*.schema.json` |
 | Human-readable event overview and flows | – | `events/catalog.md` |
+| Generated event docs (HTML) | – | `asyncapi-html` artifact on each `ci` run that touches `contracts/` (Actions → run → Artifacts; open `index.html`) |
 
 ## Communication rules
 

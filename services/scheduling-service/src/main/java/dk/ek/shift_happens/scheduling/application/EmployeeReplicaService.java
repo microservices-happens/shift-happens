@@ -12,16 +12,17 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.util.Optional;
 
 /**
  * Projects workforce.employee.* events into the local replica (P2.8), so a qualification check never
  * calls another service.
  *
  * <p>One transaction: the replica row and the processed-event marker commit together, so a redelivered
- * event can never cause a second side effect (idempotent consumer). A snapshot is only applied when its
- * aggregateVersion is higher than the stored one, and an existing tombstone is never cleared
- * (commutative consumer + tombstones win, contracts/README.md).
+ * event can never cause a second side effect (idempotent consumer). The version/tombstone decision is
+ * made by {@link EmployeeReplica}: the highest version wins, a tombstone is never cleared and is kept
+ * even when it arrives before the create, so the row does not depend on the arrival order
+ * (commutative consumer + tombstones win, contracts/README.md; {@code EmployeeReplicaShuffledOrderTest}).
  */
 @Service
 @Profile("command")
@@ -51,12 +52,8 @@ public class EmployeeReplicaService {
 
         // A tombstone carries {entityType, entityId, deletedAt}, not an employee snapshot.
         if (envelope.eventType().endsWith(".deleted.v1")) {
-            if (current != null && current.accepts(envelope.aggregateVersion())) {
-                employees.save(new EmployeeReplica(current.employeeId(), current.firstName(),
-                        current.lastName(), current.employmentStatus(), current.jobRoleIds(),
-                        current.primaryWorkLocationId(), envelope.aggregateVersion(), envelope.occurredAt(),
-                        current.weeklyContractHours()));
-            }
+            EmployeeReplica.applyTombstone(current, envelope.aggregateId(), envelope.aggregateVersion(),
+                    envelope.occurredAt()).ifPresent(employees::save);
             processedEvents.record(envelope.eventId());
             return;
         }
@@ -66,24 +63,15 @@ public class EmployeeReplicaService {
             throw new IllegalArgumentException("event " + envelope.eventId() + " has no employeeId");
         }
 
-        if (current != null && !current.accepts(envelope.aggregateVersion())) {
-            log.info("Ignoring {} for employee {}: version {} is not newer than {}", envelope.eventType(),
-                    snapshot.employeeId(), envelope.aggregateVersion(), current.aggregateVersion());
-            processedEvents.record(envelope.eventId());
-            return;
+        Optional<EmployeeReplica> next = EmployeeReplica.applySnapshot(current, snapshot,
+                envelope.aggregateVersion());
+        if (next.isPresent()) {
+            employees.save(next.get());
+        } else {
+            log.info("Ignoring {} for employee {}: version {} is not newer than the stored snapshot {}",
+                    envelope.eventType(), snapshot.employeeId(), envelope.aggregateVersion(),
+                    current.snapshotVersion());
         }
-
-        employees.save(new EmployeeReplica(
-                snapshot.employeeId(),
-                snapshot.firstName(),
-                snapshot.lastName(),
-                snapshot.employmentStatus(),
-                snapshot.jobRoleIds() == null ? List.of() : snapshot.jobRoleIds(),
-                snapshot.primaryWorkLocationId(),
-                envelope.aggregateVersion(),
-                // A snapshot never clears a tombstone that is already there.
-                current == null ? null : current.deletedAt(),
-                snapshot.weeklyContractHours() == null ? 0 : snapshot.weeklyContractHours()));
         processedEvents.record(envelope.eventId());
     }
 }

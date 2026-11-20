@@ -6,8 +6,11 @@ COPY pom.xml .
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q -DskipTests -Dmaven.wagon.http.retryHandler.count=3 dependency:go-offline
 COPY src ./src
+# The contract lives outside this build context: pass it with `--build-context contracts=contracts`
+# (repo root). Maven copies it onto the classpath for Swagger UI.
+COPY --from=contracts openapi/audit.yaml /contracts/openapi/audit.yaml
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -q -DskipTests -Dmaven.wagon.http.retryHandler.count=3 package
+    mvn -B -q -DskipTests -Dmaven.wagon.http.retryHandler.count=3 -Dcontracts.openapi.dir=/contracts/openapi package
 
 FROM eclipse-temurin:21-jre
 # curl is used by the Compose healthcheck (GET /health).

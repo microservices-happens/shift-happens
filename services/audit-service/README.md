@@ -12,5 +12,12 @@ Queue `audit.events`: every `workforce.*`, `scheduling.*`, `leave.*` and `ai.*` 
 ## Extract from monolith
 `auditlog`. In the monolith, services write audit rows directly. Here, audit rows come only from events.
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/audit.yaml`, not a spec generated from the controllers. Maven copies
+the file onto the classpath at build time (`/openapi/audit.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [ ] Filtering by one `correlationId` shows a whole saga, e.g. approval-started → leave-release.completed → approved.

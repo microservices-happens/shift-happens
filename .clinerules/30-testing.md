@@ -37,7 +37,7 @@ Three levels; all of them run in CI and a failure must fail the pipeline.
 - Stub the LLM; never call a real model from CI.
 - Use Awaitility for eventual consistency, never `Thread.sleep`.
 - Images are built by `.github/workflows/system-tests.yml`; locally build them first with
-  `docker build -t shift-happens/<service>:ci services/<service>`.
+  `docker build --build-context contracts=contracts -t shift-happens/<service>:ci services/<service>`.
 - `@Disabled` must name the task that enables it and must not survive that task.
 
 ## General

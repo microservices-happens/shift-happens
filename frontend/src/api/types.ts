@@ -3,6 +3,7 @@
 // payload shapes. Only the conveniences below are added on top.
 import type { components as Identity } from './generated/identity';
 import type { components as Leave } from './generated/leave';
+import type { components as Notification } from './generated/notification';
 import type { components as Scheduling } from './generated/scheduling';
 import type { components as Workforce } from './generated/workforce';
 
@@ -68,3 +69,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+// notification-service
+export type AppNotification = Notification['schemas']['Notification'];
+export type NotificationUpdate = Notification['schemas']['NotificationUpdate'];

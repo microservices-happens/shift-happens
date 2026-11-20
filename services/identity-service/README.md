@@ -9,9 +9,16 @@
   (bound to `workforce.employee.*.v1`, dead-lettered to `shift-happens.dlx` after three attempts).
 - Upserts the local `account` row, keeps the highest `aggregateVersion`, keeps tombstoned accounts
   as disabled, and de-duplicates on `eventId` (`processed_events`).
-- Tests: `AccountTest` (version/tombstone rules), `IdentityApplicationIT` (RabbitMQ → account table,
-  including duplicate, out-of-order and tombstone cases), plus the system test
-  `tests/cooperation/EmployeeReplicationIT`.
+- The handler is commutative (P3.3): the same events give the same row in any arrival order.
+  `snapshot_version` (V4) is the version of the snapshot the workforce fields come from, and
+  `aggregate_version` the highest version seen. A tombstone newer than every snapshot
+  (`aggregate_version > snapshot_version`) keeps the account disabled; a snapshot that arrives after
+  it still refreshes the fields, and a tombstone that arrives before the create is stored as a row
+  without email and role, so the late create cannot enable the account.
+- Tests: `AccountTest` (version/tombstone rules), `EmployeeProjectionShuffledOrderTest` (every order
+  of one employee's events, seeded shuffles with redeliveries across employees, same end state),
+  `IdentityApplicationIT` (RabbitMQ → account table, including duplicate, out-of-order and tombstone
+  cases), plus the system test `tests/cooperation/EmployeeReplicationIT`.
 
 ## Implemented so far (local login, P2.1)
 
@@ -22,7 +29,8 @@
   to start without `PASSWORD_PEPPER`. A workforce update never touches the hash.
 - JWT claims: `sub` (employee id), `employeeId`, `role`, `iss`, `iat`, `exp` (`JWT_TTL`, default 24 h).
 - Signing key: `JWT_PRIVATE_KEY_PATH` (PKCS#8 PEM). Without it a key is generated at startup, so
-  tokens stop working after a restart; fine for Compose, not for Kubernetes.
+  tokens stop working after a restart; fine for Compose. In Kubernetes the key is mounted from
+  `identity-service-secrets` at `/etc/identity-service/jwt/private-key.pem` (see `kubernetes/README.md`).
 - Every other path requires a valid JWT from this service.
 - Tests: `LoginServiceTest`, `AccountTest`, `LoginIT` (login end to end; the token verifies with only
   the JWKS; missing, forged and expired tokens → 401).
@@ -44,6 +52,11 @@
 - Tests: `CallerTest` (self / admin / other), `SetPasswordServiceTest`, `AdminBootstrapTest`,
   `SetPasswordIT` (own password then login, someone else's → 403, admin → 204, unknown → 404,
   short → 400, the bootstrap admin can log in after its workforce event).
+
+Local demo accounts: identity has no seed of its own. `scripts/seed-dev.sh` seeds workforce, the
+accounts arrive here through the normal `workforce.employee.*` events, and passwords are set with the
+bootstrap admin and `PUT .../password` (see "Local demo data" in
+[workforce-service/README.md](../workforce-service/README.md)).
 
 ## Implemented so far (Google/GitHub login, P2.3)
 
@@ -88,7 +101,9 @@ Registering the redirect URI (`<OIDC_REDIRECT_BASE_URL>/{google|github}/callback
 - **GitHub:** Settings → Developer settings → OAuth Apps → New OAuth App. Authorization callback URL:
   `https://localhost:8443/api/v1/auth/oidc/github/callback`.
 
-Put the ids and secrets in `.env` (Compose) or `kubernetes/shared/secret.yaml` (Kubernetes). The
+Put the ids and secrets in `.env` (Compose). In Kubernetes the client ids are plain env in
+`kubernetes/identity-service/deployment.yaml` and the client secrets go in the git-ignored
+`kubernetes/secrets/secrets.env`, applied by `kubernetes/secrets/create-secrets.sh`. The
 provider endpoints are `app.oidc.*` properties with the real defaults; tests point them at a stub.
 
 - Tests: `PkceTest` (RFC 7636 vector), `LoginAttemptTest` (expiry, randomness, provider binding),
@@ -112,13 +127,20 @@ REST: [`contracts/openapi/identity.yaml`](../../contracts/openapi/identity.yaml)
 ## Consumes
 | Queue | Routing keys | Handling |
 |---|---|---|
-| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it. Keeps the highest `aggregateVersion` |
+| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it, also when it arrives before the create. Keeps the highest `aggregateVersion`; the result does not depend on arrival order |
 
 ## Publishes
 Nothing.
 
 ## Extract from monolith
 `auth/*`: `AuthController`, `JwtService` (sign with RS256 and publish the public key as JWKS), `PepperedPasswordEncoder` and `CustomUserDetailsService`. Migrate `employee.login_password` into the accounts table.
+
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/identity.yaml`, not a spec generated from the controllers. Maven copies
+the file onto the classpath at build time (`/openapi/identity.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
 
 ## Done when
 - [ ] Local login and Google (or GitHub) login both work through the gateway. (Both work inside the

@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.List;
 
-/** JPA mapping for employee_replica (V2 + V7). The id and the contract hours come from Workforce. */
+/** JPA mapping for employee_replica (V2 + V7 + V8). The id and the contract hours come from Workforce. */
 @Entity
 @Table(name = "employee_replica")
 public class EmployeeReplicaEntity {
@@ -41,6 +41,9 @@ public class EmployeeReplicaEntity {
     @Column(name = "aggregate_version", nullable = false)
     private long aggregateVersion;
 
+    @Column(name = "snapshot_version", nullable = false)
+    private long snapshotVersion;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -58,6 +61,7 @@ public class EmployeeReplicaEntity {
         entity.primaryWorkLocationId = employee.primaryWorkLocationId();
         entity.weeklyContractHours = employee.weeklyContractHours();
         entity.aggregateVersion = employee.aggregateVersion();
+        entity.snapshotVersion = employee.snapshotVersion();
         entity.deletedAt = employee.deletedAt();
         return entity;
     }
@@ -65,6 +69,6 @@ public class EmployeeReplicaEntity {
     EmployeeReplica toDomain() {
         return new EmployeeReplica(employeeId, firstName, lastName, employmentStatus,
                 jobRoleIds == null ? List.of() : jobRoleIds, primaryWorkLocationId, aggregateVersion, deletedAt,
-                weeklyContractHours);
+                weeklyContractHours, snapshotVersion);
     }
 }

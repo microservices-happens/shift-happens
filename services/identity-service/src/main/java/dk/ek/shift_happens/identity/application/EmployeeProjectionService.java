@@ -18,7 +18,8 @@ import java.util.Optional;
  *
  * <p>One transaction: the account upsert and the processed-event marker commit together, so a
  * redelivered event can never cause a second side effect (idempotent consumer) and an out-of-order
- * event never overwrites a newer state (commutative handler).
+ * event never overwrites a newer state (commutative handler). The merge rules are in {@link Account};
+ * {@code EmployeeProjectionShuffledOrderTest} delivers the same events in every order.
  */
 @Service
 public class EmployeeProjectionService {
@@ -48,11 +49,16 @@ public class EmployeeProjectionService {
         // A tombstone carries {entityType, entityId, deletedAt}, not an employee snapshot
         // (contracts/events/payloads/tombstone.schema.json), so it is handled on its own.
         if (envelope.eventType().endsWith(".deleted.v1")) {
-            accounts.findByEmployeeId(envelope.aggregateId())
-                    .filter(account -> account.accepts(envelope.aggregateVersion()))
-                    // Keep the tombstone: the account is disabled, never deleted, so a late update
-                    // cannot bring a deleted employee back to life.
-                    .ifPresent(account -> accounts.save(account.deleted(envelope.aggregateVersion())));
+            Optional<Account> known = accounts.findByEmployeeId(envelope.aggregateId());
+            if (known.isEmpty()) {
+                // The delete overtook the create: remember it, or the late create would switch the
+                // account of a deleted employee on.
+                accounts.save(Account.tombstone(envelope.aggregateId(), envelope.aggregateVersion()));
+            } else if (known.get().accepts(envelope.aggregateVersion())) {
+                // Keep the tombstone: the account is disabled, never deleted, so a late update cannot
+                // bring a deleted employee back to life.
+                accounts.save(known.get().deleted(envelope.aggregateVersion()));
+            }
             processedEvents.record(envelope.eventId());
             return;
         }
@@ -65,9 +71,9 @@ public class EmployeeProjectionService {
         long version = envelope.aggregateVersion();
         Optional<Account> current = accounts.findByEmployeeId(snapshot.employeeId());
 
-        if (current.isPresent() && !current.get().accepts(version)) {
-            log.info("Ignoring {} for employee {}: version {} is not newer than {}",
-                    envelope.eventType(), snapshot.employeeId(), version, current.get().aggregateVersion());
+        if (current.isPresent() && !current.get().acceptsSnapshot(version)) {
+            log.info("Ignoring {} for employee {}: version {} is not newer than the stored snapshot {}",
+                    envelope.eventType(), snapshot.employeeId(), version, current.get().snapshotVersion());
         } else {
             // The bootstrap admin usually arrives here, after startup, as a workforce event.
             Account saved = accounts.save(current

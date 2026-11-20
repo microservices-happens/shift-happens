@@ -41,6 +41,8 @@ import static org.awaitility.Awaitility.await;
  * run pays for two containers only.
  *
  * <p>Assertions in the subclasses must be scoped to the rows they created: the tests share a database.
+ *
+ * <p>Tokens are real RS256 JWTs verified against the JWKS endpoint of {@link TestJwks}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"app.outbox.relay-delay=200", "spring.datasource.hikari.connection-timeout=2000"})
@@ -68,6 +70,8 @@ abstract class AbstractCommandIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     @Autowired
@@ -82,6 +86,12 @@ abstract class AbstractCommandIT {
     protected TopicExchange eventsExchange;
     @Autowired
     protected ObjectMapper objectMapper;
+
+    /** The command tests act as a Manager (P1.7) unless a test picks its own token or none. */
+    @BeforeEach
+    void actAsAManagerByDefault() {
+        TestJwks.authorizeByDefault(http, "Manager");
+    }
 
     @BeforeEach
     void bindATestQueue() {
@@ -108,6 +118,13 @@ abstract class AbstractCommandIT {
 
     protected <T> ResponseEntity<T> post(String path, Object body, Class<T> type) {
         return http.postForEntity(path, new HttpEntity<>(body, headersFor(UUID.randomUUID().toString(), null)), type);
+    }
+
+    /** POST with exactly these credentials ({@code TestJwks.bearer(..)} or {@code TestJwks.anonymous()}). */
+    protected <T> ResponseEntity<T> postWith(HttpHeaders credentials, String path, Object body, Class<T> type) {
+        HttpHeaders headers = headersFor(UUID.randomUUID().toString(), null);
+        headers.addAll(credentials);
+        return http.postForEntity(path, new HttpEntity<>(body, headers), type);
     }
 
     protected <T> ResponseEntity<T> put(String path, Object body, Class<T> type) {
