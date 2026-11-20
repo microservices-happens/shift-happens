@@ -79,3 +79,8 @@ management:
     health:
       probes:
         enabled: true
+
+# P1.6: every log line carries the correlation id that CorrelationIdFilter / the listeners put in the MDC.
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

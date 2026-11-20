@@ -57,6 +57,12 @@ Idempotent by `eventId`: a redelivery does not call the LLM again.
 ## Provides
 Only `GET /health`. The suggestions reach the frontend through Scheduling's GraphQL API.
 
+## Correlation id (P1.6)
+
+`config/CorrelationIdFilter` takes `X-Correlation-Id` from the request (a token of up to 128
+`[A-Za-z0-9._:-]` characters) or generates a UUID, puts it in the MDC as `correlationId`, and echoes
+it on the response. Every log line prints it (`logging.pattern.correlation`). The understaffed event's `correlationId` is in the MDC while it is handled and is copied into `ai.replacement.suggested.v1`.
+
 ## Done when
 - [x] Tests cover rejected candidate IDs and fallback for malformed model output.
 - [x] Unit test verifies that the Ollama client times out when the HTTP endpoint stalls.
