@@ -64,7 +64,7 @@ against the code on 2026-11-04. Where a rule describes the target rather than to
 | Unit tests, one service | `./mvnw -B -f services/<svc>/pom.xml test` |
 | Unit + integration | `./mvnw -B -f services/<svc>/pom.xml verify` |
 | Cooperation tests | `./mvnw -B -f tests/cooperation/pom.xml verify` |
-| Frontend | `npm --prefix frontend ci && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
+| Frontend | `npm --prefix frontend ci && npm --prefix frontend run lint && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
 | Infrastructure only | `docker compose -f docker-compose.microservices.yml up -d` |
 | Full stack | `docker compose -f docker-compose.microservices.yml --profile app up --build` |
 
