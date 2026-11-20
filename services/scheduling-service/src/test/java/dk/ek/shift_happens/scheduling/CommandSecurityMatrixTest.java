@@ -31,6 +31,7 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -126,8 +127,13 @@ class CommandSecurityMatrixTest {
                 .filter(operation -> !operation.path().equals("/health"))
                 .map(operation -> operation.method() + " " + normalised(operation.path()))
                 .collect(Collectors.toCollection(TreeSet::new));
-        Set<String> served = handlers.getHandlerMethods().keySet().stream()
-                .flatMap(mapping -> mapping.getMethodsCondition().getMethods().stream()
+        // Spring's own /error controller is not an endpoint of this service. A mapping without a method
+        // condition answers every method, so it shows up as "ANY" and cannot match the contract.
+        Set<String> served = handlers.getHandlerMethods().entrySet().stream()
+                .filter(entry -> !entry.getValue().getBeanType().getPackageName().startsWith("org.springframework."))
+                .map(Map.Entry::getKey)
+                .flatMap(mapping -> (mapping.getMethodsCondition().getMethods().isEmpty()
+                        ? Stream.of("ANY") : mapping.getMethodsCondition().getMethods().stream().map(Enum::name))
                         .flatMap(method -> mapping.getPatternValues().stream()
                                 .map(path -> method + " " + normalised(path))))
                 .collect(Collectors.toCollection(TreeSet::new));
