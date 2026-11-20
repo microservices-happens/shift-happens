@@ -48,11 +48,11 @@ class SecurityRulesTest {
 
     @Test
     void aManagerAndAnAdministratorMayWrite() throws Exception {
-        mvc.perform(as(delete("/v1/employees/1"), TestJwks.manager())).andExpect(status().isNoContent());
-        mvc.perform(as(delete("/v1/employees/2"), TestJwks.administrator())).andExpect(status().isNoContent());
+        mvc.perform(as(delete("/v1/employees/1").header("X-Correlation-Id", "corr-1"), TestJwks.manager())).andExpect(status().isNoContent());
+        mvc.perform(as(delete("/v1/employees/2").header("X-Correlation-Id", "corr-2"), TestJwks.administrator())).andExpect(status().isNoContent());
 
-        verify(employees).delete(1, null);
-        verify(employees).delete(2, null);
+        verify(employees).delete(1, "corr-1");
+        verify(employees).delete(2, "corr-2");
     }
 
     @Test
