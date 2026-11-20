@@ -1,0 +1,111 @@
+# Scheduling reads (contracts/graphql/scheduling.graphql), served by scheduling-query at
+# POST /api/graphql. `npm run generate:graphql` validates every operation here against the contract
+# and writes the typed documents to src/graphql/generated.ts.
+#
+# Visibility is decided by the server: an Employee only gets the shifts they are assigned to and only
+# their own employeeSchedule; a Manager or Administrator sees everything.
+
+fragment ShiftSummary on Shift {
+  shiftId
+  shiftName
+  departmentId
+  workLocationId
+  startDatetime
+  endDatetime
+  status
+}
+
+fragment AssignmentRow on Assignment {
+  shiftAssignmentId
+  status
+  employee {
+    employeeId
+    firstName
+    lastName
+  }
+}
+
+# Week view (shift planner), assignment list and the dashboard counts.
+query ShiftsWithAssignments($from: DateTime!, $to: DateTime!) {
+  shifts(from: $from, to: $to) {
+    ...ShiftSummary
+    isUnderstaffed
+    assignments {
+      ...AssignmentRow
+    }
+  }
+}
+
+# Shift pickers (assignment form).
+query ShiftOptions($from: DateTime!, $to: DateTime!) {
+  shifts(from: $from, to: $to) {
+    ...ShiftSummary
+  }
+}
+
+# Shift form and assignment form (an assignment is read through its shift; the contract has no
+# query for a single assignment).
+query ShiftById($shiftId: Int!) {
+  shift(shiftId: $shiftId) {
+    ...ShiftSummary
+    assignments {
+      ...AssignmentRow
+      assignedDatetime
+      checkInDatetime
+      checkOutDatetime
+    }
+  }
+}
+
+# "My shifts".
+query MySchedule($employeeId: Int!, $from: DateTime!, $to: DateTime!) {
+  employeeSchedule(employeeId: $employeeId, from: $from, to: $to) {
+    shiftAssignmentId
+    status
+    shift {
+      ...ShiftSummary
+    }
+  }
+}
+
+# Manager view: shifts missing staff, with the AI replacement suggestions per job role.
+query UnderstaffedShifts($from: DateTime!, $to: DateTime!) {
+  understaffedShifts(from: $from, to: $to) {
+    ...ShiftSummary
+    requiredJobRoles {
+      jobRoleId
+      requiredEmployeeCount
+      assignedCount
+    }
+    assignments {
+      shiftAssignmentId
+      status
+      employee {
+        employeeId
+      }
+    }
+    replacementSuggestions {
+      jobRoleId
+      source
+      model
+      suggestedAt
+      reason
+      candidates {
+        rank
+        employee {
+          employeeId
+          firstName
+          lastName
+          jobRoleIds
+        }
+      }
+    }
+  }
+}
+
+# Dashboard card: only the number of understaffed shifts.
+query UnderstaffedShiftIds($from: DateTime!, $to: DateTime!) {
+  understaffedShifts(from: $from, to: $to) {
+    shiftId
+  }
+}

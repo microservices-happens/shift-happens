@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { GraphQLProvider } from '../graphql/GraphQLProvider';
 import { AppHeader } from './AppHeader';
 import { NavSidebar } from './NavSidebar';
 
@@ -31,7 +32,10 @@ export function Layout() {
       <div className="app-body">
         <NavSidebar collapsed={!open} />
         <main className="app-content">
-          <Outlet />
+          {/* Only signed-in pages read GraphQL; one client per session (src/graphql). */}
+          <GraphQLProvider>
+            <Outlet />
+          </GraphQLProvider>
         </main>
       </div>
     </div>

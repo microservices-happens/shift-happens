@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { listShiftAssignments } from '../api/shiftAssignments';
-import { listShifts } from '../api/shifts';
+import { useQuery } from '@apollo/client/react';
 import { listDepartments } from '../api/departments';
-import type {
-  Department,
-  Shift,
-  ShiftAssignment,
-} from '../api/types';
-import { ApiError } from '../api/types';
+import type { Department } from '../api/types';
 import { useAuth } from '../auth/useAuth';
+import { MyScheduleDocument } from '../graphql/generated';
+import { graphqlErrorMessage } from '../graphql/client';
+import { FUTURE_WEEKS, PAST_WEEKS, scheduleWindow } from '../graphql/time';
 
 const DEPT_COLORS = [
   '#2563eb',
@@ -37,11 +34,17 @@ function formatStatus(status: string | null): string {
 }
 
 function statusPillClass(status: string | null): string {
-  const s = (status ?? '').toLowerCase();
-  if (s.includes('complete') || s.includes('checked_out')) return 'pill pill-success';
-  if (s.includes('cancel') || s.includes('no_show')) return 'pill pill-danger';
-  if (s.includes('checked_in') || s.includes('active')) return 'pill pill-brand';
-  return 'pill pill-neutral';
+  switch (status) {
+    case 'APPROVED':
+      return 'pill pill-success';
+    case 'SWAPPED':
+      return 'pill pill-brand';
+    case 'CANCELLED':
+    case 'RELEASED_FOR_LEAVE':
+      return 'pill pill-danger';
+    default:
+      return 'pill pill-neutral';
+  }
 }
 
 function hoursBetween(start: string | null, end: string | null): number {
@@ -68,34 +71,34 @@ export default function MySchedulePage() {
   const { user } = useAuth();
   const employeeId = user?.employeeId;
 
-  const [assignments, setAssignments] = useState<ShiftAssignment[] | null>(null);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // employeeSchedule(employeeId, from, to): an Employee may only ask for themselves.
+  const [range] = useState(() => scheduleWindow());
+  const { data, error: queryError } = useQuery(MyScheduleDocument, {
+    variables: { employeeId: employeeId ?? 0, ...range },
+    skip: employeeId === undefined,
+  });
+  const assignments = data?.employeeSchedule ?? null;
 
+  const [departments, setDepartments] = useState<Department[]>([]);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listShiftAssignments(), listShifts(), listDepartments()])
-      .then(([a, s, d]) => {
-        if (cancelled) return;
-        setAssignments(a);
-        setShifts(s);
-        setDepartments(d);
+    listDepartments()
+      .then((d) => {
+        if (!cancelled) setDepartments(d);
       })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Failed to load schedule');
+      .catch(() => {
+        /* department names are decoration; the schedule still renders */
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const shiftById = useMemo(() => {
-    const m = new Map<number, Shift>();
-    for (const s of shifts) m.set(s.shiftId, s);
-    return m;
-  }, [shifts]);
+  const error = queryError
+    ? graphqlErrorMessage(queryError, 'Failed to load schedule')
+    : employeeId === undefined
+      ? 'Your account is not linked to an employee.'
+      : null;
 
   const deptById = useMemo(() => {
     const m = new Map<number, Department>();
@@ -103,18 +106,13 @@ export default function MySchedulePage() {
     return m;
   }, [departments]);
 
-  const mine = useMemo(() => {
-    if (!assignments || employeeId === undefined) return [];
-    return assignments
-      .filter((a) => a.employeeId === employeeId)
-      .map((a) => ({ assignment: a, shift: shiftById.get(a.shiftId) }))
-      .filter((x) => x.shift)
-      .sort((x, y) => {
-        const xs = x.shift?.startDatetime ?? '';
-        const ys = y.shift?.startDatetime ?? '';
-        return xs.localeCompare(ys);
-      });
-  }, [assignments, shiftById, employeeId]);
+  const mine = useMemo(
+    () =>
+      (assignments ?? [])
+        .map((a) => ({ assignment: a, shift: a.shift }))
+        .sort((x, y) => x.shift.startDatetime.localeCompare(y.shift.startDatetime)),
+    [assignments]
+  );
 
   const today = startOfDay(new Date()).getTime();
   const upcoming = mine.filter(
@@ -139,7 +137,8 @@ export default function MySchedulePage() {
         <div>
           <h1 className="page-title">My Schedule</h1>
           <p className="page-subtitle">
-            Your upcoming shifts, and what you've worked recently.
+            Your upcoming shifts, and what you've worked recently (the last {PAST_WEEKS} weeks
+            and the next {FUTURE_WEEKS}).
           </p>
         </div>
       </div>
@@ -230,10 +229,10 @@ export default function MySchedulePage() {
                       </div>
                       <div className="schedule-card-status">
                         <span
-                          className={statusPillClass(assignment.assignmentStatus)}
+                          className={statusPillClass(assignment.status)}
                         >
                           <span className="pill-dot" />
-                          {formatStatus(assignment.assignmentStatus)}
+                          {formatStatus(assignment.status)}
                         </span>
                       </div>
                     </div>
@@ -301,10 +300,10 @@ export default function MySchedulePage() {
                       </div>
                       <div className="schedule-card-status">
                         <span
-                          className={statusPillClass(assignment.assignmentStatus)}
+                          className={statusPillClass(assignment.status)}
                         >
                           <span className="pill-dot" />
-                          {formatStatus(assignment.assignmentStatus)}
+                          {formatStatus(assignment.status)}
                         </span>
                       </div>
                     </div>

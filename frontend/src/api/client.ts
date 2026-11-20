@@ -15,6 +15,18 @@ export function configureApiClient(opts: {
   unauthorizedHandler = opts.onUnauthorized;
 }
 
+/**
+ * The current bearer token and the 401 handler, shared with the GraphQL client (src/graphql) so both
+ * transports use the same session. Never log the token.
+ */
+export function currentToken(): string | null {
+  return tokenGetter();
+}
+
+export function reportUnauthorized(): void {
+  unauthorizedHandler();
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
