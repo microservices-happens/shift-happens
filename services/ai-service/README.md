@@ -12,9 +12,9 @@ model-response logs are deleted after seven days by a daily cleanup job.
 The Ollama call runs before the short database transaction that commits the processed
 event ID, log and outbox row together.
 
-Run the unit tests (`RankingTest`, `OllamaClientTest`, `SecurityRulesTest`) from the repository root with
+Run the unit tests (`RankingTest`, `OllamaClientTest`, `SecurityRulesTest`, `SuggestionServiceRetryTest`) from the repository root with
 `./mvnw -B -f services/ai-service/pom.xml test` (on Windows: `./mvnw.cmd`); `verify` adds
-`AiServiceApplicationIT` (Docker required). Scheduling now publishes the understaffed event and its query
+`AiServiceApplicationIT` and `AiDeadLetterIT` (Docker required). Scheduling now publishes the understaffed event and its query
 role stores the suggestion (`Shift.replacementSuggestions`), and the frontend
 shows them on understaffed shifts through GraphQL (#104, `UnderstaffedShiftsPanel.tsx`; not verified end to end).
 
@@ -51,10 +51,29 @@ credentials, pass `-RabbitUser` and `-RabbitPassword` to the script. A `source` 
 | `ai.suggestions` | `scheduling.shift.understaffed.v1` |
 
 Idempotent by `eventId`: a redelivery does not call the LLM again.
-The binding is the exact key; the queue dead-letters to `shift-happens.dlx`. There is no retry: the listener
-container does not requeue, so a message that fails once (for example a malformed payload) is dead-lettered
-straight away. `ai.suggestions.dlq` is bound to the DLX with `#`, so it also receives dead letters of other
-services' queues.
+The binding is the exact key. **Three attempts, then dead-letter** (as the other services): a message that
+fails (malformed JSON, wrong `eventType`, an invalid payload, a database error) is tried three times, 1 s and
+then 2 s apart, and then republished to `shift-happens.dlx` with the queue name `ai.suggestions` as routing key.
+It lands in `ai.suggestions.dlq`, which is bound with exactly that key, so it holds only ai's failures. It is
+never requeued forever. Every attempt logs `Received <eventType> event <eventId>`.
+
+- **A model failure is not a delivery failure.** A timeout (`LLM_TIMEOUT`), an HTTP error, the model being
+  down or an invalid answer is answered by the rule-based fallback (`source: rule`) on the first attempt; it
+  never causes a retry.
+- **Bounded processing time.** The model is called at most once per message: the outcome is kept in the retry
+  context (`ModelCallMemory`) and a retry caused by something after the call (e.g. the database) reuses it.
+  One message therefore takes at most one `LLM_TIMEOUT` plus 3 s of back-off plus three short database
+  attempts, not three times `LLM_TIMEOUT`. Payload checks run before the model call, so an unusable event
+  fails fast.
+- Covered by `AiDeadLetterIT` (three attempts, own DLQ only, one model call across a database failure, model
+  failure handled without a retry) and `SuggestionServiceRetryTest`.
+- **Upgrading an existing broker needs no manual step.** Older versions bound `ai.suggestions.dlq` to the DLX
+  with `#` (it received every service's dead letters). `StaleDeadLetterBindingRemover` deletes that binding on
+  every broker connection, after the topology is declared. The queue arguments are deliberately unchanged
+  (only `x-dead-letter-exchange`, no `x-dead-letter-routing-key`), because RabbitMQ refuses to redeclare an
+  existing queue with different arguments; the routing key comes from the retry recoverer. Messages waiting in
+  `ai.suggestions` are kept; messages already in `ai.suggestions.dlq`, including foreign copies from the old
+  `#` binding, are kept too: inspect and purge them (docs/wiki/Troubleshooting.md).
 
 ## Publishes (outbox)
 `ai.replacement.suggested.v1` → scheduling-query (GraphQL `Shift.replacementSuggestions`), notification-service and audit-service.
