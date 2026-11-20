@@ -15,8 +15,8 @@ event ID, log and outbox row together.
 Run the unit tests (`RankingTest`, `OllamaClientTest`, `SecurityRulesTest`) from the repository root with
 `./mvnw -B -f services/ai-service/pom.xml test` (on Windows: `./mvnw.cmd`); `verify` adds
 `AiServiceApplicationIT` (Docker required). Scheduling now publishes the understaffed event and its query
-role stores the suggestion (`Shift.replacementSuggestions`), but the frontend does not read GraphQL yet
-(P5.2), so suggestions do not appear in the UI.
+role stores the suggestion (`Shift.replacementSuggestions`), and the frontend
+shows them on understaffed shifts through GraphQL (#104, `UnderstaffedShiftsPanel.tsx`; not verified end to end).
 
 ### Try the real model locally (PowerShell)
 

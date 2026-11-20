@@ -50,7 +50,7 @@ the file onto the classpath at build time (`/openapi/scheduling.yaml`); never ed
 through `--build-context contracts=contracts` (set in Compose and CI).
 
 ## Done when
-- [ ] The schedule page reads via GraphQL, and create, assign and swap work via REST. (Backend done and tested: `ShiftCommandIT`, `AssignmentCommandIT`, `SwapCommandIT`, `SchedulingGraphQlIT`. The frontend still calls REST without `/v1` and has no GraphQL client or swap UI: P5.1, P5.2.)
+- [ ] The schedule page reads via GraphQL, and create, assign and swap work via REST. (Backend done and tested: `ShiftCommandIT`, `AssignmentCommandIT`, `SwapCommandIT`, `SchedulingGraphQlIT`. Since #104 the frontend reads the schedule pages via GraphQL and writes through `/api/v1`, but it has no swap UI, no frontend test, and has not been run through the gateway.)
 - [ ] An approved swap moves the assignment, and both events reach notification and audit. (The move is tested in `SwapCommandIT.approvingASwapMovesTheAssignmentInTheSameTransaction`; notification and audit consume nothing yet: P4.3, P4.5.)
 - [x] Cooperation test: `leave.request.approval-started` → `leave-release.completed` or `rejected`: `tests/cooperation/.../LeaveApprovalSagaIT.approvedLeaveReleasesOverlappingShiftsAndCompensatesWhenAShiftIsLocked` (both replies, real leave and scheduling images); in the service `LeaveReleaseIT`.
 

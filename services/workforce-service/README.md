@@ -120,8 +120,8 @@ the file onto the classpath at build time (`/openapi/workforce.yaml`); never edi
 through `--build-context contracts=contracts` (set in Compose and CI).
 
 ## Done when
-- [ ] Employee pages work through the gateway. (The pages exist, `frontend/src/pages/employees`, but the frontend
-  calls `/api/employees` without `/v1` and sends no `Idempotency-Key`, which `POST` requires: P5.1, P5.4. No frontend test.)
+- [ ] Employee pages work through the gateway. (The pages exist, `frontend/src/pages/employees`, and since #104 the frontend
+  calls `/api/v1/employees` and sends an `Idempotency-Key` on `POST`, but this has not been run through the gateway and there is no frontend test.)
 - [ ] Creating an employee reaches identity, scheduling, leave and audit (integration test on the outbox and RabbitMQ).
   (Outbox → RabbitMQ: `WorkforceApplicationIT`; workforce → identity: `tests/cooperation/.../EmployeeReplicationIT`.
   No test covers scheduling or leave receiving a workforce-published event, and audit consumes nothing yet: P4.5.)

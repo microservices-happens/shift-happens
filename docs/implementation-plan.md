@@ -22,8 +22,8 @@ accepted.
 "Empty" means a service has no persistence, security, AMQP or Flyway script and exposes only
 `/health`; today that applies to notification, audit and email-function. Phase 0 is partly done: the
 event envelope, outbox + relay, `processed_events`, version-aware upserts, Flyway and `problem+json`
-exist in the implemented services, JWT validation in identity, workforce, scheduling and ai (#109);
-the correlation-id filter (#106) and JWT validation in leave (#88) are open.
+exist in the implemented services, JWT validation in identity, workforce, scheduling and ai (#109),
+and the correlation-id filter in the same four services (#106); both are still missing in leave (#88).
 
 ## 2. How we implement
 
@@ -270,9 +270,10 @@ sends nothing.
 **Acceptance:** the schedule page loads from GraphQL and assigning refreshes it; a retried POST does
 not create a duplicate; an Employee cannot see another employee's schedule page data.
 
-**Status (2026-11-20):** login is in place (local + Google/GitHub with `/login/callback`, #103). Not
-on `main` yet: the `/api/v1` client with generated types and the notifications bell (#104), Apollo
-and the GraphQL schedule pages (P5.2), `Idempotency-Key` and saga/AI UI (P5.4). No frontend tests.
+**Status (2026-11-20):** login is in place (local + Google/GitHub with `/login/callback`, #103), and
+#104 added the `/api/v1` client with generated types, the notifications bell, Apollo with the GraphQL
+schedule pages, one `Idempotency-Key` per user action and the saga/AI UI. None of it has been run
+against the gateway, and there are no frontend tests.
 
 ## 5. Phase 2 — distributed-systems patterns (P3)
 

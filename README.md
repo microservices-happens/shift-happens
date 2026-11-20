@@ -488,11 +488,9 @@ npm --prefix frontend ci
 npm --prefix frontend run dev        # http://localhost:5173
 ```
 
-On the current `main`, the Vite dev proxy (`frontend/vite.config.ts`) sends `/api` to
-`http://localhost:8080` with the `/api` prefix removed. Nothing in the Compose stack listens there
-(the services publish no host ports, and the gateway is on `https://localhost:8443`), so API calls
-from the dev server only work against a service you run yourself on port 8080. To use the whole
-system, use the frontend served by the gateway (https://localhost:8443).
+The Vite dev proxy (`frontend/vite.config.ts`) forwards `/api` unchanged to the gateway at
+`https://localhost:8443`, so the dev server works against a running Compose stack (`--profile app`).
+Set `VITE_DEV_PROXY_TARGET` (see `frontend/.env.example`) to point it somewhere else.
 
 ## Troubleshooting
 

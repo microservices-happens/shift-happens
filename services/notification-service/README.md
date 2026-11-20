@@ -11,7 +11,7 @@
 > Publishes is the design from the contracts, **not implemented yet**.
 
 ## Provides
-REST: [`contracts/openapi/notification.yaml`](../../contracts/openapi/notification.yaml). `GET /v1/notifications` (the frontend polls it) and `PATCH /v1/notifications/{id}`. Not implemented yet (P4.3; the frontend side is P5.5). Implemented: `GET /health` (public).
+REST: [`contracts/openapi/notification.yaml`](../../contracts/openapi/notification.yaml). `GET /v1/notifications` (the frontend polls it) and `PATCH /v1/notifications/{id}`. Not implemented yet (P4.3); the frontend already polls it and fails quietly (P5.5, #104). Implemented: `GET /health` (public).
 
 ## Consumes
 Queue `notification.events`: see the routing keys in [`catalog.md`](../../contracts/events/catalog.md). It stores one notification per affected employee, deduplicated by `eventId`. Not implemented yet (P4.3): the queue is not declared by this service.
