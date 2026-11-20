@@ -4,7 +4,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -24,7 +23,9 @@ public class CommandSecurityConfig {
 
     @Bean
     SecurityFilterChain commandFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
+        // CSRF stays enabled, because it protects cookie-based sessions and this service issues no
+        // cookie. The stateless REST API is exempt, which avoids a false 403 for every write.
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/v1/**"))
                 .authorizeHttpRequests(requests -> requests.anyRequest().permitAll());
         return http.build();
     }

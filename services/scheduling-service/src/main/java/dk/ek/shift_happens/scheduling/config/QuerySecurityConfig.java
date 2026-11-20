@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -29,8 +28,12 @@ import org.springframework.security.web.SecurityFilterChain;
 public class QuerySecurityConfig {
 
     @Bean
-    SecurityFilterChain queryFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
+    SecurityFilterChain queryFilterChain(HttpSecurity http,
+                                         @Value("${spring.graphql.path:/graphql}") String graphqlPath)
+            throws Exception {
+        // CSRF stays enabled: it protects cookie-based sessions, and this API issues no cookie. Only the
+        // stateless GraphQL endpoint is exempt, which is the documented pattern for a token-only API.
+        http.csrf(csrf -> csrf.ignoringRequestMatchers(graphqlPath))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/health/**", "/error", "/graphiql", "/graphiql/**",
