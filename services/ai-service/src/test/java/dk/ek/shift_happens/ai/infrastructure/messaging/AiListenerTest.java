@@ -37,7 +37,7 @@ class AiListenerTest {
         doAnswer(call -> {
             seen.set(MDC.get("correlationId"));
             return null;
-        }).when(service).handle(any());
+        }).when(service).handle(any(), any());
 
         listener.receive(EVENT);
 
@@ -47,7 +47,7 @@ class AiListenerTest {
 
     @Test
     void clearsTheMdcWhenHandlingFails() throws Exception {
-        doThrow(new IllegalArgumentException("bad")).when(service).handle(any());
+        doThrow(new IllegalArgumentException("bad")).when(service).handle(any(), any());
 
         assertThatThrownBy(() -> listener.receive(EVENT)).isInstanceOf(IllegalArgumentException.class);
         assertThat(MDC.get("correlationId")).isNull();

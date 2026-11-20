@@ -17,6 +17,7 @@ Trivy, a `ci` check stuck on "Expected", a missing image in `system-tests`) are 
   [no login works after new Secrets](#no-password-login-works-after-new-secrets)
 - Messaging: [employees missing in identity, scheduling or leave](#employees-exist-in-workforce-but-not-in-identity-scheduling-or-leave) ·
   [messages in a `.dlq`](#messages-pile-up-in-a-dlq) ·
+  [`PRECONDITION_FAILED` for a queue](#a-service-logs-precondition_failed-for-its-queue) ·
   [a CQRS role does the wrong job](#a-cqrs-role-does-the-wrong-job) ·
   [AI suggestions all say `source: rule`](#ai-suggestions-all-have-source-rule)
 - Build and database: [Flyway fails at startup](#flyway-fails-at-startup) ·
@@ -168,33 +169,80 @@ seed only runs on an empty database; reset with `docker compose -f docker-compos
 
 **Symptom.** `<queue>.dlq` (e.g. `identity.accounts.dlq`, `leave.command.dlq`) has messages.
 
-**Cause.** A consumer failed on a message. identity, scheduling (both roles) and leave retry three times
-in-process and then republish it to `shift-happens.dlx`; ai-service has no retry advice, so it dead-letters
-on the first failure. Typical causes in the code: a payload that cannot be applied (e.g. a snapshot without
-`employeeId` throws), or a bug in the handler.
+**Cause.** A consumer failed on a message. Every consumer (identity, scheduling both roles, leave both roles,
+ai) tries a message three times in-process and then republishes it to `shift-happens.dlx` with **its queue
+name** as routing key (`identity.accounts`, `scheduling.command`, ...). `<queue>.dlq` is bound with exactly
+that key, so a message in `identity.accounts.dlq` is identity's own failure. Typical causes in the code: a
+payload that cannot be applied (e.g. a snapshot without `employeeId` throws), or a bug in the handler. For
+ai-service, a model failure is *not* a cause: it is answered by the rule fallback (`source: rule`).
 
-Be careful reading the DLQs, the services route dead letters differently:
-
-| Consumer | Dead-letter routing key | DLQ binding on `shift-happens.dlx` | Result |
-|---|---|---|---|
-| leave-command, leave-query | the queue name (`leave.command`, ...) | exactly the queue name | the DLQ only holds that queue's failures |
-| identity, scheduling-command, scheduling-query, ai | the original `eventType` | `#` | **every** one of these DLQs receives a copy of every dead letter from any service, so a message in `identity.accounts.dlq` is not necessarily identity's failure |
+**Exception: old copies.** Before the DLQ fix, `identity.accounts.dlq`, `scheduling.command.dlq`,
+`scheduling.projection.dlq` and `ai.suggestions.dlq` were bound with `#` and received a copy of every dead
+letter from every service. The services remove that binding themselves on startup (no manual step), but
+messages that arrived through it are still in those DLQs. A message there whose `x-original-routingKey`
+header is not one of the queue's own keys, or that has no `x-exception-message`, is such a copy: purge it
+(step 4). Until every service runs the new version, an old instance re-adds its own `#` binding when it
+reconnects; the new version removes it again on its next connection.
 
 **Fix.**
 
 1. Find which consumer failed: open the RabbitMQ management UI (Compose http://localhost:15672,
    Kubernetes http://localhost:31672) → Queues → `<queue>.dlq` → Get messages. Messages republished by the
-   retry recoverer (identity, scheduling, leave) carry `x-exception-message`, `x-original-exchange` and
-   `x-original-routingKey` headers; ai-service's are dead-lettered by the broker and carry `x-death` instead.
+   retry recoverer carry `x-exception-message`, `x-original-exchange` and `x-original-routingKey` headers
+   (`x-original-routingKey` is the `eventType`).
 2. Read the consumer's log around that time: `docker compose -f docker-compose.microservices.yml logs <service>` or `kubectl logs deployment/<service>`.
-   The identity and scheduling-command listeners log `Received <eventType> for ... (v<version>), correlation <id>`
-   for every message.
+   The identity, scheduling and ai listeners log every attempt (`Received <eventType> for ... (v<version>)`,
+   `Projecting <eventType> ...`, `Received <eventType> event <eventId>`), so a dead letter shows up three times.
+   To check the bindings: management UI → Exchanges → `shift-happens.dlx` → Bindings, or
+   `rabbitmqctl -q list_bindings -p shift-happens source_name destination_name routing_key | grep shift-happens.dlx`.
+   Each DLQ must be bound with its queue name only.
 3. Fix the cause and deploy. Dead letters are never replayed automatically. To replay one, publish the
    envelope again from the management UI to exchange `shift-happens.events` with routing key = its
    `eventType`. That reaches every bound queue, which is safe: consumers skip an `eventId` they have
    already processed and ignore older versions.
 4. Empty a DLQ when you are done: `rabbitmqctl purge_queue -p shift-happens <queue>.dlq` (through
    `docker compose -f docker-compose.microservices.yml exec -T rabbitmq` or `kubectl exec deployment/rabbitmq --`).
+
+### A service logs `PRECONDITION_FAILED` for its queue
+
+**Symptom.** A consumer logs `PRECONDITION_FAILED - inequivalent arg 'x-dead-letter-routing-key' for queue
+'<queue>'` (or another `x-` argument) at startup and does not consume, or its bindings are missing.
+
+**Cause.** The code declares the queue with different arguments than the existing durable queue on the broker
+has, and RabbitMQ refuses to redeclare a queue with different arguments. Queues and bindings live in the
+RabbitMQ volume (Compose `service-bus`, Kubernetes hostPath `/var/lib/shift-happens/rabbitmq`), so they survive
+restarts and `git pull`. This happens for `leave.command` on a broker from before leave's dead-letter change.
+
+**Not needed for the identity, scheduling and ai DLQ fix.** Those services kept their queue arguments
+on purpose and remove their old `#` DLQ binding themselves, so after pulling it you only redeploy them; the
+waiting messages are kept. Optionally purge the old foreign copies from their DLQs (see the previous section).
+
+**Fix.** Delete the queue so the service declares it again. Stop the consumer first and delete with
+`--if-empty`, so no waiting message is lost (if it refuses, the queue still has messages: start the old
+version until it has drained them, or accept losing them). Delete the DLQ too when its bindings changed:
+RabbitAdmin never removes an old binding.
+
+```bash
+# Compose (example: leave-command)
+docker compose -f docker-compose.microservices.yml stop leave-command
+docker compose -f docker-compose.microservices.yml exec -T rabbitmq rabbitmqctl -q list_queues -p shift-happens name messages
+docker compose -f docker-compose.microservices.yml exec -T rabbitmq rabbitmqctl delete_queue -p shift-happens leave.command --if-empty
+docker compose -f docker-compose.microservices.yml exec -T rabbitmq rabbitmqctl delete_queue -p shift-happens leave.command.dlq
+docker compose -f docker-compose.microservices.yml start leave-command
+
+# Kubernetes (example: leave-command)
+kubectl scale deployment/leave-command --replicas=0
+kubectl exec deployment/rabbitmq -- rabbitmqctl -q list_queues -p shift-happens name messages
+kubectl exec deployment/rabbitmq -- rabbitmqctl delete_queue -p shift-happens leave.command --if-empty
+kubectl exec deployment/rabbitmq -- rabbitmqctl delete_queue -p shift-happens leave.command.dlq
+kubectl scale deployment/leave-command --replicas=1
+```
+
+Wiping the whole broker also works but loses every waiting message of every service:
+`docker compose -f docker-compose.microservices.yml down -v` (wipes **every** Compose volume, databases
+included), or on Kubernetes `kubectl delete -R -f kubernetes/rabbitmq/` and removing
+`/var/lib/shift-happens/rabbitmq` on the node (on Docker Desktop: reset the Kubernetes cluster, which wipes all
+hostPath data) before `kubectl apply -R -f kubernetes/`.
 
 ### A CQRS role does the wrong job
 

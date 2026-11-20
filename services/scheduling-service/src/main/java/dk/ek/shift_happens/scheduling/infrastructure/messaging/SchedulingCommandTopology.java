@@ -1,5 +1,6 @@
 package dk.ek.shift_happens.scheduling.infrastructure.messaging;
 
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
@@ -27,6 +28,13 @@ import org.springframework.context.annotation.Profile;
  * </ul>
  *
  * <p>The queue also carries leave.request.approval-started.v1 for the saga of P3.1.
+ *
+ * <p>Dead letters leave with the queue name as routing key and {@code <queue>.dlq} is bound with exactly that
+ * key, so the DLQ holds only this queue's failures (the leave-service pattern). Unlike leave, the queue does
+ * <b>not</b> set {@code x-dead-letter-routing-key}: RabbitMQ refuses to redeclare an existing queue with
+ * different arguments (PRECONDITION_FAILED), so adding it would break every broker that already has the queue.
+ * The routing key is set by the {@link RepublishMessageRecoverer} instead, which is the path every failed
+ * message takes. {@link StaleDeadLetterBindingRemover} deletes the {@code #} binding older versions left behind.
  */
 @Configuration
 @Profile("command")
@@ -35,6 +43,7 @@ public class SchedulingCommandTopology {
     /** workforce.employee.created.v1, .updated.v1 and .deleted.v1. */
     private static final String EMPLOYEE_EVENTS = "workforce.employee.*.v1";
 
+    /** Arguments unchanged since the queue was first declared: changing them breaks existing brokers. */
     @Bean
     Queue schedulingCommandQueue(@Value("${app.rabbit.queue}") String name,
                                  @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
@@ -73,8 +82,17 @@ public class SchedulingCommandTopology {
 
     @Bean
     Binding schedulingCommandDeadLetterBinding(Queue schedulingCommandDeadLetterQueue,
-                                               TopicExchange deadLetterExchange) {
-        return BindingBuilder.bind(schedulingCommandDeadLetterQueue).to(deadLetterExchange).with("#");
+                                               TopicExchange deadLetterExchange,
+                                               @Value("${app.rabbit.queue}") String name) {
+        return BindingBuilder.bind(schedulingCommandDeadLetterQueue).to(deadLetterExchange).with(name);
+    }
+
+    @Bean
+    StaleDeadLetterBindingRemover schedulingCommandStaleDeadLetterBindingRemover(
+            ConnectionFactory connectionFactory, AmqpAdmin admin, Queue schedulingCommandDeadLetterQueue,
+            TopicExchange deadLetterExchange) {
+        return StaleDeadLetterBindingRemover.register(connectionFactory, admin,
+                schedulingCommandDeadLetterQueue.getName(), deadLetterExchange.getName());
     }
 
     @Bean
@@ -83,7 +101,8 @@ public class SchedulingCommandTopology {
             ConnectionFactory connectionFactory,
             Jackson2JsonMessageConverter converter,
             RabbitTemplate rabbitTemplate,
-            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
+            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange,
+            @Value("${app.rabbit.queue}") String queueName) {
 
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         configurer.configure(factory, connectionFactory);
@@ -91,8 +110,9 @@ public class SchedulingCommandTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
-                // Keep the original routing key; the DLQ is bound with "#".
-                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, null))
+                // Republish with the queue name as routing key (without an explicit key spring-amqp would use
+                // "error." + the original key); the DLQ is bound with exactly that key.
+                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))
                 .build());
         return factory;
     }
