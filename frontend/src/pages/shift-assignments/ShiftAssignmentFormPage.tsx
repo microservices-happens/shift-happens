@@ -1,64 +1,56 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@apollo/client/react';
 import {
   createShiftAssignment,
   deleteShiftAssignment,
-  getShiftAssignment,
   updateShiftAssignment,
 } from '../../api/shiftAssignments';
 import { listEmployees } from '../../api/employees';
-import { listShifts } from '../../api/shifts';
-import type {
-  Employee,
-  NewShiftAssignment,
-  Shift,
-} from '../../api/types';
+import type { Employee, NewShiftAssignment } from '../../api/types';
 import { ApiError } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
+import { graphqlErrorMessage } from '../../graphql/client';
+import {
+  ShiftByIdDocument,
+  ShiftOptionsDocument,
+  type AssignmentStatus,
+  type ShiftSummaryFragment,
+} from '../../graphql/generated';
+import { fromLocalInput, scheduleWindow, toLocalInput } from '../../graphql/time';
 
-const STATUSES = [
+// AssignmentStatus of contracts/graphql/scheduling.graphql, which scheduling-command also enforces.
+const STATUSES: readonly AssignmentStatus[] = [
   'ASSIGNED',
-  'CONFIRMED',
-  'CHECKED_IN',
-  'CHECKED_OUT',
-  'COMPLETED',
+  'APPROVED',
+  'SWAPPED',
   'CANCELLED',
-  'NO_SHOW',
-] as const;
-
-function nowLocalDatetime(): string {
-  const d = new Date();
-  d.setSeconds(0, 0);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-}
+  'RELEASED_FOR_LEAVE',
+];
 
 function buildEmpty(): NewShiftAssignment {
   return {
     shiftId: 0,
     employeeId: 0,
     assignmentStatus: 'ASSIGNED',
-    assignedDatetime: `${nowLocalDatetime()}:00`,
+    assignedDatetime: new Date().toISOString(),
     checkInDatetime: null,
     checkOutDatetime: null,
   };
 }
 
-function formatShiftLabel(s: Shift): string {
-  const start = s.startDatetime ? new Date(s.startDatetime) : null;
-  const when =
-    start && !Number.isNaN(start.getTime())
-      ? start.toLocaleString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : '';
-  return `${s.shiftName ?? `Shift #${s.shiftId}`}${when ? ` · ${when}` : ''}`;
+function formatShiftLabel(s: ShiftSummaryFragment): string {
+  const start = new Date(s.startDatetime);
+  const when = Number.isNaN(start.getTime())
+    ? ''
+    : start.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+  return `${s.shiftName}${when ? ` · ${when}` : ''}`;
 }
 
 export default function ShiftAssignmentFormPage() {
@@ -66,29 +58,72 @@ export default function ShiftAssignmentFormPage() {
   const isNew = id === undefined;
   const numericId = isNew ? null : Number(id);
 
+  // The contract has no query for one assignment, so it is read through its shift:
+  // /shift-assignments/:id?shiftId=<shift> -> shift(shiftId) { assignments }.
+  const [searchParams] = useSearchParams();
+  const shiftIdParam = Number(searchParams.get('shiftId'));
+  const parentShiftId = Number.isInteger(shiftIdParam) && shiftIdParam > 0 ? shiftIdParam : null;
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const mayWrite = canWrite(user?.roleName);
 
   const [form, setForm] = useState<NewShiftAssignment>(buildEmpty);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [range] = useState(() => scheduleWindow());
+  const shiftOptions = useQuery(ShiftOptionsDocument, { variables: range, skip: !mayWrite });
+  const parent = useQuery(ShiftByIdDocument, {
+    variables: { shiftId: parentShiftId ?? 0 },
+    skip: isNew || parentShiftId === null,
+    fetchPolicy: 'network-only',
+  });
+  const loadedShift = parent.data?.shift ?? null;
+  const loaded = loadedShift?.assignments.find((a) => a.shiftAssignmentId === numericId) ?? null;
+
+  // Copy the loaded assignment into the form once per result (state adjusted during render).
+  const [formFrom, setFormFrom] = useState<typeof loaded>(null);
+  if (loaded && loadedShift && loaded !== formFrom) {
+    setFormFrom(loaded);
+    setForm({
+      shiftId: loadedShift.shiftId,
+      employeeId: loaded.employee.employeeId,
+      assignmentStatus: loaded.status,
+      assignedDatetime: loaded.assignedDatetime,
+      checkInDatetime: loaded.checkInDatetime,
+      checkOutDatetime: loaded.checkOutDatetime,
+    });
+  }
+
+  const loadError = isNew
+    ? null
+    : parentShiftId === null
+      ? 'Open this assignment from the assignment list (the link carries its shift).'
+      : parent.error
+        ? graphqlErrorMessage(parent.error, 'Failed to load')
+        : parent.data && !loaded
+          ? 'Assignment not found (or not visible to you).'
+          : null;
+  const loading = !isNew && parent.loading && !parent.data;
+
+  // The window's shifts, plus the assignment's own shift if it lies outside the window.
+  const shifts = useMemo(() => {
+    const options = shiftOptions.data?.shifts ?? [];
+    if (loadedShift && !options.some((s) => s.shiftId === loadedShift.shiftId)) {
+      return [loadedShift, ...options];
+    }
+    return options;
+  }, [shiftOptions.data, loadedShift]);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listEmployees(), listShifts()])
-      .then(([es, ss]) => {
+    listEmployees()
+      .then((es) => {
         if (cancelled) return;
         setEmployees(es);
-        setShifts(ss);
-        setForm((f) => ({
-          ...f,
-          employeeId: f.employeeId || es[0]?.employeeId || 0,
-          shiftId: f.shiftId || ss[0]?.shiftId || 0,
-        }));
+        setForm((f) => ({ ...f, employeeId: f.employeeId || es[0]?.employeeId || 0 }));
       })
       .catch(() => {
         /* handled by main error state if needed */
@@ -98,33 +133,10 @@ export default function ShiftAssignmentFormPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (isNew || numericId === null) return;
-    let cancelled = false;
-    setLoading(true);
-    getShiftAssignment(numericId)
-      .then((a) => {
-        if (cancelled) return;
-        setForm({
-          shiftId: a.shiftId,
-          employeeId: a.employeeId,
-          assignmentStatus: a.assignmentStatus,
-          assignedDatetime: a.assignedDatetime,
-          checkInDatetime: a.checkInDatetime,
-          checkOutDatetime: a.checkOutDatetime,
-        });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Failed to load');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isNew, numericId]);
+  // Preselect the first shift for a new assignment once the options are there.
+  if (isNew && form.shiftId === 0 && shifts.length > 0) {
+    setForm((f) => ({ ...f, shiftId: shifts[0].shiftId }));
+  }
 
   function update<K extends keyof NewShiftAssignment>(
     key: K,
@@ -137,7 +149,7 @@ export default function ShiftAssignmentFormPage() {
     key: 'assignedDatetime' | 'checkInDatetime' | 'checkOutDatetime',
     raw: string
   ) {
-    setForm((prev) => ({ ...prev, [key]: raw ? `${raw}:00` : null }));
+    setForm((prev) => ({ ...prev, [key]: fromLocalInput(raw) }));
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -174,7 +186,7 @@ export default function ShiftAssignmentFormPage() {
       <h1 className="page-title">
         {isNew ? 'New shift assignment' : 'Edit shift assignment'}
       </h1>
-      {error && <div className="alert alert-error">{error}</div>}
+      {(error ?? loadError) && <div className="alert alert-error">{error ?? loadError}</div>}
       <form className="form-grid" onSubmit={handleSubmit}>
         <label className="form-field">
           <span>Employee</span>
@@ -238,7 +250,7 @@ export default function ShiftAssignmentFormPage() {
           <span>Assigned at</span>
           <input
             type="datetime-local"
-            value={(form.assignedDatetime ?? '').slice(0, 16)}
+            value={toLocalInput(form.assignedDatetime)}
             onChange={(e) => updateDatetime('assignedDatetime', e.target.value)}
             disabled={!mayWrite}
           />
@@ -248,7 +260,7 @@ export default function ShiftAssignmentFormPage() {
           <span>Check-in</span>
           <input
             type="datetime-local"
-            value={(form.checkInDatetime ?? '').slice(0, 16)}
+            value={toLocalInput(form.checkInDatetime)}
             onChange={(e) => updateDatetime('checkInDatetime', e.target.value)}
             disabled={!mayWrite}
           />
@@ -258,7 +270,7 @@ export default function ShiftAssignmentFormPage() {
           <span>Check-out</span>
           <input
             type="datetime-local"
-            value={(form.checkOutDatetime ?? '').slice(0, 16)}
+            value={toLocalInput(form.checkOutDatetime)}
             onChange={(e) => updateDatetime('checkOutDatetime', e.target.value)}
             disabled={!mayWrite}
           />
