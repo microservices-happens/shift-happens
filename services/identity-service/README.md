@@ -46,6 +46,11 @@
   `SetPasswordIT` (own password then login, someone else's → 403, admin → 204, unknown → 404,
   short → 400, the bootstrap admin can log in after its workforce event).
 
+Local demo accounts: identity has no seed of its own. `scripts/seed-dev.sh` seeds workforce, the
+accounts arrive here through the normal `workforce.employee.*` events, and passwords are set with the
+bootstrap admin and `PUT .../password` (see "Local demo data" in
+[workforce-service/README.md](../workforce-service/README.md)).
+
 ## Implemented so far (Google/GitHub login, P2.3)
 
 OAuth 2.0 authorization code with PKCE (S256), written by hand (no Spring `oauth2Login`, which needs
