@@ -1,6 +1,6 @@
 # Implementation Plan — filling the microservice skeletons
 
-Status: 2026-10-21. Companion to [`project-plan.md`](project-plan.md) (task IDs `P#.#`) and
+Status: 2026-10-21; §1 and the slice status notes checked against `main` on 2026-11-20. Companion to [`project-plan.md`](project-plan.md) (task IDs `P#.#`) and
 [`architecture.md`](architecture.md) (the target design). This document defines **the order** in
 which the seven service skeletons are implemented, what each slice contains, and when a slice is
 accepted.
@@ -11,17 +11,19 @@ accepted.
 |---|---|
 | Architecture and requirements | Complete: `docs/architecture.md`, `docs/adr/`, high-level diagram |
 | Contracts | Complete: `contracts/openapi/*.yaml`, `contracts/graphql/scheduling.graphql`, `contracts/asyncapi.yaml`, JSON Schemas |
-| Services | 7 walking skeletons: Java 21, Spring Boot 3.5.10, `GET /health`, one context test each. No domain code, no data access, no messaging |
+| Services | Implemented: identity, workforce, scheduling (command + query/GraphQL), leave (command + query) and ai, each with its own database, Flyway, RabbitMQ and `*IT`s. notification-service and audit-service are still walking skeletons (`GET /health`, context test, `SwaggerContractTest`) |
 | Email function | Walking skeleton (context test only) |
-| Frontend | React 18 + Vite + TypeScript, routing only. No REST client, no Apollo, no auth |
-| Local infrastructure | `docker-compose.microservices.yml` defines databases, RabbitMQ, Mailpit, OTel, gateway and all services |
-| Kubernetes | Kustomize base + local overlay, HPA, Ingress, KEDA ScaledJob |
-| CI | Contract lint, CodeQL, per-service unit/integration/image gates, frontend build, dependency review, cooperation-test workflow |
-| Tests | One smoke test per service; cooperation harness with the saga test disabled |
+| Frontend | React 18 + Vite + TypeScript: hand-written REST client (base URL `VITE_API_BASE_URL`: `/api` in dev, `/api/v1` in the Compose image), auth context with local login and Google/GitHub OIDC (`/login/callback`), CRUD pages. No generated types, no Apollo, no `Idempotency-Key`, no notifications, no automated tests |
+| Local infrastructure | `docker-compose.microservices.yml` defines databases, RabbitMQ, Mailpit, OTel, gateway and all services; Ollama under the `ai` profile |
+| Kubernetes | `kubernetes/`: plain manifests for Docker Desktop Kubernetes (ADR 0005), one Secret per service, Ollama. `k8s/` (Kustomize base + local overlay, HPA, Ingress, KEDA ScaledJob) is not the deployed path; #64 decides which stays |
+| CI | `ci.yml`: contract lint + AsyncAPI HTML artifact, per-service `mvn verify`, image build + Trivy (non-blocking) + GHCR push on `main`, frontend typecheck/ESLint/build, SonarQube Cloud job (skips: no `SONAR_TOKEN`). `codeql.yml`, `system-tests.yml`, `nightly-shift-risk.yml` |
+| Tests | Unit tests and Testcontainers `*IT`s in the five implemented services; cooperation tests `EmployeeReplicationIT`, `LeaveApprovalSagaIT` (enabled) and `SchedulingAiIT` |
 
 "Empty" means a service has no persistence, security, AMQP or Flyway script and exposes only
-`/health`. Phase 0 adds the shared conventions once; each owner then fills one vertical slice at a
-time.
+`/health`; today that applies to notification, audit and email-function. Phase 0 is partly done: the
+event envelope, outbox + relay, `processed_events`, version-aware upserts, Flyway and `problem+json`
+exist in the implemented services, JWT validation in identity, workforce, scheduling and ai (#109),
+and the correlation-id filter in the same four services (#106); both are still missing in leave (#88).
 
 ## 2. How we implement
 
@@ -105,10 +107,10 @@ role is rejected (unit test); the event validates against
 `contracts/events/payloads/employee.schema.json` (IT); a late update cannot resurrect a deleted
 employee (unit test).
 
-**Status (2026-10-27):** `POST /v1/employees`, `GET /v1/employees`, `GET /v1/employees/{id}`, the
-`employee`, `outbox_event` and `idempotency_record` tables, `workforce.employee.created.v1` (outbox +
-relay) and idempotent commands (`Idempotency-Key` replay / `409`) are implemented and covered by
-`WorkforceApplicationIT`. Remaining: the other resources, `updated`/`deleted` events and security.
+**Status (2026-11-20):** done. All resources in `workforce.yaml` (employees with filters, contracts,
+job roles, departments, work locations), `created`/`updated`/`deleted` events with tombstones from
+the outbox, idempotent commands, JWT role rules (#109) and an opt-in demo seed (#107). Covered by
+`WorkforceApplicationIT`, `DevSeedIT`, `SecurityRulesTest` and the domain unit tests.
 
 ### Slice 2 — Identity (P2.1–P2.4)
 
@@ -128,10 +130,11 @@ Can start in parallel with a seeded accounts table; consuming workforce events c
 an unknown e-mail is refused; another service validates the issued token through the JWKS cache;
 401/403 tests cover missing, expired and forged tokens.
 
-**Status (2026-10-27):** the employee-replica consumer is implemented (`created`/`updated`/`deleted`,
-idempotent on `eventId`, highest `aggregateVersion` wins, tombstone kept) and covered by
-`IdentityApplicationIT` and the system test `tests/cooperation/EmployeeReplicationIT`. Remaining:
-login, OIDC, JWKS and the security tests — until then no service validates JWTs.
+**Status (2026-11-20):** done. Employee-replica consumer (`IdentityApplicationIT`,
+`EmployeeProjectionShuffledOrderTest`, `tests/cooperation/EmployeeReplicationIT`), local login with
+RS256 and JWKS (`LoginIT`), password change (`SetPasswordIT`) and Google/GitHub OIDC with e-mail
+matching (`OidcIT`), merged in #21 and #30. workforce, scheduling and ai validate the token through
+the cached JWKS; leave does not yet (#88).
 
 ### Slice 3 — Scheduling command (P2.7–P2.9, P2.12)
 
@@ -149,6 +152,13 @@ login, OIDC, JWKS and the security tests — until then no service validates JWT
 **Acceptance:** unit tests for overlap, qualification and swap approval; IT for the outbox,
 idempotent replay and `409`; every published payload validates against its JSON Schema.
 
+**Status (2026-11-20):** implemented: write model, employee replica with qualification check, swaps
+approved in one transaction, leave release/lock rule, `scheduling.shift.understaffed.v1` with
+candidates, `Idempotency-Key`, JWT role rules (`AssignmentsTest`, `SwapsTest`,
+`UnderstaffingRulesTest`, `AssignmentCommandIT`, `SwapCommandIT`, `UnderstaffedIT`,
+`CommandSecurityRulesTest`). Remaining: a JSON Schema check of the published payloads (only the
+employee replica IT validates against a schema).
+
 ### Slice 4 — Scheduling query + GraphQL (P2.10, P2.11)
 
 - MongoDB read model: shifts (with assignments, required roles, suggestions), employees and swaps.
@@ -161,6 +171,10 @@ idempotent replay and `409`; every published payload validates against its JSON 
 **Acceptance:** a GraphQL IT with a real token returns nested shifts and assignments; replaying the
 same events in shuffled order ends in the same state; reads still answer with the command role
 stopped; the read model is rebuilt from events in the test.
+
+**Status (2026-11-20):** implemented in #97 and made commutative in #110: Mongo projection with
+rebuild, GraphQL with role filtering and GraphiQL in the dev profile (`SchedulingProjectionIT`,
+`SchedulingProjectionShuffledOrderIT`, `SchedulingGraphQlIT`, `SchedulingGraphiqlIT`).
 
 ### Slice 5 — Leave command + ledger (P2.13, P2.14)
 
@@ -177,6 +191,10 @@ stopped; the read model is rebuilt from events in the test.
 **Acceptance:** unit tests for balance, reversal and the snapshot boundary; the ledger cannot be
 mutated through the API; a saga IT with a stubbed reply covers both outcomes and the timeout.
 
+**Status (2026-11-20):** done in #87 and #96 (`LeaveBalanceTest`, `LedgerEntryTest`,
+`LeaveLedgerIT`, `LeaveApprovalSagaIT`, `LeaveApprovalSagaServiceTest`). The endpoints are not
+protected by a JWT yet (#88).
+
 ### Slice 6 — Leave query (P2.15)
 
 - MongoDB overviews and balances projected from `leave.*` + `workforce.employee.*`.
@@ -185,6 +203,9 @@ mutated through the API; a saga IT with a stubbed reply covers both outcomes and
 
 **Acceptance:** the overview matches the command database after replay; shuffled order produces the
 same balance.
+
+**Status (2026-11-20):** done in #96 (`LeaveProjectionIT`, `LeaveProjectionReplayIT`,
+`LeaveQueryApiIT`).
 
 ### Slice 7 — Notification (P4.3)
 
@@ -196,6 +217,8 @@ same balance.
 **Acceptance:** each covered event produces exactly one notification per recipient; a redelivered
 event produces none; an employee cannot read another employee's notifications (403/404 test).
 
+**Status (2026-11-20):** not started; walking skeleton (#52, #53).
+
 ### Slice 8 — Audit (P4.5)
 
 - Consume every event on queue `audit.events` and append the envelope unchanged with a unique
@@ -204,6 +227,8 @@ event produces none; an employee cannot read another employee's notifications (4
 
 **Acceptance:** every event in the catalog is stored; a redelivered event is ignored (IT); an
 Employee gets 403; the table has no update or delete path.
+
+**Status (2026-11-20):** not started; walking skeleton (#55).
 
 ### Slice 9 — AI service (P4.1, P4.2)
 
@@ -218,6 +243,10 @@ Employee gets 403; the table has no update or delete path.
 model publishes a suggestion containing only input candidates; a malformed model answer triggers the
 fallback and still publishes.
 
+**Status (2026-11-20):** done (#23, #83, #84, #85, #108): hand-written Ollama client (ADR 0004),
+`RankingTest`, `OllamaClientTest`, `AiServiceApplicationIT`, cooperation test `SchedulingAiIT`;
+Ollama in Compose and `kubernetes/ollama/` with measured latency (`kubernetes/ollama/latency.md`).
+
 ### Slice 10 — Email function (P4.4)
 
 - Consume `notification.email.requested.v1` from `email.send`, send over SMTP (Mailpit locally) and
@@ -226,6 +255,8 @@ fallback and still publishes.
 
 **Acceptance:** an IT with a stubbed SMTP server sends exactly one message per event; a redelivery
 sends nothing.
+
+**Status (2026-11-20):** not started; walking skeleton (#54).
 
 ### Slice 11 — Frontend (P5)
 
@@ -238,6 +269,11 @@ sends nothing.
 
 **Acceptance:** the schedule page loads from GraphQL and assigning refreshes it; a retried POST does
 not create a duplicate; an Employee cannot see another employee's schedule page data.
+
+**Status (2026-11-20):** login is in place (local + Google/GitHub with `/login/callback`, #103), and
+#104 added the `/api/v1` client with generated types, the notifications bell, Apollo with the GraphQL
+schedule pages, one `Idempotency-Key` per user action and the saga/AI UI. None of it has been run
+against the gateway, and there are no frontend tests.
 
 ## 5. Phase 2 — distributed-systems patterns (P3)
 
@@ -265,8 +301,8 @@ cooperation test is the acceptance test for P3.1.
   the course description: API behaviour, messaging, database (`*IT`).
 - Security matrix per service: no token → 401, expired token → 401, forged signature → 401, wrong
   role → 403, idempotency replay and conflict.
-- `ServiceStartupSmokeIT` keeps the cooperation harness honest; `LeaveApprovalSagaIT` is the required
-  cooperation test.
+- `LeaveApprovalSagaIT` is the required cooperation test; `EmployeeReplicationIT` and `SchedulingAiIT`
+  also run in `system-tests.yml` (there is no `ServiceStartupSmokeIT`).
 - Static analysis: CodeQL and dependency review already run; enable the SonarQube Cloud gate
   (P1.5) when the `SONAR_TOKEN` exists.
 - Contract lint must stay green: a broken OpenAPI, AsyncAPI or JSON Schema fails the PR.

@@ -7,6 +7,7 @@ import {
 } from '../../api/departments';
 import type { NewDepartment } from '../../api/types';
 import { ApiError } from '../../api/types';
+import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
 
@@ -25,6 +26,8 @@ export default function DepartmentFormPage() {
   const mayWrite = canWrite(user?.roleName);
 
   const [form, setForm] = useState<NewDepartment>(EMPTY_FORM);
+  // One Idempotency-Key per submission of this form; a retry of the same data reuses it.
+  const createAction = useIdempotentAction();
   const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +59,7 @@ export default function DepartmentFormPage() {
     setError(null);
     setSubmitting(true);
     try {
-      if (isNew) await createDepartment(form);
+      if (isNew) await createAction.run(form, (key) => createDepartment(form, key));
       else if (numericId !== null) await updateDepartment(numericId, form);
       navigate('/departments');
     } catch (err) {

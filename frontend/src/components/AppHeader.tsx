@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
+import { NotificationBell } from './NotificationBell';
 
 interface AppHeaderProps {
   onToggleMenu: () => void;
@@ -56,6 +57,7 @@ export function AppHeader({ onToggleMenu, sidebarOpen }: AppHeaderProps) {
       </div>
 
       <div className="app-header-right" ref={menuRef}>
+        <NotificationBell />
         <button
           type="button"
           className="app-header-user"

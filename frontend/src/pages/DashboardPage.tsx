@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@apollo/client/react';
 import { useAuth } from '../auth/useAuth';
 import { listEmployees } from '../api/employees';
 import { listDepartments } from '../api/departments';
-import { listShifts } from '../api/shifts';
-import { listShiftAssignments } from '../api/shiftAssignments';
 import { listLeaveRequests } from '../api/leaveRequests';
-import type { Shift, ShiftAssignment } from '../api/types';
 import { canWrite } from '../auth/roles';
+import {
+  MyScheduleDocument,
+  ShiftsWithAssignmentsDocument,
+  UnderstaffedShiftIdsDocument,
+} from '../graphql/generated';
+import { FUTURE_WEEKS, addDays, startOfWeek, toDateTime, weekWindow } from '../graphql/time';
 
-interface DashboardData {
+interface RestCounts {
   employees: number | null;
   departments: number | null;
-  shiftsThisWeek: number | null;
-  assignments: number | null;
   pendingLeave: number | null;
-  nextShift: { shift: Shift; assignment: ShiftAssignment } | null;
 }
+
+const ACTIVE_STATUSES = new Set(['ASSIGNED', 'APPROVED', 'SWAPPED']);
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -26,119 +29,85 @@ function greeting(): string {
   return 'Good evening';
 }
 
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const offset = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - offset);
-  return d;
-}
-
 export default function DashboardPage() {
   const { user } = useAuth();
   const mayWrite = canWrite(user?.roleName);
   const isEmployee = user?.roleName === 'Employee';
   const employeeId = user?.employeeId;
 
-  const [data, setData] = useState<DashboardData>({
+  // Scheduling numbers come from GraphQL (scheduling-query); the rest stays REST.
+  const [week] = useState(() => weekWindow(startOfWeek(new Date())));
+  const [ahead] = useState(() => {
+    const now = new Date();
+    return { from: toDateTime(now), to: toDateTime(addDays(startOfWeek(now), 7 * (FUTURE_WEEKS + 1))) };
+  });
+  const weekShifts = useQuery(ShiftsWithAssignmentsDocument, { variables: week });
+  const understaffed = useQuery(UnderstaffedShiftIdsDocument, { variables: week, skip: !mayWrite });
+  const mySchedule = useQuery(MyScheduleDocument, {
+    variables: { employeeId: employeeId ?? 0, ...ahead },
+    skip: !isEmployee || employeeId === undefined,
+  });
+
+  const shifts = weekShifts.data?.shifts;
+  const shiftsThisWeek = shifts?.filter((s) => s.status !== 'CANCELLED').length ?? null;
+  const assignmentsThisWeek = shifts
+    ? shifts.reduce(
+        (sum, s) => sum + s.assignments.filter((a) => ACTIVE_STATUSES.has(a.status)).length,
+        0
+      )
+    : null;
+  const understaffedCount = understaffed.data?.understaffedShifts.length ?? null;
+  const myUpcoming = mySchedule.data?.employeeSchedule.filter((a) => ACTIVE_STATUSES.has(a.status));
+
+  const [counts, setCounts] = useState<RestCounts>({
     employees: null,
     departments: null,
-    shiftsThisWeek: null,
-    assignments: null,
     pendingLeave: null,
-    nextShift: null,
   });
 
   useEffect(() => {
+    if (!mayWrite) return;
     let cancelled = false;
-    const now = new Date();
-    const weekStart = startOfWeek(now);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-
     Promise.all([
-      mayWrite ? listEmployees().then((es) => es.length) : Promise.resolve(null),
-      mayWrite ? listDepartments().then((ds) => ds.length) : Promise.resolve(null),
-      listShifts(),
-      listShiftAssignments(),
-      mayWrite
-        ? listLeaveRequests().then(
-            (rs) =>
-              rs.filter(
-                (r) =>
-                  (r.requestStatus ?? '').toLowerCase() === 'pending'
-              ).length
-          )
-        : Promise.resolve(null),
+      listEmployees().then((es) => es.length),
+      listDepartments().then((ds) => ds.length),
+      listLeaveRequests().then(
+        (rs) => rs.filter((r) => (r.requestStatus ?? '').toLowerCase() === 'pending').length
+      ),
     ])
-      .then(([employees, departments, shifts, assignments, pendingLeave]) => {
-        if (cancelled) return;
-        const shiftsThisWeek = shifts.filter((s) => {
-          if (!s.startDatetime) return false;
-          const t = new Date(s.startDatetime).getTime();
-          return t >= weekStart.getTime() && t < weekEnd.getTime();
-        }).length;
-
-        const myAssignments = assignments.filter(
-          (a) => a.employeeId === employeeId
-        );
-        const assignmentsCount = mayWrite
-          ? assignments.length
-          : myAssignments.length;
-
-        let nextShift: DashboardData['nextShift'] = null;
-        if (employeeId !== undefined) {
-          const shiftById = new Map(shifts.map((s) => [s.shiftId, s]));
-          const upcoming = myAssignments
-            .map((a) => ({ assignment: a, shift: shiftById.get(a.shiftId) }))
-            .filter(
-              (x): x is { assignment: ShiftAssignment; shift: Shift } =>
-                x.shift !== undefined &&
-                x.shift.startDatetime !== null &&
-                new Date(x.shift.startDatetime).getTime() >= now.getTime()
-            )
-            .sort((a, b) =>
-              (a.shift.startDatetime ?? '').localeCompare(
-                b.shift.startDatetime ?? ''
-              )
-            );
-          nextShift = upcoming[0] ?? null;
-        }
-
-        setData({
-          employees,
-          departments,
-          shiftsThisWeek,
-          assignments: assignmentsCount,
-          pendingLeave,
-          nextShift,
-        });
+      .then(([employees, departments, pendingLeave]) => {
+        if (!cancelled) setCounts({ employees, departments, pendingLeave });
       })
       .catch(() => {
         /* leave cards blank */
       });
-
     return () => {
       cancelled = true;
     };
-  }, [mayWrite, employeeId]);
+  }, [mayWrite]);
+
+  const data = {
+    ...counts,
+    shiftsThisWeek,
+    assignments: mayWrite ? assignmentsThisWeek : (myUpcoming?.length ?? null),
+  };
 
   const firstName = user?.firstName ?? '';
 
   const nextShiftLine = useMemo(() => {
-    if (!data.nextShift) return null;
-    const { shift } = data.nextShift;
-    const start = shift.startDatetime ? new Date(shift.startDatetime) : null;
-    if (!start) return null;
-    const when = start.toLocaleString(undefined, {
+    const next = [...(myUpcoming ?? [])].sort((x, y) =>
+      x.shift.startDatetime.localeCompare(y.shift.startDatetime)
+    )[0];
+    if (!next) return null;
+    const when = new Date(next.shift.startDatetime).toLocaleString(undefined, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
-    return `${shift.shiftName ?? 'Shift'} · ${when}`;
-  }, [data.nextShift]);
+    return `${next.shift.shiftName} · ${when}`;
+  }, [myUpcoming]);
 
   return (
     <div className="page">
@@ -170,9 +139,17 @@ export default function DashboardPage() {
           </span>
           <span className="stat-value">{data.assignments ?? '—'}</span>
           <span className="stat-hint">
-            {mayWrite ? 'All shift assignments' : 'Assigned to you'}
+            {mayWrite ? 'Active assignments this week' : 'Upcoming, assigned to you'}
           </span>
         </Link>
+
+        {mayWrite && (
+          <Link to="/shifts" className="stat-card">
+            <span className="stat-label">Understaffed</span>
+            <span className="stat-value">{understaffedCount ?? '—'}</span>
+            <span className="stat-hint">Shifts this week missing staff</span>
+          </Link>
+        )}
 
         {mayWrite && (
           <Link to="/leave-requests" className="stat-card">
