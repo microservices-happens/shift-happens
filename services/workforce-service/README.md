@@ -10,11 +10,14 @@
 - Idempotent commands: every `POST` requires an `Idempotency-Key` (UUID). The first response is
   stored for 24 h and replayed unchanged; the same key with a different body is `409`.
 - PostgreSQL write model `employee`, `outbox_event` and `idempotency_record`
-  (Flyway `V1__init.sql`, `V2__idempotency.sql`).
+  (Flyway `V1__init.sql`, `V2__idempotency.sql`; later `V3__workforce_reference_data.sql`,
+  `V4__employee_contracts_and_job_roles.sql` and `V5__employee_terms_refresh.sql`).
 - `workforce.employee.created.v1` written to the outbox in the same transaction as the employee, and
   published by `OutboxRelay` to `shift-happens.events` with routing key = eventType.
-- Tests: `EmployeeTest` (domain), `WorkforceApplicationIT` (REST → PostgreSQL → outbox → RabbitMQ,
-  including the idempotency replay and 409 paths).
+- Tests: `EmployeeTest` (domain), `EmployeeJobRoleDatesTest`, `EmployeeServiceTest`, `IdempotencyServiceTest`,
+  `SwaggerContractTest`, `WorkforceApplicationIT` (REST → PostgreSQL → outbox → RabbitMQ, including the
+  idempotency replay and 409 paths) and `DevSeedIT`. Run with `./mvnw -B -f services/workforce-service/pom.xml test`
+  (unit) or `verify` (adds the `*IT`, Docker required).
 
 - `PATCH /v1/employees/{id}` takes the Employee request body defined by OpenAPI and publishes
   an updated snapshot. `DELETE /v1/employees/{id}` soft-deletes the row and publishes a tombstone.
@@ -31,10 +34,11 @@
   Updates use PUT and POST requires an `Idempotency-Key`. Changes publish a versioned employee
   snapshot with currently valid role IDs and weekly hours from the latest active contract.
   Start and end dates are inclusive and evaluated in UTC when a snapshot is published.
-  Workforce stores the next date to check in PostgreSQL and polls for due employees every minute.
+  Workforce stores the next date to check in PostgreSQL and polls for due employees every minute
+  (`EmployeeTermsRefreshJob`, property `app.employee-terms.refresh-delay`, no environment variable).
   A changed snapshot is written to the outbox in the same transaction as the next scheduled check.
 
-- Security (P1.7): every request except `GET /health` needs a Bearer JWT from identity-service. The
+- Security (P1.7): every request except `/health` and `/error` needs a Bearer JWT from identity-service. The
   service validates it itself: RS256 signature against the JWKS at `JWT_JWKS_URL` (fetched on the first
   token and cached by Nimbus), plus `iss` (`JWT_ISSUER`) and `exp`. The `role` claim becomes
   `ROLE_<role>`. `GET` needs any valid token; `POST`, `PUT`, `PATCH` and `DELETE` need `Administrator`
@@ -90,7 +94,7 @@ REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yam
 | Event | When |
 |---|---|
 | `workforce.employee.created.v1` | Employee created |
-| `workforce.employee.updated.v1` | Any employee field changes, or their job roles change (`jobRoleIds` is part of the snapshot) |
+| `workforce.employee.updated.v1` | Any employee field changes, their job roles or contracts change (`jobRoleIds` and `weeklyContractHours` are part of the snapshot), or the minute poll finds that a role or contract started or ended (published with a new correlation id) |
 | `workforce.employee.deleted.v1` | Soft delete (tombstone) |
 
 This is the only source of employee data for other services. Nobody calls Workforce synchronously.
@@ -110,10 +114,14 @@ it on the response. Every log line prints it (`logging.pattern.correlation`). Pu
 ## API docs (Swagger UI)
 
 Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
-the hand-written contract `contracts/openapi/workforce.yaml`, not a spec generated from the controllers. Maven copies
+the hand-written contract `contracts/openapi/workforce.yaml`, not a spec generated from the controllers. `SecurityConfig`
+does not permit the Swagger paths, so without a Bearer token they answer `401` (no test opens the page). Maven copies
 the file onto the classpath at build time (`/openapi/workforce.yaml`); never edit the copy. The Docker build gets the file
 through `--build-context contracts=contracts` (set in Compose and CI).
 
 ## Done when
-- [ ] Employee pages work through the gateway.
+- [ ] Employee pages work through the gateway. (The pages exist, `frontend/src/pages/employees`, and since #104 the frontend
+  calls `/api/v1/employees` and sends an `Idempotency-Key` on `POST`, but this has not been run through the gateway and there is no frontend test.)
 - [ ] Creating an employee reaches identity, scheduling, leave and audit (integration test on the outbox and RabbitMQ).
+  (Outbox → RabbitMQ: `WorkforceApplicationIT`; workforce → identity: `tests/cooperation/.../EmployeeReplicationIT`.
+  No test covers scheduling or leave receiving a workforce-published event, and audit consumes nothing yet: P4.5.)
