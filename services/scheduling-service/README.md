@@ -49,7 +49,7 @@ GraphQL contract from its Mongo read model.
 |---|---|
 | Shifts | `POST`/`PUT`/`DELETE /v1/shifts`; the status only moves forward (`PLANNED → PUBLISHED → LOCKED`, anything → `CANCELLED`); delete is soft and publishes a tombstone |
 | Required job roles | `POST`/`PUT`/`DELETE /v1/shiftrequiredjobroles`; the rows are part of the shift aggregate, so every change bumps its version and republishes `scheduling.shift.updated.v1` |
-| Employee replica | consumes `workforce.employee.*`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared, and `weeklyContractHours` is stored for the candidate list |
+| Employee replica | consumes `workforce.employee.*`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared (also when it arrives before the create), and `weeklyContractHours` is stored for the candidate list. Commutative (P3.3): `snapshot_version` (V8) is the version of the snapshot the fields come from, so the same events give the same row in any order (`EmployeeReplicaShuffledOrderTest`) |
 | Assignments | `POST`/`PUT`/`DELETE /v1/shiftassignments`; the employee must be active and qualified **in the replica** and must not already work an overlapping shift (half-open `[start, end)`) |
 | Approvals | `POST`/`PUT`/`DELETE /v1/shiftapprovals`; one decision per assignment, and `APPROVED` moves the assignment in the same transaction |
 | Swaps | `POST`/`PUT`/`DELETE /v1/shiftswaps` and `POST`/`PUT`/`DELETE /v1/shiftswapapprovals`; an approval hands the assignment over (`employeeId` changes, status `SWAPPED`) and publishes `assignment.updated.v1` + `swap.approved.v1` from one commit. A correction (PUT) may change the approver and the comment and republishes the same event type with the next `aggregateVersion`; flipping the decision is a `409`, because the catalog has no reversal event. DELETE removes the record of the decision, not the handover, so no event is published |
@@ -64,7 +64,7 @@ GraphQL contract from its Mongo read model.
 
 - Events match `contracts/events/payloads/{shift,assignment,swap,tombstone,leave-release,understaffed}.schema.json`; saga replies also set `causationId` to the event that triggered them.
 - Every write commits its event through the outbox in the same transaction; the relay publishes with routing key = `eventType`.
-- Migrations: `V1__init.sql`, `V2__employee_replica.sql`, `V3__assignments.sql`, `V4__idempotency.sql`, `V5__swaps.sql`, `V6__leave_release.sql`, `V7__understaffing_inputs.sql`.
+- Migrations: `V1__init.sql`, `V2__employee_replica.sql`, `V3__assignments.sql`, `V4__idempotency.sql`, `V5__swaps.sql`, `V6__leave_release.sql`, `V7__understaffing_inputs.sql`, `V8__employee_replica_snapshot_version.sql`.
 - The queue has **one** listener that dispatches on `eventType`: two listeners on one queue would be competing consumers.
 - Tests: 63 unit and 59 integration (`*IT` with real PostgreSQL, MongoDB, RabbitMQ and a JWKS endpoint; the command tests share one container pair and the query tests another).
 
@@ -95,6 +95,14 @@ newer sibling. GraphQL resolves the nesting with indexed lookups.
 
 - Every write is a version-guarded upsert: an equal or lower `aggregateVersion` is ignored, and a snapshot never
   clears an existing tombstone.
+- The projection is commutative (P3.3): shift, assignment, employee and swap documents carry `snapshotVersion` (the
+  version of the snapshot their fields come from) next to `aggregateVersion` (the highest version seen). A snapshot
+  that was published before a delete but arrives after it still refreshes the fields, and a tombstone that arrives
+  before the create is stored as a document without fields (`snapshotVersion` 0, never returned as a view), so the
+  late create cannot resurrect the entity. `SchedulingProjectionShuffledOrderIT` applies one event set in seeded
+  shuffles and with redeliveries and compares the stored documents. It assumes what the producers guarantee: a
+  tombstone is the last event of its entity. Two suggestions of one shift and role with the same `suggestedAt` have
+  no tie-break (the first to arrive stays).
 - The query role has **no DataSource** (`application-query.yml` excludes JPA and Flyway), which is what lets reads keep
   answering while `scheduling-command` and Postgres are down.
 - Rebuild: start the query role with `PROJECTION_REBUILD_ON_START=true`. It empties the read-model collections and

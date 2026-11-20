@@ -28,9 +28,4 @@ public record EmployeeView(
     public String fullName() {
         return (firstName == null ? "" : firstName) + " " + (lastName == null ? "" : lastName);
     }
-
-    public EmployeeView tombstoned(long version, Instant deletedAt) {
-        return new EmployeeView(employeeId, firstName, lastName, jobRoleIds, employmentStatus,
-                weeklyContractHours, version, deletedAt);
-    }
 }

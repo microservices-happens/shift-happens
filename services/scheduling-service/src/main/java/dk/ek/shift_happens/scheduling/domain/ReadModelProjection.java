@@ -5,9 +5,10 @@ import java.time.Instant;
 /**
  * Write port of the Mongo read model (P2.10). The adapter lives in infrastructure/readmodel.
  *
- * <p>The contract of every method is the same: apply the record only if its {@code aggregateVersion} is
- * higher than the stored one, never clear a tombstone, and ignore anything that arrives out of order.
- * That is what makes the projection a commutative message handler (contracts/README.md).
+ * <p>The contract of every method is the same: the stored document must not depend on the order the
+ * calls arrive in (commutative message handler, contracts/README.md). An upsert replaces the fields
+ * only if its {@code aggregateVersion} is higher than the snapshot they come from and never clears a
+ * tombstone; a delete keeps the tombstone even when no snapshot has arrived yet.
  */
 public interface ReadModelProjection {
 
