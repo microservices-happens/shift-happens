@@ -1,5 +1,7 @@
 package dk.ek.shift_happens.scheduling.infrastructure.readmodel;
 
+import dk.ek.shift_happens.scheduling.infrastructure.messaging.StaleDeadLetterBindingRemover;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
@@ -24,6 +26,11 @@ import org.springframework.context.annotation.Profile;
  * <p>scheduling.* is the service's own event stream, workforce.employee.* is the replica the schedule
  * shows names and job roles from, and ai.replacement.suggested.v1 is the ranking next to an understaffed
  * shift.
+ *
+ * <p>Dead letters leave with the queue name as routing key and {@code <queue>.dlq} is bound with exactly that
+ * key, so the DLQ holds only this queue's failures. The queue arguments are deliberately unchanged (no
+ * {@code x-dead-letter-routing-key}, see {@code SchedulingCommandTopology}), and
+ * {@link StaleDeadLetterBindingRemover} deletes the {@code #} binding older versions left behind.
  */
 @Configuration
 @Profile("query")
@@ -34,6 +41,7 @@ class ProjectionTopology {
     private static final String EMPLOYEE_EVENTS = "workforce.employee.#";
     private static final String AI_SUGGESTIONS = "ai.replacement.suggested.v1";
 
+    /** Arguments unchanged since the queue was first declared: changing them breaks existing brokers. */
     @Bean
     Queue schedulingProjectionQueue(@Value("${app.rabbit.queue}") String name,
                                     @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
@@ -64,8 +72,17 @@ class ProjectionTopology {
 
     @Bean
     Binding schedulingProjectionDeadLetterBinding(Queue schedulingProjectionDeadLetterQueue,
-                                                  TopicExchange deadLetterExchange) {
-        return BindingBuilder.bind(schedulingProjectionDeadLetterQueue).to(deadLetterExchange).with("#");
+                                                  TopicExchange deadLetterExchange,
+                                                  @Value("${app.rabbit.queue}") String name) {
+        return BindingBuilder.bind(schedulingProjectionDeadLetterQueue).to(deadLetterExchange).with(name);
+    }
+
+    @Bean
+    StaleDeadLetterBindingRemover schedulingProjectionStaleDeadLetterBindingRemover(
+            ConnectionFactory connectionFactory, AmqpAdmin admin, Queue schedulingProjectionDeadLetterQueue,
+            TopicExchange deadLetterExchange) {
+        return StaleDeadLetterBindingRemover.register(connectionFactory, admin,
+                schedulingProjectionDeadLetterQueue.getName(), deadLetterExchange.getName());
     }
 
     @Bean
@@ -74,7 +91,8 @@ class ProjectionTopology {
             ConnectionFactory connectionFactory,
             Jackson2JsonMessageConverter converter,
             RabbitTemplate rabbitTemplate,
-            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange) {
+            @Value("${app.events.dead-letter-exchange}") String deadLetterExchange,
+            @Value("${app.rabbit.queue}") String queueName) {
 
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         configurer.configure(factory, connectionFactory);
@@ -82,7 +100,8 @@ class ProjectionTopology {
         factory.setDefaultRequeueRejected(false);
         factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                 .maxAttempts(3)
-                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, null))
+                // Republish with the queue name as routing key; the DLQ is bound with exactly that key.
+                .recoverer(new RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName))
                 .build());
         return factory;
     }
