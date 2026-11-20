@@ -170,6 +170,27 @@ class IdentityApplicationIT {
     }
 
     @Test
+    void aTombstoneThatOvertakesTheCreateIsStoredAndTheLateCreateCannotEnableTheAccount() {
+        // P3.3: delete (v2) arrives before create (v1). The row has no email or role yet (V4).
+        publishTombstone(UUID.randomUUID(), 106, 2);
+        Account tombstone = awaitAccount(106).orElseThrow();
+        assertThat(tombstone.active()).isFalse();
+        assertThat(tombstone.email()).isNull();
+
+        publishSnapshot("workforce.employee.created.v1", UUID.randomUUID(), 106, 1, "late@shift.dk", "ACTIVE");
+
+        // The late create fills in the workforce fields, but the tombstone keeps winning.
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
+                assertThat(accounts.findByEmployeeId(106).orElseThrow().email()).isEqualTo("late@shift.dk"));
+        Account account = accounts.findByEmployeeId(106).orElseThrow();
+        assertThat(account.active()).isFalse();
+        assertThat(account.isDeleted()).isTrue();
+        assertThat(account.aggregateVersion()).isEqualTo(2);
+        assertThat(account.snapshotVersion()).isEqualTo(1);
+        assertThat(accountRows(106)).isEqualTo(1);
+    }
+
+    @Test
     void anInactiveEmployeeGetsADisabledAccount() {
         publishSnapshot("workforce.employee.created.v1", UUID.randomUUID(), 105, 1, "gone@shift.dk", "INACTIVE");
 
