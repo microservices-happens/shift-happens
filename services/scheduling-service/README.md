@@ -32,6 +32,12 @@
 `#` and not `*` for the two event families: a topic wildcard matches exactly one word, so `scheduling.*` would only
 match `scheduling.shift`.
 
+## Correlation id (P1.6)
+
+`config/CorrelationIdFilter` takes `X-Correlation-Id` from the request (a token of up to 128
+`[A-Za-z0-9._:-]` characters) or generates a UUID, puts it in the MDC as `correlationId`, and echoes
+it on the response. Every log line prints it (`logging.pattern.correlation`). Published events carry the request's id; events written while consuming carry the consumed event's id. Both listeners (command and query role) put the consumed `correlationId` in the MDC.
+
 ## Extract from monolith
 `shift`, `shiftrequiredjobrole`, `shiftassignment`, `shiftapproval`, `shiftswap`, `shiftswapapproval` and `view/employeeshiftoverview` (now GraphQL).
 

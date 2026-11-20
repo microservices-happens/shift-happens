@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.scheduling.application;
 
 import dk.ek.shift_happens.scheduling.infrastructure.messaging.EventEnvelope;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -59,9 +60,15 @@ public class DomainEvents {
                 data));
     }
 
+    /**
+     * The caller's id, else the one CorrelationIdFilter or a listener put in the MDC, else a new one
+     * (scheduled jobs have neither).
+     */
     private static String correlationIdOf(String correlationId) {
-        return correlationId == null || correlationId.isBlank()
-                ? UUID.randomUUID().toString()
-                : correlationId;
+        if (correlationId != null && !correlationId.isBlank()) {
+            return correlationId;
+        }
+        String fromMdc = MDC.get("correlationId");
+        return fromMdc != null && !fromMdc.isBlank() ? fromMdc : UUID.randomUUID().toString();
     }
 }

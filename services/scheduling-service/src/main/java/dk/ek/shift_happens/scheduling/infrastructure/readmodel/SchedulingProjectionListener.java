@@ -4,6 +4,7 @@ import dk.ek.shift_happens.scheduling.application.SchedulingProjectionService;
 import dk.ek.shift_happens.scheduling.infrastructure.messaging.EventEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -29,8 +30,11 @@ class SchedulingProjectionListener {
 
     @RabbitListener(queues = "${app.rabbit.queue}")
     public void onEvent(EventEnvelope envelope) {
-        log.info("Projecting {} for aggregate {} (v{})", envelope.eventType(), envelope.aggregateId(),
-                envelope.aggregateVersion());
-        projection.apply(envelope);
+        // P1.6: the event's correlation id is in every log line written while it is projected.
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", envelope.correlationId())) {
+            log.info("Projecting {} for aggregate {} (v{})", envelope.eventType(), envelope.aggregateId(),
+                    envelope.aggregateVersion());
+            projection.apply(envelope);
+        }
     }
 }

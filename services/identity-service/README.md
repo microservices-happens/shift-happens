@@ -137,6 +137,12 @@ REST: [`contracts/openapi/identity.yaml`](../../contracts/openapi/identity.yaml)
 ## Publishes
 Nothing.
 
+## Correlation id (P1.6)
+
+`config/CorrelationIdFilter` takes `X-Correlation-Id` from the request (a token of up to 128
+`[A-Za-z0-9._:-]` characters) or generates a UUID, puts it in the MDC as `correlationId`, and echoes
+it on the response. Every log line prints it (`logging.pattern.correlation`). Consumed `workforce.employee.*` events put their `correlationId` in the MDC while they are handled.
+
 ## Extract from monolith
 `auth/*`: `AuthController`, `JwtService` (sign with RS256 and publish the public key as JWKS), `PepperedPasswordEncoder` and `CustomUserDetailsService`. Migrate `employee.login_password` into the accounts table.
 
