@@ -8,6 +8,8 @@ import java.util.Optional;
  */
 public interface IdempotencyStore {
 
+    void lock(String idempotencyKey);
+
     Optional<StoredResponse> find(String idempotencyKey);
 
     void save(String idempotencyKey, String requestHash, int responseStatus, String responseBody);

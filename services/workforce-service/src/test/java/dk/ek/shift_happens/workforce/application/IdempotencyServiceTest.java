@@ -63,6 +63,11 @@ class IdempotencyServiceTest {
         private final Map<String, StoredResponse> records = new HashMap<>();
 
         @Override
+        public void lock(String idempotencyKey) {
+            // The unit test runs sequentially.
+        }
+
+        @Override
         public Optional<StoredResponse> find(String idempotencyKey) {
             return Optional.ofNullable(records.get(idempotencyKey));
         }

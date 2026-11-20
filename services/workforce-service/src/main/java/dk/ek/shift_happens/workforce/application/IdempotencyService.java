@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -31,10 +33,23 @@ public class IdempotencyService {
         this.mapper = mapper;
     }
 
+    @Transactional
     public ResponseEntity<?> execute(String idempotencyKey, Object requestBody, Supplier<ResponseEntity<?>> action) {
+        return executeCommand(idempotencyKey, requestBody, action);
+    }
+
+    @Transactional
+    public ResponseEntity<?> execute(String idempotencyKey, String resource, Object requestBody,
+                                     Supplier<ResponseEntity<?>> action) {
+        return executeCommand(idempotencyKey, List.of(resource, requestBody), action);
+    }
+
+    private ResponseEntity<?> executeCommand(String idempotencyKey, Object requestBody,
+                                              Supplier<ResponseEntity<?>> action) {
         requireUuid(idempotencyKey);
         String requestHash = hash(requestBody);
 
+        store.lock(idempotencyKey);
         Optional<IdempotencyStore.StoredResponse> stored = store.find(idempotencyKey);
         if (stored.isPresent()) {
             if (!stored.get().requestHash().equals(requestHash)) {

@@ -18,5 +18,6 @@ public record EmployeeSnapshot(
         LocalDate hireDate,
         String employmentStatus,
         Long primaryWorkLocationId,
-        List<Integer> jobRoleIds) {
+        List<Long> jobRoleIds,
+        int weeklyContractHours) {
 }

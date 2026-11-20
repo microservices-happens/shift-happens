@@ -10,5 +10,9 @@ public interface EmployeeRepository {
 
     Optional<Employee> findById(long employeeId);
 
-    List<Employee> findAll();
+    Optional<Employee> lockById(long employeeId);
+
+    void softDelete(long employeeId, long aggregateVersion);
+
+    List<Employee> findAll(EmployeeFilter filter);
 }

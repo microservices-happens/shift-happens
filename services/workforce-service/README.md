@@ -16,8 +16,25 @@
 - Tests: `EmployeeTest` (domain), `WorkforceApplicationIT` (REST → PostgreSQL → outbox → RabbitMQ,
   including the idempotency replay and 409 paths).
 
-Still to do: the other resources (contracts, job roles, departments, locations), `updated`/`deleted`
-events (tombstone) and JWT security (P1.7).
+- `PATCH /v1/employees/{id}` takes the Employee request body defined by OpenAPI and publishes
+  an updated snapshot. `DELETE /v1/employees/{id}` soft-deletes the row and publishes a tombstone.
+  Deleted employees are hidden from reads and cannot be updated.
+- `GET /v1/employees` accepts optional filters. `employmentStatus`, `primaryWorkLocationId` and
+  `userRole` match exactly. `email`, `firstName` and `lastName` match case-insensitive substrings.
+  When multiple filters are provided, all must match.
+
+- Departments, job roles and work locations support list, create, read, update and delete.
+  Departments use PATCH for updates. Job roles and work locations use PUT.
+  POST requires an `Idempotency-Key` and replays the stored response on a retry.
+
+- Employee contracts and employee job-role assignments support list, create, read, update and delete.
+  Updates use PUT and POST requires an `Idempotency-Key`. Changes publish a versioned employee
+  snapshot with currently valid role IDs and weekly hours from the latest active contract.
+  Start and end dates are inclusive and evaluated in UTC when a snapshot is published.
+  Workforce stores the next date to check in PostgreSQL and polls for due employees every minute.
+  A changed snapshot is written to the outbox in the same transaction as the next scheduled check.
+
+Still to do: JWT security (P1.7).
 
 ## Provides
 REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yaml). CRUD under `/v1/employees`, `/v1/employeecontracts`, `/v1/employeejobroles`, `/v1/departments`, `/v1/jobroles` and `/v1/worklocations`.

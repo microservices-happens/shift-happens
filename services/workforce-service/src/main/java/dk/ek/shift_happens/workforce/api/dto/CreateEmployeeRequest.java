@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 
-/** Request body of POST /v1/employees (contracts/openapi/workforce.yaml, schema Employee). */
+/** Employee request body shared by POST and PATCH in contracts/openapi/workforce.yaml. */
 public record CreateEmployeeRequest(
         @NotBlank String employeeNumber,
         @NotBlank @Pattern(regexp = "Administrator|Manager|Employee",

@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.workforce.infrastructure.persistence;
 
 import dk.ek.shift_happens.workforce.domain.Employee;
+import dk.ek.shift_happens.workforce.domain.EmployeeFilter;
 import dk.ek.shift_happens.workforce.domain.EmployeeRepository;
 import org.springframework.stereotype.Repository;
 
@@ -19,16 +20,28 @@ class JpaEmployeeRepository implements EmployeeRepository {
 
     @Override
     public Employee save(Employee employee) {
-        return jpa.save(EmployeeEntity.from(employee)).toDomain();
+        return jpa.saveAndFlush(EmployeeEntity.from(employee)).toDomain();
     }
 
     @Override
     public Optional<Employee> findById(long employeeId) {
-        return jpa.findById(employeeId).map(EmployeeEntity::toDomain);
+        return jpa.findByEmployeeIdAndDeletedFalse(employeeId).map(EmployeeEntity::toDomain);
     }
 
     @Override
-    public List<Employee> findAll() {
-        return jpa.findAll().stream().map(EmployeeEntity::toDomain).toList();
+    public Optional<Employee> lockById(long employeeId) {
+        return jpa.lockActiveById(employeeId).map(EmployeeEntity::toDomain);
+    }
+
+    @Override
+    public void softDelete(long employeeId, long aggregateVersion) {
+        jpa.softDelete(employeeId, aggregateVersion);
+    }
+
+    @Override
+    public List<Employee> findAll(EmployeeFilter filter) {
+        return jpa.findActive(filter.employmentStatus(), filter.primaryWorkLocationId(), filter.userRole(),
+                filter.email(), filter.firstName(), filter.lastName())
+                .stream().map(EmployeeEntity::toDomain).toList();
     }
 }
