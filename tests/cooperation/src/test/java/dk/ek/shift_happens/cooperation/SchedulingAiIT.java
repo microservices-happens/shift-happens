@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.ConnectionFactory;
 import dk.ek.shift_happens.cooperation.support.ServiceContainer;
+import dk.ek.shift_happens.cooperation.support.TestTokens;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -68,14 +69,19 @@ class SchedulingAiIT {
              var model = new GenericContainer<>("python:3.12-alpine").withNetwork(network).withNetworkAliases("model")
                      .withCopyFileToContainer(MountableFile.forHostPath(config), "/model.py").withCommand("python", "/model.py")
                      .withExposedPorts(80).waitingFor(Wait.forHttp("/api/generate"));
+             var jwks = TestTokens.jwksServer(network);
              var scheduling = ServiceContainer.create("scheduling-service", network);
              var ai = ServiceContainer.create("ai-service", network)) {
             rabbit.start();
             schedulingDb.start();
             aiDb.start();
             model.start();
+            jwks.start();
             configure(scheduling, schedulingDb, "scheduling-db");
             configure(ai, aiDb, "ai-db");
+            // Both services validate the JWT themselves since P1.7; the test signs its own tokens.
+            scheduling.withEnv("JWT_ISSUER", TestTokens.ISSUER).withEnv("JWT_JWKS_URL", TestTokens.JWKS_URL);
+            ai.withEnv("JWT_ISSUER", TestTokens.ISSUER).withEnv("JWT_JWKS_URL", TestTokens.JWKS_URL);
             scheduling.withEnv("APP_ROLE", "command");
             ai.withEnv("LLM_BASE_URL", "http://model");
             scheduling.start();
@@ -153,6 +159,7 @@ class SchedulingAiIT {
                         + service.getMappedPort(8080) + path))
                 .header("Content-Type", "application/json")
                 .header("Idempotency-Key", UUID.randomUUID().toString())
+                .header("Authorization", "Bearer " + TestTokens.token(900, "Manager"))
                 .method(method, HttpRequest.BodyPublishers.ofString(body)).build();
         try (var http = HttpClient.newHttpClient()) {
             var response = http.send(request, HttpResponse.BodyHandlers.ofString());
