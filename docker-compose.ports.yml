@@ -1,0 +1,45 @@
+# Optional developer override: publishes every service on 127.0.0.1 so Swagger UI, GraphiQL and the raw
+# APIs are reachable in a browser without the gateway. Use it together with the base file:
+#
+#   docker compose -f docker-compose.microservices.yml -f docker-compose.ports.yml --profile app up -d
+#
+# Nothing else changes: same images, same networks, same environment. Do not use this file in CI or in a
+# deployment; the gateway is the only public entry point there.
+#
+# Swagger UI:  http://localhost:8081/swagger-ui.html   (identity)
+#              http://localhost:8082/swagger-ui.html   (workforce)
+#              http://localhost:8083/swagger-ui.html   (scheduling-command)
+#              http://localhost:8085/swagger-ui.html   (leave-command)
+#              http://localhost:8088/swagger-ui.html   (notification)
+#              http://localhost:8089/swagger-ui.html   (audit)
+# GraphiQL:    http://localhost:8084/graphiql          (scheduling-query)
+#
+# API calls still need a Bearer token (except /health and Swagger itself); the gateway on
+# https://localhost:8443 is not involved when you call these ports.
+services:
+  identity-service:
+    ports: ["127.0.0.1:8081:8080"]
+
+  workforce-service:
+    ports: ["127.0.0.1:8082:8080"]
+
+  scheduling-command:
+    ports: ["127.0.0.1:8083:8080"]
+
+  scheduling-query:
+    ports: ["127.0.0.1:8084:8080"]
+
+  leave-command:
+    ports: ["127.0.0.1:8085:8080"]
+
+  leave-query:
+    ports: ["127.0.0.1:8086:8080"]
+
+  ai-service:
+    ports: ["127.0.0.1:8087:8080"]
+
+  notification-service:
+    ports: ["127.0.0.1:8088:8080"]
+
+  audit-service:
+    ports: ["127.0.0.1:8089:8080"]

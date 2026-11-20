@@ -1,9 +1,40 @@
 spring:
   application:
     name: audit-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:audit}
+    username: ${DB_USER:audit}
+    password: ${DB_PASSWORD:audit_dev}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:shift}
+    password: ${RABBITMQ_PASSWORD:shift_dev}
+    virtual-host: ${RABBITMQ_VHOST:shift-happens}
+  flyway:
+    enabled: true
+
+app:
+  events:
+    exchange: ${EVENT_EXCHANGE:shift-happens.events}
+    dead-letter-exchange: ${DEAD_LETTER_EXCHANGE:shift-happens.dlx}
+  rabbit:
+    queue: ${RABBITMQ_QUEUE:audit.events}
+  security:
+    issuer: ${JWT_ISSUER:shift-happens-identity}
+    jwks-url: ${JWT_JWKS_URL:http://localhost:8080/.well-known/jwks.json}
+  query:
+    # The API has no pagination in the contract; a bounded answer keeps one request from reading the whole log.
+    max-rows: ${AUDIT_MAX_ROWS:1000}
+
 server:
   port: ${HTTP_PORT:8080}
   shutdown: graceful
+
+# P1.6: every log line carries the correlation id that CorrelationIdFilter / the listener put in the MDC.
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

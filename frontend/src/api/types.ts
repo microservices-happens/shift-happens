@@ -1,6 +1,7 @@
 // Domain types for the REST client. Everything here is derived from the types generated from
 // contracts/openapi/*.yaml (see src/api/generated, `npm run generate:api`); do not hand-write
 // payload shapes. Only the conveniences below are added on top.
+import type { components as Audit } from './generated/audit';
 import type { components as Identity } from './generated/identity';
 import type { components as Leave } from './generated/leave';
 import type { components as Notification } from './generated/notification';
@@ -28,6 +29,9 @@ export type LoginResponse = Identity['schemas']['LoginResponse'];
 export type RoleName = LoginResponse['roleName'];
 export type AuthUser = Omit<LoginResponse, 'token'>;
 export type SetPasswordRequest = Identity['schemas']['SetPasswordRequest'];
+
+// audit-service (Administrator only)
+export type AuditEntry = Audit['schemas']['AuditEntry'];
 
 // workforce-service
 type EmployeeSchema = Workforce['schemas']['Employee'];

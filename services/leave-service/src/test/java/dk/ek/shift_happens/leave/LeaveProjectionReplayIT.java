@@ -93,6 +93,8 @@ class LeaveProjectionReplayIT extends AbstractSagaIT {
 
     @BeforeAll
     void runTheScenarioOnTheCommandRole() throws Exception {
+        // PER_CLASS + @BeforeAll runs before the harness's @BeforeEach, so the default bearer is installed here.
+        TestJwks.authorizeByDefault(http, "Manager");
         Instant start = Instant.now();
         String tag = UUID.randomUUID().toString().substring(0, 8);
         List<EventEnvelope> workforce = new ArrayList<>();
@@ -423,6 +425,9 @@ class LeaveProjectionReplayIT extends AbstractSagaIT {
                 "--spring.rabbitmq.username=shift",
                 "--spring.rabbitmq.password=shift_dev",
                 "--spring.rabbitmq.virtual-host=/",
+                // The query role validates the JWT itself (#88), so it needs the test JWKS too.
+                "--app.security.jwks-url=" + TestJwks.jwksUrl(),
+                "--app.security.issuer=" + TestJwks.ISSUER,
                 "--app.rabbit.queue=" + REPLAY_QUEUE);
         replayMongo = queryRole.getBean(MongoTemplate.class);
         replayRabbit = queryRole.getBean(RabbitTemplate.class);
@@ -432,7 +437,10 @@ class LeaveProjectionReplayIT extends AbstractSagaIT {
     private JsonNode getJson(String path) throws Exception {
         java.net.http.HttpResponse<String> response = java.net.http.HttpClient.newHttpClient().send(
                 java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + queryPort + path
-                        .replace(" ", "%20"))).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                        .replace(" ", "%20")))
+                        // The read models are behind the same JWT rule as every other API (#88).
+                        .header("Authorization", "Bearer " + TestJwks.manager())
+                        .build(), java.net.http.HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("GET %s: %s", path, response.body()).isEqualTo(200);
         return objectMapper.readTree(response.body());
     }

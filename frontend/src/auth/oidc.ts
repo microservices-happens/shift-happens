@@ -12,12 +12,24 @@ import type { AuthUser, RoleName } from '../api/types';
  * Never log it.
  */
 
-export type OidcProvider = 'google' | 'github';
+export type OidcProvider = 'google' | 'github' | 'local';
 
+/**
+ * `local` is a real OpenID Connect provider too: Keycloak in docker-compose (realm shift-happens). It makes
+ * the authorization-code + PKCE flow demonstrable without third-party accounts; Google and GitHub use the
+ * same backend code path, so a missing OIDC_* client id only disables that one button.
+ */
 export const OIDC_PROVIDERS: { id: OidcProvider; label: string }[] = [
   { id: 'google', label: 'Google' },
   { id: 'github', label: 'GitHub' },
+  { id: 'local', label: 'Local demo (Keycloak)' },
 ];
+
+const PROVIDER_IDS: readonly OidcProvider[] = OIDC_PROVIDERS.map((p) => p.id);
+
+export function isOidcProvider(value: unknown): value is OidcProvider {
+  return typeof value === 'string' && (PROVIDER_IDS as readonly string[]).includes(value);
+}
 
 export function providerLabel(provider: OidcProvider | null | undefined): string {
   return OIDC_PROVIDERS.find((p) => p.id === provider)?.label ?? 'the login provider';
@@ -68,7 +80,7 @@ export function takePendingLogin(): PendingLogin | null {
     if (!raw) return null;
     const pending = JSON.parse(raw) as Partial<PendingLogin>;
     if (
-      (pending.provider !== 'google' && pending.provider !== 'github') ||
+      !isOidcProvider(pending.provider) ||
       typeof pending.startedAt !== 'number' ||
       Date.now() - pending.startedAt > PENDING_TTL_MS
     ) {

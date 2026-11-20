@@ -14,6 +14,10 @@ spec:
             envFrom:
               - configMapRef: { name: shift-happens-config }
               - secretRef: { name: email-function-secrets, optional: true }
+            env:
+              # The Job pulls until the queue is empty and then exits, so Kubernetes can complete it.
+              - name: EMAIL_FUNCTION_EXIT_WHEN_IDLE
+                value: "true"
   pollingInterval: 10
   maxReplicaCount: 5
   triggers:

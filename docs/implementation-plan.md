@@ -11,19 +11,19 @@ accepted.
 |---|---|
 | Architecture and requirements | Complete: `docs/architecture.md`, `docs/adr/`, high-level diagram |
 | Contracts | Complete: `contracts/openapi/*.yaml`, `contracts/graphql/scheduling.graphql`, `contracts/asyncapi.yaml`, JSON Schemas |
-| Services | Implemented: identity, workforce, scheduling (command + query/GraphQL), leave (command + query) and ai, each with its own database, Flyway, RabbitMQ and `*IT`s. notification-service and audit-service are still walking skeletons (`GET /health`, context test, `SwaggerContractTest`) |
-| Email function | Walking skeleton (context test only) |
-| Frontend | React 18 + Vite + TypeScript: hand-written REST client (base URL `VITE_API_BASE_URL`: `/api` in dev, `/api/v1` in the Compose image), auth context with local login and Google/GitHub OIDC (`/login/callback`), CRUD pages. No generated types, no Apollo, no `Idempotency-Key`, no notifications, no automated tests |
-| Local infrastructure | `docker-compose.microservices.yml` defines databases, RabbitMQ, Mailpit, OTel, gateway and all services; Ollama under the `ai` profile |
-| Kubernetes | `kubernetes/`: plain manifests for Docker Desktop Kubernetes (ADR 0005), one Secret per service, Ollama. `k8s/` (Kustomize base + local overlay, HPA, Ingress, KEDA ScaledJob) is not the deployed path; #64 decides which stays |
+| Services | Implemented: identity, workforce, scheduling (command + query/GraphQL), leave (command + query), ai, notification and audit, each with its own database, Flyway, RabbitMQ and `*IT`s |
+| Email function | Implemented: queue `email.send` → SMTP (Mailpit) → `email.send.dlq`, in-memory dedupe, idle exit for the KEDA ScaledJob |
+| Frontend | React 18 + Vite + TypeScript: hand-written REST client (base URL `VITE_API_BASE_URL`: `/api` in dev, `/api/v1` in the Compose image), auth context with local login and Google/GitHub/**local Keycloak** OIDC (`/login/callback`), CRUD pages, notification bell and an Administrator-only Audit Log page; verified against the running Compose stack (REST + GraphQL + OIDC dashboard + audit). No automated frontend tests |
+| Local infrastructure | `docker-compose.microservices.yml` defines databases, RabbitMQ, Mailpit, OTel, gateway, Keycloak and all services; Ollama under the `ai` profile |
+| Kubernetes | `kubernetes/`: plain manifests for Docker Desktop Kubernetes (ADR 0005), one Secret per service, Ollama, and `kubernetes/autoscaling/` (HPA + KEDA). `k8s/` (Kustomize base + local overlay, HPA, Ingress, KEDA ScaledJob) is not the deployed path; #64 decides which stays |
 | CI | `ci.yml`: contract lint + AsyncAPI HTML artifact, per-service `mvn verify`, image build + Trivy (non-blocking) + GHCR push on `main`, frontend typecheck/ESLint/build, SonarQube Cloud job (skips: no `SONAR_TOKEN`). `codeql.yml`, `system-tests.yml`, `nightly-shift-risk.yml` |
-| Tests | Unit tests and Testcontainers `*IT`s in the five implemented services; cooperation tests `EmployeeReplicationIT`, `LeaveApprovalSagaIT` (enabled) and `SchedulingAiIT` |
+| Tests | Unit tests and Testcontainers `*IT`s in every implemented service; cooperation tests `EmployeeReplicationIT`, `LeaveApprovalSagaIT` (enabled) and `SchedulingAiIT` |
 
 "Empty" means a service has no persistence, security, AMQP or Flyway script and exposes only
-`/health`; today that applies to notification, audit and email-function. Phase 0 is partly done: the
-event envelope, outbox + relay, `processed_events`, version-aware upserts, Flyway and `problem+json`
-exist in the implemented services, JWT validation in identity, workforce, scheduling and ai (#109),
-and the correlation-id filter in the same four services (#106); both are still missing in leave (#88).
+`/health`; no service is in that state any more. Phase 0 is done: the event envelope, outbox + relay,
+`processed_events`, version-aware upserts, Flyway and `problem+json` exist in every service that needs
+them; JWT validation is in identity, workforce, scheduling, leave (both roles), ai, notification and
+audit (email-function has no HTTP API), as is the correlation-id filter (#106, #109, #88).
 
 ## 2. How we implement
 
@@ -217,7 +217,9 @@ same balance.
 **Acceptance:** each covered event produces exactly one notification per recipient; a redelivered
 event produces none; an employee cannot read another employee's notifications (403/404 test).
 
-**Status (2026-11-20):** not started; walking skeleton (#52, #53).
+**Status (2026-11-20):** done (P4.3): consumer over the 14 routing keys, employee replica with
+tombsones, `processed_event`, outbox → `notification.email.requested.v1`, REST with owner check,
+`NotificationPolicyTest`, `NotificationServiceIT`.
 
 ### Slice 8 — Audit (P4.5)
 
@@ -228,7 +230,8 @@ event produces none; an employee cannot read another employee's notifications (4
 **Acceptance:** every event in the catalog is stored; a redelivered event is ignored (IT); an
 Employee gets 403; the table has no update or delete path.
 
-**Status (2026-11-20):** not started; walking skeleton (#55).
+**Status (2026-11-20):** done (P4.5): append-only `audit_entry`, unique `event_id`, filters,
+Administrator-only search, `AuditServiceIT`.
 
 ### Slice 9 — AI service (P4.1, P4.2)
 
@@ -256,7 +259,9 @@ Ollama in Compose and `kubernetes/ollama/` with measured latency (`kubernetes/ol
 **Acceptance:** an IT with a stubbed SMTP server sends exactly one message per event; a redelivery
 sends nothing.
 
-**Status (2026-11-20):** not started; walking skeleton (#54).
+**Status (2026-11-20):** done (P4.4): Spring AMQP + `JavaMailSender`, three attempts then
+`email.send.dlq`, in-memory dedupe, idle exit for the ScaledJob; `EmailFunctionIT` against RabbitMQ and
+Mailpit.
 
 ### Slice 11 — Frontend (P5)
 

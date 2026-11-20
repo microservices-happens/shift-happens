@@ -8,6 +8,7 @@ import dk.ek.shift_happens.identity.domain.ExternalIdentityLinkRepository;
 import dk.ek.shift_happens.identity.domain.LoginAttemptRepository;
 import dk.ek.shift_happens.identity.infrastructure.oidc.GitHubOidcClient;
 import dk.ek.shift_happens.identity.infrastructure.oidc.GoogleOidcClient;
+import dk.ek.shift_happens.identity.infrastructure.oidc.LocalOidcClient;
 import dk.ek.shift_happens.identity.infrastructure.oidc.OidcProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -54,6 +55,12 @@ class OidcConfig {
     @Bean
     GitHubOidcClient gitHubOidcClient(OidcProperties properties) {
         return new GitHubOidcClient(properties.github(), providerHttp());
+    }
+
+    /** Local OpenID Connect provider (Keycloak in docker-compose); disabled when its client id is empty. */
+    @Bean
+    LocalOidcClient localOidcClient(OidcProperties properties) {
+        return new LocalOidcClient(properties.local(), providerHttp(), new RestTemplate(requestFactory()));
     }
 
     @Bean

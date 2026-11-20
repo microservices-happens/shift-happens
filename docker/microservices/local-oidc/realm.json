@@ -1,0 +1,75 @@
+{
+  "realm": "shift-happens",
+  "displayName": "Shift Happens (local OIDC demo)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "Administrator" },
+      { "name": "Manager" },
+      { "name": "Employee" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "shift-happens-web",
+      "name": "Shift Happens frontend (authorization code + PKCE)",
+      "description": "Public client: identity-service sends the authorization code with an S256 PKCE verifier and validates the id_token.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://localhost:8443/api/v1/auth/oidc/local/callback"
+      ],
+      "webOrigins": [
+        "https://localhost:8443",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://localhost:8443/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@shift-happens.example",
+      "email": "admin@shift-happens.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Mette",
+      "lastName": "Lindholm",
+      "realmRoles": ["Administrator"],
+      "credentials": [{ "type": "password", "value": "Demo1234!", "temporary": false }]
+    },
+    {
+      "username": "sofie.jensen@shift-happens.example",
+      "email": "sofie.jensen@shift-happens.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Sofie",
+      "lastName": "Jensen",
+      "realmRoles": ["Manager"],
+      "credentials": [{ "type": "password", "value": "Demo1234!", "temporary": false }]
+    },
+    {
+      "username": "ida.hansen@shift-happens.example",
+      "email": "ida.hansen@shift-happens.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Ida",
+      "lastName": "Hansen",
+      "realmRoles": ["Employee"],
+      "credentials": [{ "type": "password", "value": "Demo1234!", "temporary": false }]
+    }
+  ]
+}
