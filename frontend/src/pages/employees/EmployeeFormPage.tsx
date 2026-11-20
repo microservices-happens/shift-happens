@@ -9,6 +9,7 @@ import { setPassword } from '../../api/accounts';
 import { listWorkLocations } from '../../api/workLocations';
 import type { NewEmployee, RoleName, WorkLocation } from '../../api/types';
 import { ApiError } from '../../api/types';
+import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite, isAdmin } from '../../auth/roles';
 
@@ -36,6 +37,8 @@ export default function EmployeeFormPage() {
   const maySetPassword = isAdmin(user?.roleName) || (numericId !== null && user?.employeeId === numericId);
 
   const [form, setForm] = useState<NewEmployee>(EMPTY_FORM);
+  // One Idempotency-Key per submission of this form; a retry of the same data reuses it.
+  const createAction = useIdempotentAction();
   // Passwords belong to identity-service, not to the workforce Employee resource.
   const [newPassword, setNewPassword] = useState('');
   const [locations, setLocations] = useState<WorkLocation[]>([]);
@@ -100,7 +103,7 @@ export default function EmployeeFormPage() {
     setSubmitting(true);
     try {
       if (isNew) {
-        await createEmployee(form);
+        await createAction.run(form, (key) => createEmployee(form, key));
       } else if (numericId !== null) {
         await updateEmployee(numericId, form);
         if (newPassword) await setPassword(numericId, newPassword);

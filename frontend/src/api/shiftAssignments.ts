@@ -7,8 +7,8 @@ import type { NewShiftAssignment, ShiftAssignment, V1Path } from './types';
 const SHIFT_ASSIGNMENTS = '/shiftassignments' satisfies V1Path<keyof paths>;
 const SHIFT_ASSIGNMENT = '/shiftassignments/{id}' satisfies V1Path<keyof paths>;
 
-export function createShiftAssignment(data: NewShiftAssignment): Promise<ShiftAssignment> {
-  return apiRequest<ShiftAssignment>(SHIFT_ASSIGNMENTS, { method: 'POST', body: data });
+export function createShiftAssignment(data: NewShiftAssignment, idempotencyKey: string): Promise<ShiftAssignment> {
+  return apiRequest<ShiftAssignment>(SHIFT_ASSIGNMENTS, { method: 'POST', body: data, idempotencyKey });
 }
 
 export function updateShiftAssignment(

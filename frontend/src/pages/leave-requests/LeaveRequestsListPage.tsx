@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   deleteLeaveRequest,
@@ -14,6 +14,9 @@ import type {
 import { ApiError } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
+import { LeaveStatusPill } from './LeaveStatusPill';
+import { isCancellable, isSagaInFlight } from './leaveStatus';
+import { useBoundedPoll } from './useBoundedPoll';
 
 const AVATAR_COLORS = [
   '#6366f1',
@@ -37,20 +40,6 @@ function employeeInitials(e: Employee | undefined): string {
   const f = e.firstName?.[0] ?? '';
   const l = e.lastName?.[0] ?? '';
   return (f + l).toUpperCase() || '?';
-}
-
-function statusPillClass(status: string | null | undefined): string {
-  const s = (status ?? '').toLowerCase();
-  if (s === 'approved') return 'pill pill-success';
-  if (s === 'rejected' || s === 'denied' || s === 'cancelled')
-    return 'pill pill-danger';
-  if (s === 'pending') return 'pill pill-brand';
-  return 'pill pill-neutral';
-}
-
-function formatStatus(status: string | null | undefined): string {
-  if (!status) return 'Unknown';
-  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
 function formatRange(start: string | null, end: string | null): string {
@@ -89,6 +78,9 @@ export default function LeaveRequestsListPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Re-read the list while a request's approval saga runs (bounded, stops on unmount).
+  const [pollRun, setPollRun] = useState<number | null>(null);
+  const runCounter = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +90,10 @@ export default function LeaveRequestsListPage() {
         setRequests(r);
         setEmployees(e);
         setLeaveTypes(t);
+        if (r.some((x) => isSagaInFlight(x.requestStatus))) {
+          runCounter.current += 1;
+          setPollRun(runCounter.current);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -109,6 +105,18 @@ export default function LeaveRequestsListPage() {
       cancelled = true;
     };
   }, []);
+
+  const pollExhausted = useBoundedPoll(
+    pollRun,
+    async () => {
+      const r = await listLeaveRequests();
+      setRequests(r);
+      if (r.some((x) => isSagaInFlight(x.requestStatus))) return false;
+      setPollRun(null);
+      return true;
+    },
+    { intervalMs: 3000, maxAttempts: 30 }
+  );
 
   const empById = useMemo(() => {
     const m = new Map<number, Employee>();
@@ -130,13 +138,17 @@ export default function LeaveRequestsListPage() {
     return requests;
   }, [requests, isEmployee, user?.employeeId]);
 
-  async function handleDelete(id: number, label: string) {
-    if (!confirm(`Delete leave request for "${label}"?`)) return;
+  // DELETE cancels the request (soft: it stays, as CANCELLED). Administrator/Manager only.
+  async function handleCancel(id: number, label: string) {
+    if (!confirm(`Cancel the leave request of "${label}"?`)) return;
     try {
       await deleteLeaveRequest(id);
-      setRequests((prev) => prev?.filter((r) => r.leaveRequestId !== id) ?? null);
+      setRequests(
+        (prev) =>
+          prev?.map((r) => (r.leaveRequestId === id ? { ...r, requestStatus: 'CANCELLED' } : r)) ?? null
+      );
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Delete failed');
+      alert(err instanceof ApiError ? err.message : 'Cancelling failed');
     }
   }
 
@@ -157,6 +169,12 @@ export default function LeaveRequestsListPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+      {pollExhausted && (
+        <div className="alert alert-info" role="status">
+          An approval is still in progress; its outcome arrives asynchronously. Reload the page to
+          check again.
+        </div>
+      )}
       {!visible && !error && <div className="page-muted">Loading…</div>}
 
       {visible && (
@@ -193,7 +211,6 @@ export default function LeaveRequestsListPage() {
                   ? `${emp.firstName ?? ''} ${emp.lastName ?? ''}`.trim()
                   : `#${r.employeeId}`;
                 const days = dayCount(r.startDate, r.endDate);
-                const canModify = mayWrite || r.employeeId === user?.employeeId;
                 return (
                   <tr key={r.leaveRequestId}>
                     <td>
@@ -223,30 +240,28 @@ export default function LeaveRequestsListPage() {
                       {days > 0 ? `${days} ${days === 1 ? 'day' : 'days'}` : '—'}
                     </td>
                     <td>
-                      <span className={statusPillClass(r.requestStatus)}>
-                        <span className="pill-dot" />
-                        {formatStatus(r.requestStatus)}
-                      </span>
+                      <LeaveStatusPill status={r.requestStatus} />
+                      {r.requestStatus === 'REJECTED' && r.rejectionReason && (
+                        <div className="name-cell-secondary" title="Rejection reason">
+                          {r.rejectionReason}
+                        </div>
+                      )}
                     </td>
                     <td className="data-table-actions">
-                      {canModify && (
-                        <>
-                          <Link
-                            to={`/leave-requests/${r.leaveRequestId}`}
-                            className="btn btn-sm"
-                          >
-                            {mayWrite ? 'Review' : 'View'}
-                          </Link>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-danger"
-                            onClick={() =>
-                              handleDelete(r.leaveRequestId, empLabel)
-                            }
-                          >
-                            Delete
-                          </button>
-                        </>
+                      <Link
+                        to={`/leave-requests/${r.leaveRequestId}`}
+                        className="btn btn-sm"
+                      >
+                        {mayWrite && r.requestStatus === 'PENDING' ? 'Review' : 'View'}
+                      </Link>
+                      {mayWrite && isCancellable(r.requestStatus) && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleCancel(r.leaveRequestId, empLabel)}
+                        >
+                          Cancel
+                        </button>
                       )}
                     </td>
                   </tr>

@@ -14,8 +14,8 @@ export function getDepartment(id: number): Promise<Department> {
   return apiRequest<Department>(pathWithParams(DEPARTMENT, { id }));
 }
 
-export function createDepartment(data: NewDepartment): Promise<Department> {
-  return apiRequest<Department>(DEPARTMENTS, { method: 'POST', body: data });
+export function createDepartment(data: NewDepartment, idempotencyKey: string): Promise<Department> {
+  return apiRequest<Department>(DEPARTMENTS, { method: 'POST', body: data, idempotencyKey });
 }
 
 export function updateDepartment(id: number, data: Partial<NewDepartment>): Promise<Department> {

@@ -15,8 +15,8 @@ export function getLeaveRequest(id: number): Promise<LeaveRequest> {
   return apiRequest<LeaveRequest>(pathWithParams(LEAVE_REQUEST, { id }));
 }
 
-export function createLeaveRequest(data: NewLeaveRequest): Promise<LeaveRequest> {
-  return apiRequest<LeaveRequest>(LEAVE_REQUESTS, { method: 'POST', body: data });
+export function createLeaveRequest(data: NewLeaveRequest, idempotencyKey: string): Promise<LeaveRequest> {
+  return apiRequest<LeaveRequest>(LEAVE_REQUESTS, { method: 'POST', body: data, idempotencyKey });
 }
 
 export function updateLeaveRequest(

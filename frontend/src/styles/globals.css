@@ -501,6 +501,12 @@ button {
   border: 1px solid #fecdca;
 }
 
+.alert-info {
+  background: var(--color-primary-soft);
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
 /* ---------- Buttons ---------- */
 
 .btn {
@@ -1073,6 +1079,29 @@ button {
   background: var(--color-danger-soft);
   color: var(--color-danger);
   border-color: #fecdca;
+}
+
+/* In progress, e.g. a leave request whose approval saga is running (APPROVAL_PENDING). */
+.pill-warning {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.pill-dot--pulse {
+  animation: pill-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pill-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-dot--pulse {
+    animation: none;
+  }
 }
 
 .pill-admin {

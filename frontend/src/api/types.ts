@@ -60,6 +60,11 @@ export type NewLeaveRequest = Writable<
   'leaveRequestId' | 'requestStatus' | 'rejectionReason' | 'requestedDatetime'
 >;
 
+type LeaveApprovalSchema = Leave['schemas']['LeaveApproval'];
+export type LeaveApproval = LeaveApprovalSchema;
+export type LeaveDecision = LeaveApprovalSchema['decision'];
+export type NewLeaveApproval = Writable<LeaveApprovalSchema, 'leaveApprovalId' | 'decisionDatetime'>;
+
 export class ApiError extends Error {
   constructor(
     public status: number,

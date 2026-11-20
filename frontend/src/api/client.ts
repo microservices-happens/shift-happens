@@ -34,8 +34,10 @@ interface RequestOptions {
   /** Do not trigger the global logout on 401 (for best-effort background calls such as polling). */
   ignoreUnauthorized?: boolean;
   /**
-   * Every POST carries an `Idempotency-Key` (contracts/README.md). Pass the key when the caller
-   * retries the same user action; otherwise a fresh one is generated per call.
+   * Every POST carries an `Idempotency-Key` (contracts/README.md). The key belongs to the user
+   * action, not to the call: every create function in src/api takes it from an `IdempotentAction`
+   * (./idempotency.ts), so a retry of the same action sends the same key. A fresh key per call is
+   * only the fallback for POSTs without one in the contract (`POST /v1/auth/login`).
    */
   idempotencyKey?: string;
 }
