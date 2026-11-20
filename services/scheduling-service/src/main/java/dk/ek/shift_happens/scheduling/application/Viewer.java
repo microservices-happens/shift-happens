@@ -14,4 +14,12 @@ public record Viewer(Long employeeId, String role) {
     public boolean seesEverything() {
         return ADMINISTRATOR.equals(role) || MANAGER.equals(role);
     }
+
+    /**
+     * contracts/openapi/scheduling.yaml, POST /v1/shiftswaps: an Administrator or Manager may request a
+     * swap for anyone, an Employee only for their own assignment (employeeFromId = JWT employeeId).
+     */
+    public boolean mayRequestSwapFrom(long employeeFromId) {
+        return seesEverything() || (employeeId != null && employeeId == employeeFromId);
+    }
 }

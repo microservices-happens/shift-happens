@@ -34,7 +34,36 @@ class ShiftCommandIT extends AbstractCommandIT {
 
     @Test
     void healthEndpointIsPublicAndUp() {
-        assertThat(http.getForEntity("/health", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(http.exchange("/health", HttpMethod.GET, new HttpEntity<>(TestJwks.anonymous()), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void aWriteWithoutATokenOrWithAForgedOneIsA401AndCreatesNothing() {
+        CreateShiftRequest shift = new CreateShiftRequest(2, 3, "Unauthorized " + UUID.randomUUID(), START, END,
+                "PLANNED", List.of(new RequiredJobRoleRequest(7, 2)));
+
+        ResponseEntity<String> anonymous = postWith(TestJwks.anonymous(), "/v1/shifts", shift, String.class);
+        ResponseEntity<String> forged = postWith(TestJwks.bearer(TestJwks.tokenSignedByAnotherKey(1, "Manager")),
+                "/v1/shifts", shift, String.class);
+
+        assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(anonymous.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(forged.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM shift WHERE shift_name = ?", Integer.class,
+                shift.shiftName())).isZero();
+    }
+
+    @Test
+    void anEmployeeMayNotCreateAShiftButAnAdministratorMay() {
+        ResponseEntity<String> employee = postWith(TestJwks.bearer(TestJwks.employee(7)), "/v1/shifts",
+                morningShift(), String.class);
+        ResponseEntity<String> administrator = postWith(TestJwks.bearer(TestJwks.administrator()), "/v1/shifts",
+                morningShift(), String.class);
+
+        assertThat(employee.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(employee.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(administrator.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
     }
 
     @Test
