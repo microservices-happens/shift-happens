@@ -68,6 +68,17 @@ before running the script, or wipe the data (see Teardown) so the new random pas
 A new `PASSWORD_PEPPER` invalidates stored password hashes; reuse the old pepper to keep them.
 The old shared Secret is no longer referenced: `kubectl delete secret shift-happens-secrets`.
 
+**Existing RabbitMQ data and the dead-letter fix.** Queues and bindings are durable and live in the hostPath
+`/var/lib/shift-happens/rabbitmq`, so they survive redeploys. Older identity, scheduling and ai versions bound
+their `<queue>.dlq` to `shift-happens.dlx` with `#`. The new versions remove that binding themselves on
+startup and keep their queue arguments, so **no manual step is needed**: `kubectl apply -R -f kubernetes/`
+with the new images, and waiting messages are kept. Copies of other services' dead letters that the old
+binding put into those DLQs stay until you purge them, e.g.
+`kubectl exec deployment/rabbitmq -- rabbitmqctl purge_queue -p shift-happens identity.accounts.dlq` (look at
+them first, see docs/wiki/Troubleshooting.md, "Messages pile up in a `.dlq`"). A queue whose *arguments*
+changed (leave's `leave.command`, `PRECONDITION_FAILED` in the log) does need deleting; the commands are in
+docs/wiki/Troubleshooting.md, "A service logs `PRECONDITION_FAILED` for its queue".
+
 ## Deploy
 
 ```bash

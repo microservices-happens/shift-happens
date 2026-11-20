@@ -108,26 +108,42 @@ References: `services/identity-service` (Postgres) and scheduling-service's comm
 - the consumer's **durable queue**, named by `RABBITMQ_QUEUE` (`app.rabbit.queue`, e.g.
   `identity.accounts`), with `x-dead-letter-exchange = shift-happens.dlx`;
 - one `Binding` per routing key it handles;
-- `<queue>.dlq` bound to `shift-happens.dlx`;
+- `<queue>.dlq` bound to `shift-happens.dlx` with **exactly the queue name** as routing key (never `#`: dead
+  letters keep a routing key, and a `#` binding gives the DLQ a copy of every service's dead letters);
 - the listener container factory: `setDefaultRequeueRejected(false)`, `RetryInterceptorBuilder.stateless()
-  .maxAttempts(3)` and a `RepublishMessageRecoverer` to the DLX. **Three attempts, then dead-letter, never
-  requeue forever.**
+  .maxAttempts(3)` and a `RepublishMessageRecoverer(rabbitTemplate, deadLetterExchange, queueName)` to the
+  DLX. Pass the queue name: with `null`, spring-amqp republishes with `error.` + the original key, which no
+  exact DLQ binding matches. **Three attempts, then dead-letter, never requeue forever.**
 
 Bind the **exact** new routing key, as the contract says and as leave and ai do. (identity and
 scheduling-command bind the employee events with the wildcard `workforce.employee.*.v1`; that predates the
 rule and would also catch a future employee event nobody handles.)
 
-Where the services differ on dead-lettering (details on the
-[Troubleshooting](https://github.com/microservices-happens/shift-happens/blob/main/docs/wiki/Troubleshooting.md#messages-pile-up-in-a-dlq) page):
+Every consumer now dead-letters by queue name into its own DLQ (details on the
+[Troubleshooting](https://github.com/microservices-happens/shift-happens/blob/main/docs/wiki/Troubleshooting.md#messages-pile-up-in-a-dlq) page).
+They differ in one queue argument and the back-off:
 
-| Service | Dead-letter routing key | DLQ binding |
+| Service | Work queue arguments | Back-off between the three attempts |
 |---|---|---|
-| leave-service (`LeaveCommandTopology`, `LeaveQueryTopology`) | the queue name; retries back off 1 s, 2 s | exactly the queue name; also sets `x-dead-letter-routing-key` |
-| identity, scheduling (`SchedulingCommandTopology`, `readmodel/ProjectionTopology`) | the original routing key (`RepublishMessageRecoverer(..., null)`) | `#` |
-| ai-service (`AiMessaging.java`) | the original routing key; no retry advice, so it dead-letters on the first failure | `#` |
+| leave-service (`LeaveCommandTopology`, `LeaveQueryTopology`) | `x-dead-letter-exchange` + `x-dead-letter-routing-key` = queue name | 1 s, 2 s |
+| identity (`RabbitTopology`), scheduling (`SchedulingCommandTopology`, `readmodel/ProjectionTopology`) | `x-dead-letter-exchange` only | none |
+| ai-service (`AiMessaging.java`) | `x-dead-letter-exchange` only | 1 s, 2 s; the model is called once per message |
 
-For a new consumer, prefer the leave variant: its DLQ holds only its own failures, and
-`services/leave-service/src/test/java/dk/ek/shift_happens/leave/EmployeeReplicaIT.java` proves it.
+identity, scheduling and ai keep their original queue arguments on purpose: RabbitMQ refuses to redeclare an
+existing queue with different arguments (`PRECONDITION_FAILED`), so adding `x-dead-letter-routing-key` would
+break every broker that already has the queue. Their routing key comes from the recoverer, the path every
+failed message takes, and each has a `StaleDeadLetterBindingRemover` that deletes the old `#` DLQ binding on
+connect. For a **new** consumer (a queue no broker has yet), use the leave variant and set
+`x-dead-letter-routing-key` from the start. `EmployeeReplicaIT` (leave), `DeadLetterTopologyIT` (identity),
+`CommandDeadLetterTopologyIT` / `ProjectionDeadLetterTopologyIT` (scheduling) and `AiDeadLetterIT` (ai) prove
+that a poison message lands in the own DLQ after three attempts and nowhere else.
+
+**Changing the arguments of an existing queue** (adding a TTL, a dead-letter key, ...) is a breaking change for
+every existing broker: the declaration fails with `PRECONDITION_FAILED` and the service logs declaration
+errors instead of running with the topology you wrote. Either find a way
+that keeps the arguments (as above), or document the delete-and-recreate steps in the service README and
+[Troubleshooting](https://github.com/microservices-happens/shift-happens/blob/main/docs/wiki/Troubleshooting.md#a-service-logs-precondition_failed-for-its-queue).
+Also remember that RabbitAdmin never removes a binding you delete from the code.
 
 The queue must exist before the producer publishes: a topic exchange drops messages that match no queue.
 That is why `scripts/seed-dev.sh` checks the queues before seeding.
@@ -186,7 +202,7 @@ Never let a consumer call the producer back. If it needs more data, the snapshot
 |---|---|---|
 | Producer `*IT` | `services/workforce-service/src/test/java/dk/ek/shift_happens/workforce/WorkforceApplicationIT.java` | REST → Postgres → outbox → RabbitMQ with Testcontainers (`postgres:17-alpine`, `rabbitmq:4-management`): binds a test queue, receives the message, checks the routing key, validates `data` against `contracts/events/payloads/employee.schema.json` (networknt JSON Schema, path `../../contracts/events/payloads`), and waits with Awaitility until the outbox row is published |
 | Consumer `*IT` | `services/identity-service/src/test/java/dk/ek/shift_happens/identity/IdentityApplicationIT.java`, `services/scheduling-service/src/test/java/dk/ek/shift_happens/scheduling/EmployeeReplicaIT.java` | publishes envelopes to the real exchange and asserts: create, redelivery has no second effect, an older version does not overwrite, a tombstone is kept, a tombstone that overtakes the create wins |
-| Dead-letter `*IT` | `services/leave-service/src/test/java/dk/ek/shift_happens/leave/EmployeeReplicaIT.java` | a poison message ends in `leave.command.dlq` after three attempts, and another queue's dead letter does not |
+| Dead-letter `*IT` | `services/leave-service/src/test/java/dk/ek/shift_happens/leave/EmployeeReplicaIT.java`; `identity/DeadLetterTopologyIT.java`, `scheduling/CommandDeadLetterTopologyIT.java`, `scheduling/ProjectionDeadLetterTopologyIT.java`, `ai/AiDeadLetterIT.java` | a poison message ends in the own `<queue>.dlq` after three attempts and in no other DLQ, and another queue's dead letter does not reach it; the last four start against a broker with the old `#` binding and check it is removed (management API) and a waiting message survives |
 | Shuffled-order unit test | `identity/application/EmployeeProjectionShuffledOrderTest.java`, `scheduling/application/EmployeeReplicaShuffledOrderTest.java` (also `SchedulingProjectionShuffledOrderIT`, leave's `LeaveProjectionReplayIT`) | the same events in every order end in the same state |
 | Cooperation test | `tests/cooperation/src/test/java/dk/ek/shift_happens/cooperation/EmployeeReplicationIT.java` | real workforce and identity images + RabbitMQ: POST an employee to workforce, the account appears in identity's database |
 
@@ -219,7 +235,8 @@ Run:
 - [ ] `contracts/asyncapi.yaml`: channel, send operation, one receive operation per queue, message
 - [ ] `contracts/events/catalog.md`: Events row, Queues bindings, flow section if relevant
 - [ ] Producer writes the event with `outbox.append` inside the state change's `@Transactional` method
-- [ ] Each consumer: durable queue with DLX, exact binding, `<queue>.dlq`, 3 attempts then dead-letter,
+- [ ] Each consumer: durable queue with DLX, exact binding, `<queue>.dlq` bound by queue name (never `#`),
+      3 attempts then dead-letter with the queue name as routing key, unchanged arguments on existing queues,
       one listener per queue, `processed_events` in the same transaction, version and tombstone rules
 - [ ] Producer `*IT` with schema validation; consumer `*IT`s; merge-rule unit test; cooperation test if new
       services cooperate
