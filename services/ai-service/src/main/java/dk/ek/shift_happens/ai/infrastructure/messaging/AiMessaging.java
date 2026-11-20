@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import org.slf4j.MDC;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.ExchangeBuilder;
@@ -63,7 +64,13 @@ class AiListener {
     private final ObjectMapper mapper;
     AiListener(SuggestionService service, ObjectMapper mapper) { this.service = service; this.mapper = mapper; }
     @RabbitListener(queues = "${app.rabbit.queue}")
-    public void receive(byte[] body) throws Exception { service.handle(mapper.readTree(body)); }
+    public void receive(byte[] body) throws Exception {
+        JsonNode event = mapper.readTree(body);
+        // P1.6: the event's correlation id is in every log line written while it is handled.
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", event.path("correlationId").asText(null))) {
+            service.handle(event);
+        }
+    }
 }
 
 @Component
