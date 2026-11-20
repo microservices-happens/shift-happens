@@ -132,6 +132,13 @@ A message that fails three times (or cannot be converted) is republished to the 
 ## Extract from monolith
 `leavetype`, `leaverequest`, `leaveapproval`, `leaveledger` and `view/employeeleaveoverview`. Remove PUT/DELETE on the ledger.
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/leave.yaml`, not a spec generated from the controllers. Both the command and the query role serve it. Maven copies
+the file onto the classpath at build time (`/openapi/leave.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [x] Both saga outcomes are covered by a cooperation test (Leave + Scheduling + RabbitMQ in Testcontainers): `tests/cooperation/.../LeaveApprovalSagaIT`.
 - [x] The balance in the read model equals the sum of the ledger after replay in any order: `LeaveProjectionReplayIT` (original order, reverse, seven seeded shuffles, duplicates).

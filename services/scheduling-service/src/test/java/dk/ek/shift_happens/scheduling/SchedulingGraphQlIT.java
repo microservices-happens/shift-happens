@@ -55,6 +55,45 @@ class SchedulingGraphQlIT extends AbstractQueryIT {
     }
 
     @Test
+    void anAiEventIsReturnedThroughGraphQlWithRankedEmployees() {
+        long shiftId = 8005;
+        seedShift(shiftId, "Needs replacement", 207, "Emma");
+        publish("ai.replacement.suggested.v1", shiftId, 1, "ai-service", Map.of(
+                "shiftId", shiftId,
+                "jobRoleId", 7,
+                "source", "llm",
+                "model", "llama3.2:1b",
+                "reason", "Emma has available hours this week.",
+                "rankedCandidates", List.of(Map.of("employeeId", 207, "rank", 1))));
+
+        String query = """
+                { shift(shiftId: 8005) {
+                    replacementSuggestions {
+                        jobRoleId source model reason suggestedAt
+                        candidates { rank employee { employeeId firstName lastName } }
+                    }
+                } }
+                """;
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            JsonNode response = graphQl(query, TestJwks.token(900, "Manager"));
+            assertThat(response.path("errors")).as("GraphQL errors: %s", response).isEmpty();
+            JsonNode suggestions = response.path("data").path("shift").path("replacementSuggestions");
+            assertThat(suggestions).hasSize(1);
+            JsonNode suggestion = suggestions.get(0);
+            assertThat(suggestion.path("source").asText()).isEqualTo("LLM");
+            assertThat(suggestion.path("model").asText()).isEqualTo("llama3.2:1b");
+            assertThat(suggestion.path("reason").asText()).isEqualTo("Emma has available hours this week.");
+            assertThat(suggestion.path("jobRoleId").asInt()).isEqualTo(7);
+            assertThat(Instant.parse(suggestion.path("suggestedAt").asText())).isNotNull();
+            assertThat(suggestion.path("candidates")).hasSize(1);
+            JsonNode candidate = suggestion.path("candidates").get(0);
+            assertThat(candidate.path("rank").asInt()).isEqualTo(1);
+            assertThat(candidate.path("employee").path("employeeId").asLong()).isEqualTo(207);
+            assertThat(candidate.path("employee").path("firstName").asText()).isEqualTo("Emma");
+        });
+    }
+
+    @Test
     void anEmployeeOnlySeesTheirOwnShiftsAndSwaps() {
         long mine = 8002;
         long somebodyElse = 8003;

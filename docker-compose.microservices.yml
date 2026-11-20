@@ -134,7 +134,11 @@ services:
   # Contract: contracts/openapi/identity.yaml
   identity-service:
     <<: *app
-    build: ./services/identity-service
+    build:
+      context: ./services/identity-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${IDENTITY_IMAGE:-shift-happens/identity-service:dev}
     environment:
       <<: *service-env
@@ -174,7 +178,11 @@ services:
   # Contract: contracts/openapi/workforce.yaml
   workforce-service:
     <<: *app
-    build: ./services/workforce-service
+    build:
+      context: ./services/workforce-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${WORKFORCE_IMAGE:-shift-happens/workforce-service:dev}
     environment:
       <<: *service-env
@@ -200,7 +208,11 @@ services:
   #   query:   GraphQL reads (contracts/graphql/scheduling.graphql), Mongo read model.
   scheduling-command:
     <<: *app
-    build: ./services/scheduling-service
+    build:
+      context: ./services/scheduling-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
       <<: *service-env
@@ -223,7 +235,11 @@ services:
 
   scheduling-query:
     <<: *app
-    build: ./services/scheduling-service
+    build:
+      context: ./services/scheduling-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
       <<: *service-env
@@ -250,7 +266,11 @@ services:
   # Contract: contracts/openapi/leave.yaml
   leave-command:
     <<: *app
-    build: ./services/leave-service
+    build:
+      context: ./services/leave-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
       <<: *service-env
@@ -275,7 +295,11 @@ services:
 
   leave-query:
     <<: *app
-    build: ./services/leave-service
+    build:
+      context: ./services/leave-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
       <<: *service-env
@@ -302,7 +326,11 @@ services:
   # Contract: contracts/openapi/notification.yaml
   notification-service:
     <<: *app
-    build: ./services/notification-service
+    build:
+      context: ./services/notification-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${NOTIFICATION_IMAGE:-shift-happens/notification-service:dev}
     environment:
       <<: *service-env
@@ -355,7 +383,11 @@ services:
   # Idempotent by eventId. Contract: contracts/openapi/audit.yaml
   audit-service:
     <<: *app
-    build: ./services/audit-service
+    build:
+      context: ./services/audit-service
+      # Swagger UI serves contracts/openapi/<service>.yaml, which sits outside the service directory.
+      additional_contexts:
+        contracts: ./contracts
     image: ${AUDIT_IMAGE:-shift-happens/audit-service:dev}
     environment:
       <<: *service-env

@@ -1,13 +1,25 @@
-# Fill in owners when responsibilities are agreed (docs/project-plan.md, section 1).
-# Contract changes need review from the owners of every affected service.
-# /contracts/                    @team-leads
-# /services/identity-service/     @owner
-# /services/workforce-service/    @owner
-# /services/scheduling-service/   @owner
-# /services/leave-service/        @owner
-# /services/ai-service/           @owner
-# /services/notification-service/ @owner
-# /services/audit-service/        @owner
-# /functions/                     @owner
-# /frontend/                      @owner
-# /k8s/ /.github/                 @owner
+# Owners per docs/project-plan.md section 1, filled from evidence only (ownership table,
+# issue assignees, authors of merged PRs). Later rules win. Paths without a line have no owner yet:
+# workforce had no owner in the plan (see #31), and frontend, CI/CD + Kubernetes, docs and tests
+# are open questions (see the PR for #32). Do not guess; add a line once the team agrees.
+# Contract changes need review from the owners of every affected service (CLAUDE.md).
+
+/services/identity-service/     @ViggoBeck
+/services/scheduling-service/   @jarrald
+/services/leave-service/        @Luke3520
+/services/ai-service/           @drummdurum
+/services/workforce-service/    @drummdurum
+/services/notification-service/ @Jafarr1
+/services/audit-service/        @Jafarr1
+/functions/                     @Jafarr1
+
+# Contracts follow the service they describe. asyncapi.yaml, events/ and README.md are shared: no owner.
+/contracts/openapi/identity.yaml      @ViggoBeck
+/contracts/openapi/scheduling.yaml    @jarrald
+/contracts/graphql/                   @jarrald
+/contracts/openapi/leave.yaml         @Luke3520
+/contracts/openapi/workforce.yaml     @drummdurum
+/contracts/openapi/notification.yaml  @Jafarr1
+/contracts/openapi/audit.yaml         @Jafarr1
+
+# No owner yet: /frontend/ /kubernetes/ /k8s/ /.github/ /docs/ /tests/

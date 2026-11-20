@@ -51,3 +51,9 @@ management:
 logging:
   pattern:
     correlation: "[%X{correlationId:-}] "
+
+# Swagger UI renders the hand-written contract (copied from contracts/openapi at build time).
+springdoc:
+  swagger-ui:
+    url: /openapi/scheduling.yaml
+    disable-swagger-default-url: true

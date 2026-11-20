@@ -1,5 +1,11 @@
 # System-level cooperation tests
 
+`SchedulingAiIT` runs Scheduling-command and AI with separate PostgreSQL databases,
+RabbitMQ and an Ollama HTTP stub. Cancelling an assignment through REST produces
+an understaffing event, which AI consumes to publish a replacement suggestion.
+Build `shift-happens/scheduling-service:ci` and `shift-happens/ai-service:ci`, then run
+`mvn -f tests/cooperation/pom.xml -Dit.test=SchedulingAiIT verify`.
+
 These tests start **two or more real service containers plus RabbitMQ** on one Docker network and
 verify that the services cooperate, normally through messaging. They do not test UI or end-to-end
 user flows (course requirement, §5 of the final project description).
@@ -11,6 +17,7 @@ tests/cooperation/
 ├── pom.xml                                  # JUnit 5, Testcontainers, AssertJ, Awaitility
 └── src/test/java/dk/ek/shift_happens/cooperation/
     ├── support/ServiceContainer.java        # starts services/<name> images on a shared network
+    ├── support/TestTokens.java              # test RSA key, JWKS server and token minter (no identity needed)
     ├── EmployeeReplicationIT.java           # workforce → RabbitMQ → identity (enabled)
     └── LeaveApprovalSagaIT.java             # leave saga, both outcomes (enabled)
 ```
@@ -20,6 +27,12 @@ workforce-service, and asserts that identity-service consumed `workforce.employe
 created the account. It starts RabbitMQ and one PostgreSQL per service, and reads each service's own
 database for the assertions — no mocks and no non-contract endpoints.
 
+It is also the cooperation proof of the security baseline (P1.7): the POST to workforce carries a JWT
+that identity-service issued at `POST /v1/auth/login`, and workforce validates it against identity's JWKS
+(`JWT_JWKS_URL`); the same POST without a token is a `401`. The first Administrator cannot be created
+through workforce (that write needs a token), so its `workforce.employee.created.v1` event is published
+through the RabbitMQ management API and identity's first-admin bootstrap gives it a password.
+
 `LeaveApprovalSagaIT` is the second one (P3.1): leave-service and scheduling-service, each with its own
 PostgreSQL, plus RabbitMQ. The employees reach both replicas as `workforce.employee.created.v1` events
 (published through the RabbitMQ management API), a manager approves a leave request through the Leave REST
@@ -27,15 +40,17 @@ API, and the test asserts both saga outcomes in the services' own databases: the
 overlapping assignment is `RELEASED_FOR_LEAVE`, the request `APPROVED`, `leave.request.approved.v1`
 published) and the compensation path (a shift that starts within 24 hours is LOCKED, so Scheduling answers
 `rejected`; Leave appends a `REVERSAL` and the request is `REJECTED`).
+Scheduling validates the JWT on its writes, and identity is not part of this test, so
+`support/TestTokens` serves a JWKS on the test network and signs the Manager token the test sends.
 
 ## Run it
 
 ```bash
 # 1. Build the images the tests use (CI does this automatically)
-docker build -t shift-happens/identity-service:ci services/identity-service
-docker build -t shift-happens/workforce-service:ci services/workforce-service
-docker build -t shift-happens/leave-service:ci services/leave-service
-docker build -t shift-happens/scheduling-service:ci services/scheduling-service
+docker build --build-context contracts=contracts -t shift-happens/identity-service:ci services/identity-service
+docker build --build-context contracts=contracts -t shift-happens/workforce-service:ci services/workforce-service
+docker build --build-context contracts=contracts -t shift-happens/leave-service:ci services/leave-service
+docker build --build-context contracts=contracts -t shift-happens/scheduling-service:ci services/scheduling-service
 
 # 2. Run
 mvn -B -f tests/cooperation/pom.xml verify

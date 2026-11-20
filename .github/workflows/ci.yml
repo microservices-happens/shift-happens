@@ -3,7 +3,8 @@
 #   changes ──┬─► tests     (matrix: every changed service, unit + integration tests)
 #             ├─► images    (matrix: every changed service, build + Trivy scan; on main: push to GHCR)
 #             ├─► contracts (only when contracts/ changed)
-#             └─► frontend  (only when frontend/ changed)
+#             ├─► frontend  (only when frontend/ changed)
+#             └─► sonar     (SonarQube Cloud scan + quality gate; skips without SONAR_TOKEN)
 #                    │
 #                    └─► ci    (aggregate; always runs, so require THIS check on main)
 #
@@ -162,6 +163,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          # Swagger UI serves the hand-written contract, which lives outside the service directory.
+          build-contexts: contracts=contracts
           load: true
           tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}
@@ -195,6 +198,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
+          # Swagger UI serves the hand-written contract, which lives outside the service directory.
+          build-contexts: contracts=contracts
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -217,7 +222,17 @@ jobs:
       - name: OpenAPI
         run: npx --yes @redocly/cli@latest lint --skip-rule operation-4xx-response --skip-rule info-license --skip-rule no-server-example.com contracts/openapi/*.yaml
       - name: AsyncAPI
-        run: npx --yes @asyncapi/cli@latest validate contracts/asyncapi.yaml
+        run: npx --yes @asyncapi/cli@6.3.1 validate contracts/asyncapi.yaml
+      # Human-readable event docs. Fails the job if the spec or a $ref into contracts/events/ cannot be resolved.
+      - name: AsyncAPI HTML
+        run: npx --yes @asyncapi/cli@6.3.1 generate fromTemplate contracts/asyncapi.yaml @asyncapi/html-template@3.5.6 --force-write -o asyncapi-html
+      - name: Upload the AsyncAPI HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: asyncapi-html
+          path: asyncapi-html/
+          if-no-files-found: error
+          retention-days: 14
       - name: GraphQL
         run: |
           npm install --silent --no-save --prefix /tmp/gql graphql@16
@@ -243,6 +258,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install
         run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Build
@@ -274,11 +291,64 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
+  # Static analysis of the whole monorepo in ONE SonarQube Cloud project (sonar-project.properties).
+  # Skips cleanly (green) when SONAR_TOKEN or the project variables are missing, e.g. on fork and
+  # Dependabot PRs, or before the one-time setup in docs/ci-demo.md has been done. When it does run,
+  # sonar.qualitygate.wait=true makes a red quality gate fail this job, and so the `ci` gate.
+  sonar:
+    name: sonarqube
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+    steps:
+      - id: enabled
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_ORGANIZATION" ] && [ -n "$SONAR_PROJECT_KEY" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "SonarQube skipped: SONAR_TOKEN, SONAR_ORGANIZATION or SONAR_PROJECT_KEY is not set." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.enabled.outputs.run == 'true'
+        with:
+          fetch-depth: 0 # full history, Sonar needs it for blame and new-code detection
+      - uses: actions/setup-java@v4
+        if: steps.enabled.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        if: steps.enabled.outputs.run == 'true'
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-jdk21-v1
+          restore-keys: m2-${{ runner.os }}-jdk21-
+      # The Java analyzer needs compiled classes (sonar.java.binaries). Tests already run in `tests`.
+      - name: Compile the services
+        if: steps.enabled.outputs.run == 'true'
+        run: |
+          for pom in services/*/pom.xml functions/*/pom.xml; do
+            mvn -B -q -f "$pom" compile -Dmaven.wagon.http.retryHandler.count=3
+          done
+      - name: SonarQube Cloud scan and quality gate
+        if: steps.enabled.outputs.run == 'true'
+        uses: SonarSource/sonarqube-scan-action@v8.5.0
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+
   # Always runs, even when a path filter skipped the other jobs. This is the single required check on
   # main (docs/implementation-plan.md section 3): a skipped job is fine, a failed one fails the gate.
   ci:
     name: ci
-    needs: [changes, tests, images, contracts, frontend]
+    needs: [changes, tests, images, contracts, frontend, sonar]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -296,4 +366,5 @@ jobs:
             echo "| images | ${{ needs.images.result }} |"
             echo "| contracts | ${{ needs.contracts.result }} |"
             echo "| frontend | ${{ needs.frontend.result }} |"
+            echo "| sonarqube | ${{ needs.sonar.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"

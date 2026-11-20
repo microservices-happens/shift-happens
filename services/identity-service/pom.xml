@@ -18,6 +18,8 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Where the hand-written contract lives; the Dockerfile overrides it (see Dockerfile). -->
+        <contracts.openapi.dir>${project.basedir}/../../contracts/openapi</contracts.openapi.dir>
     </properties>
 
     <!-- Walking skeleton: add starters as the service is implemented
@@ -99,9 +101,28 @@
             <version>1.5.6</version>
             <scope>test</scope>
         </dependency>
+        <!-- Swagger UI only; it shows contracts/openapi/identity.yaml (springdoc.swagger-ui.url), not a generated spec. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.9</version>
+        </dependency>
     </dependencies>
 
     <build>
+        <!-- Copy the contract onto the classpath (served at /openapi/identity.yaml). Never edit the copy. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${contracts.openapi.dir}</directory>
+                <includes>
+                    <include>identity.yaml</include>
+                </includes>
+                <targetPath>static/openapi</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

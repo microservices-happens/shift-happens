@@ -34,7 +34,54 @@
   Workforce stores the next date to check in PostgreSQL and polls for due employees every minute.
   A changed snapshot is written to the outbox in the same transaction as the next scheduled check.
 
-Still to do: JWT security (P1.7).
+- Security (P1.7): every request except `GET /health` needs a Bearer JWT from identity-service. The
+  service validates it itself: RS256 signature against the JWKS at `JWT_JWKS_URL` (fetched on the first
+  token and cached by Nimbus), plus `iss` (`JWT_ISSUER`) and `exp`. The `role` claim becomes
+  `ROLE_<role>`. `GET` needs any valid token; `POST`, `PUT`, `PATCH` and `DELETE` need `Administrator`
+  or `Manager`. No or an invalid token is `401`, the wrong role is `403`, both as problem+json.
+  Tests: `SecurityRulesTest` (no containers) and the security cases in `WorkforceApplicationIT`;
+  `TestJwks` is the test key, JWKS endpoint and token minter.
+
+## Local demo data (P1.9)
+
+`seed/dev-seed.sql` holds demo data ported from the monolith's `docker/init/02-seed-data.sql`:
+4 work locations, 7 departments, 8 job roles and 13 made-up employees (`@shift-happens.example`)
+with contracts and job roles. It lives outside `src/`, so it is never in the jar, the image or a
+Flyway migration, and no test except `DevSeedIT` reads it. Nothing loads it unless you run it.
+
+| Id | Number | Role | Name | Note |
+|---|---|---|---|---|
+| 1 | DEMO-0001 | Administrator | Mette Lindholm | `admin@shift-happens.example` |
+| 2, 3 | DEMO-0002/3 | Manager | Sofie Jensen, Mads Nielsen | |
+| 4-11 | DEMO-0004..11 | Employee | | DEMO-0008's nurse role expires in 90 days |
+| 12 | DEMO-0012 | Employee | Frederik Larsen | `INACTIVE`, cannot log in |
+| 13 | DEMO-0013 | Employee | Julie Madsen | Starts in 14 days: no roles or hours until then |
+
+Only workforce-db is written directly. The script also writes one `workforce.employee.created.v1`
+per employee to the outbox in the same transaction (today's full snapshot, version 1, the same
+`jobRoleIds`/`weeklyContractHours` and terms-refresh schedule `EmployeeService` would produce), and
+the running `OutboxRelay` publishes them. identity, scheduling and leave (command and query) build
+their copies through their normal consumers, so the ids match everywhere and every consumer does its
+own `processed_events`/`aggregateVersion` bookkeeping. Departments, job roles and locations are not
+replicated; other services only see job-role ids inside the employee snapshot.
+
+```bash
+docker compose -f docker-compose.microservices.yml --profile app up -d --build
+# wait until the services are healthy, so their queues exist
+scripts/seed-dev.sh
+```
+
+`scripts/seed-dev.sh` refuses to run until workforce-db is migrated and `identity.accounts` exists,
+and warns when a scheduling or leave queue is missing (that service would miss the events). The SQL
+only runs on an empty workforce database and is a no-op the second time; to start over, use
+`docker compose -f docker-compose.microservices.yml down -v`.
+
+Logins: set `BOOTSTRAP_ADMIN_EMAIL=admin@shift-happens.example` and a `BOOTSTRAP_ADMIN_PASSWORD` in
+`.env` before starting identity-service, and the seeded Administrator gets that password when its
+event arrives. Set `SEED_DEMO_PASSWORD` (min. 8 characters) as well, and the script logs in as that
+admin through the gateway and sets it on every other active demo account
+(`PUT /api/v1/auth/accounts/{id}/password`), so identity hashes it with its own pepper. The repository
+contains no passwords or hashes.
 
 ## Provides
 REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yaml). CRUD under `/v1/employees`, `/v1/employeecontracts`, `/v1/employeejobroles`, `/v1/departments`, `/v1/jobroles` and `/v1/worklocations`.
@@ -59,6 +106,13 @@ it on the response. Every log line prints it (`logging.pattern.correlation`). Pu
 
 ## Extract from monolith
 `employee`, `employeecontract`, `employeejobrole`, `department`, `jobrole` and `worklocation`. `EmployeeDto.loginPassword` is removed: passwords now live in identity-service.
+
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/workforce.yaml`, not a spec generated from the controllers. Maven copies
+the file onto the classpath at build time (`/openapi/workforce.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
 
 ## Done when
 - [ ] Employee pages work through the gateway.

@@ -84,3 +84,9 @@ management:
 logging:
   pattern:
     correlation: "[%X{correlationId:-}] "
+
+# Swagger UI renders the hand-written contract (copied from contracts/openapi at build time).
+springdoc:
+  swagger-ui:
+    url: /openapi/identity.yaml
+    disable-swagger-default-url: true

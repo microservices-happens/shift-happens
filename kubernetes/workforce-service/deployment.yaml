@@ -27,7 +27,7 @@ spec:
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: workforce-service-secrets
                   key: RABBITMQ_PASSWORD
             - name: DB_HOST
               value: "workforce-db"
@@ -40,8 +40,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
-                  key: WORKFORCE_DB_PASSWORD
+                  name: workforce-service-secrets
+                  key: DB_PASSWORD
             - name: OUTBOX_ENABLED
               value: "true"
           readinessProbe:

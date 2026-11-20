@@ -21,6 +21,11 @@ app:
     base-url: ${LLM_BASE_URL:http://localhost:11434}
     model: ${LLM_MODEL:llama3.2:1b}
     timeout: ${LLM_TIMEOUT:PT20S}
+  security:
+    # Names are fixed by contracts/README.md: every service validates the JWT itself against the JWKS of
+    # identity-service (cached by Nimbus), plus the iss claim.
+    issuer: ${JWT_ISSUER:shift-happens-identity}
+    jwks-url: ${JWT_JWKS_URL:http://localhost:8080/.well-known/jwks.json}
 server:
   port: ${HTTP_PORT:8080}
   shutdown: graceful

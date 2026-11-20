@@ -18,6 +18,8 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Where the hand-written contract lives; the Dockerfile overrides it (see Dockerfile). -->
+        <contracts.openapi.dir>${project.basedir}/../../contracts/openapi</contracts.openapi.dir>
     </properties>
 
     <!-- Only what the implemented slice needs. The query role adds data-mongodb and graphql when it
@@ -117,9 +119,28 @@
             <version>1.5.6</version>
             <scope>test</scope>
         </dependency>
+        <!-- Swagger UI only; it shows contracts/openapi/scheduling.yaml (springdoc.swagger-ui.url), not a generated spec. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.9</version>
+        </dependency>
     </dependencies>
 
     <build>
+        <!-- Copy the contract onto the classpath (served at /openapi/scheduling.yaml). Never edit the copy. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${contracts.openapi.dir}</directory>
+                <includes>
+                    <include>scheduling.yaml</include>
+                </includes>
+                <targetPath>static/openapi</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

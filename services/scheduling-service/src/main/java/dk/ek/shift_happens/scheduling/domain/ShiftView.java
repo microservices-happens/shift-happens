@@ -31,10 +31,4 @@ public record ShiftView(
     public boolean overlaps(Instant from, Instant to) {
         return startDatetime.isBefore(to) && from.isBefore(endDatetime);
     }
-
-    /** scheduling.shift.deleted.v1: the row stays, the tombstone is kept, the version moves on. */
-    public ShiftView tombstoned(long version, Instant deletedAt) {
-        return new ShiftView(shiftId, departmentId, workLocationId, shiftName, startDatetime, endDatetime,
-                status, requiredJobRoles, version, deletedAt);
-    }
 }

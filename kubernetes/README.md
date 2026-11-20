@@ -7,7 +7,8 @@ its compose service, so hostnames like `DB_HOST=identity-db` work unchanged.
 
 ```
 kubernetes/
-  shared/            ConfigMap service-env (x-service-env) + Secret shift-happens-secrets
+  shared/            ConfigMap service-env (x-service-env); no secrets
+  secrets/           create-secrets.sh + secrets.env.example (Secrets are created from local files, never committed)
   <service>/         deployment.yaml, service.yaml
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
@@ -24,6 +25,49 @@ kubectl config use-context docker-desktop
 kubectl get nodes            # one node, Ready
 ```
 
+## Secrets (once per cluster, before the first deploy)
+
+No secret value is committed. Each service has its own Secret holding only what it needs; the
+service's database Deployment reads its password from the same Secret. They are created from two
+git-ignored files in `kubernetes/secrets/`:
+
+```bash
+kubernetes/secrets/create-secrets.sh --generate
+```
+
+`--generate` writes `kubernetes/secrets/secrets.env` (from `secrets.env.example`, every `CHANGE_ME`
+replaced by a random value) and `kubernetes/secrets/jwt-private-key.pem` (RSA 2048, PKCS#8), unless
+they already exist, and then creates or updates the Secrets in the current kubectl context
+(`NAMESPACE=<ns>` to pick another namespace). Edit `secrets.env` to add OIDC client secrets, SMTP
+credentials or the bootstrap admin, then run the script again without `--generate` and restart the
+affected Deployment (`kubectl rollout restart deployment/identity-service`). `--dry-run` checks the
+files and prints secret names and keys without touching the cluster.
+
+| Secret | Keys | Used by |
+|---|---|---|
+| `rabbitmq-secrets` | `RABBITMQ_DEFAULT_PASS` | rabbitmq |
+| `identity-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD`, `PASSWORD_PEPPER`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `OIDC_GOOGLE_CLIENT_SECRET`, `OIDC_GITHUB_CLIENT_SECRET`, `jwt-private-key.pem` (mounted file, `JWT_PRIVATE_KEY_PATH`) | identity-service, identity-db |
+| `workforce-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | workforce-service, workforce-db |
+| `scheduling-command-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | scheduling-command, scheduling-write-db |
+| `scheduling-query-secrets` | `RABBITMQ_PASSWORD`, `MONGO_PASSWORD` | scheduling-query, scheduling-read-db |
+| `leave-command-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | leave-command, leave-write-db |
+| `leave-query-secrets` | `RABBITMQ_PASSWORD`, `MONGO_PASSWORD` | leave-query, leave-read-db |
+| `notification-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | notification-service, notification-db |
+| `audit-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | audit-service, audit-db |
+| `ai-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | ai-service, ai-db |
+| `email-function-secrets` | `RABBITMQ_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` | email-function |
+
+Secret keys are the env var names from `docker-compose.microservices.yml` (databases map
+`DB_PASSWORD`/`MONGO_PASSWORD` onto `POSTGRES_PASSWORD`/`MONGO_INITDB_ROOT_PASSWORD`). Usernames,
+hosts and other non-sensitive settings stay as plain env or in the `service-env` ConfigMap.
+
+**Existing cluster with data from before this change.** Postgres, Mongo and RabbitMQ only read
+their password when the data directory is first initialised, and the hostPath PVs keep that data.
+Either put the old compose dev passwords (`identity_dev`, `shift_dev`, ...) into `secrets.env`
+before running the script, or wipe the data (see Teardown) so the new random passwords are used.
+A new `PASSWORD_PEPPER` invalidates stored password hashes; reuse the old pepper to keep them.
+The old shared Secret is no longer referenced: `kubectl delete secret shift-happens-secrets`.
+
 ## Deploy
 
 ```bash
@@ -32,6 +76,9 @@ kubectl get pods -w          # wait until everything is Running and 1/1 Ready
 ```
 
 App pods may restart a few times until their database and RabbitMQ are up. That is expected.
+A pod stuck in `CreateContainerConfigError` means its Secret is missing: run
+`kubernetes/secrets/create-secrets.sh` (see above). `kubectl apply -R -f kubernetes/` only reads
+`.yaml`/`.json` files, so the script and the env template in `kubernetes/secrets/` are ignored by it.
 
 ## Status
 
@@ -105,7 +152,7 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 | Service | Kubernetes type | URL |
 |---|---|---|
 | api-gateway (frontend + `/api/*`) | NodePort 30443 | https://localhost:30443 (self-signed: `curl -k` / accept the browser warning) |
-| rabbitmq management UI | NodePort 31672 (`rabbitmq-management`) | http://localhost:31672 (user `shift`, password in `shared/secret.yaml`) |
+| rabbitmq management UI | NodePort 31672 (`rabbitmq-management`) | http://localhost:31672 (user `shift`, password `RABBITMQ_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | mailpit UI | NodePort 30025 (`mailpit-ui`) | http://localhost:30025 |
 | everything else | ClusterIP | not reachable from localhost; use `kubectl port-forward svc/<name> <local>:<port>` |
 
@@ -134,6 +181,8 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 - **Caddy data** (`/data`, `/config`) is an `emptyDir`, so the internal TLS certificate is regenerated
   when the gateway pod restarts.
 - Compose network isolation (`internal: true` networks) is not reproduced; all pods can reach each other.
-- Secrets hold the compose dev defaults in plain `stringData`. Fine for a local demo, not for a real cluster.
+- Secrets are plain Kubernetes Secrets (base64, not encrypted at rest unless the cluster enables it).
+  A real cluster would add encryption at rest or an external secret store (Sealed Secrets, External
+  Secrets Operator); the per-service split and key names stay the same.
 - No autoscaling yet (KEDA comes later). Every container has small requests/limits.
 - The older Kustomize scaffold in `/k8s` is separate from this folder and is not used here.

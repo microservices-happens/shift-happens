@@ -51,6 +51,48 @@ class AccountTest {
     }
 
     @Test
+    void aSnapshotThatArrivesAfterItsTombstoneRefreshesTheFieldsButNeverEnablesTheAccount() {
+        // P3.3: create v1, delete v3, and only then the update v2 that was published in between.
+        Account deleted = Account.fromSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 1).deleted(3);
+        assertThat(deleted.isDeleted()).isTrue();
+        assertThat(deleted.acceptsSnapshot(2)).isTrue();
+        assertThat(deleted.acceptsSnapshot(1)).isFalse();
+
+        Account refreshed = deleted.withSnapshot(snapshot("ada.l@shift.dk", "ACTIVE"), 2);
+
+        assertThat(refreshed.email()).isEqualTo("ada.l@shift.dk");
+        assertThat(refreshed.active()).isFalse();
+        assertThat(refreshed.isDeleted()).isTrue();
+        assertThat(refreshed.aggregateVersion()).isEqualTo(3);
+        assertThat(refreshed.snapshotVersion()).isEqualTo(2);
+    }
+
+    @Test
+    void aTombstoneWithoutASnapshotIsAnAccountThatCannotLogInAndALateCreateDoesNotChangeThat() {
+        Account tombstone = Account.tombstone(7, 2);
+        assertThat(tombstone.isDeleted()).isTrue();
+        assertThat(tombstone.active()).isFalse();
+        assertThat(tombstone.email()).isNull();
+
+        Account lateCreate = tombstone.withSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 1);
+
+        assertThat(lateCreate.email()).isEqualTo("ada@shift.dk");
+        assertThat(lateCreate.canLogInWithProvider()).isFalse();
+        assertThat(lateCreate.aggregateVersion()).isEqualTo(2);
+    }
+
+    @Test
+    void aTombstoneOnlyWinsOverLowerVersions() {
+        // contracts/README.md: "Tombstones win over lower versions". A snapshot newer than the tombstone
+        // is a newer state of the employee, in whichever order the two arrive.
+        Account newerSnapshot = Account.tombstone(7, 2).withSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 3);
+
+        assertThat(newerSnapshot.isDeleted()).isFalse();
+        assertThat(newerSnapshot.active()).isTrue();
+        assertThat(Account.fromSnapshot(snapshot("ada@shift.dk", "ACTIVE"), 3).accepts(2)).isFalse();
+    }
+
+    @Test
     void aWorkforceUpdateKeepsThePassword() {
         // Identity owns the password; an employee update from workforce must not wipe it, or every
         // profile edit would lock the employee out.
@@ -90,6 +132,6 @@ class AccountTest {
 
     private static Account withPassword(Account a, String hash) {
         return new Account(a.accountId(), a.employeeId(), a.employeeNumber(), a.email(), a.firstName(),
-                a.lastName(), a.role(), a.active(), a.aggregateVersion(), hash);
+                a.lastName(), a.role(), a.active(), a.aggregateVersion(), a.snapshotVersion(), hash);
     }
 }

@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { Layout } from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import LoginCallbackPage from './pages/LoginCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import EmployeesListPage from './pages/employees/EmployeesListPage';
@@ -22,6 +23,7 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/login/callback" element={<LoginCallbackPage />} />
         <Route
           element={
             <ProtectedRoute>

@@ -86,6 +86,29 @@ class EmployeeReplicaIT extends AbstractCommandIT {
                 .isEqualTo(2L);
     }
 
+    @Test
+    void aTombstoneThatOvertakesTheCreateIsStoredAndTheLateCreateCannotClearIt() {
+        // P3.3: delete (v2) arrives before create (v1). The row has no employee fields yet (V8).
+        publish(envelope(EMPLOYEE_DELETED, 205, 2,
+                Map.of("entityType", "employee", "entityId", 205, "deletedAt", Instant.now().toString())));
+        awaitCount("SELECT count(*) FROM employee_replica WHERE employee_id = ? AND deleted_at IS NOT NULL", 1,
+                205L);
+        awaitCount("SELECT snapshot_version FROM employee_replica WHERE employee_id = ?", 0, 205L);
+
+        // The late create fills in the employee fields, but the tombstone stays.
+        employeeEvent(EMPLOYEE_CREATED, 205, 1, "ACTIVE", List.of(7L));
+        awaitCount("SELECT snapshot_version FROM employee_replica WHERE employee_id = ?", 1, 205L);
+
+        assertThat(jdbc.queryForObject(
+                "SELECT deleted_at FROM employee_replica WHERE employee_id = ?", Instant.class, 205L)).isNotNull();
+        assertThat(jdbc.queryForObject(
+                "SELECT first_name FROM employee_replica WHERE employee_id = ?", String.class, 205L))
+                .isEqualTo("Grace");
+        assertThat(jdbc.queryForObject(
+                "SELECT aggregate_version FROM employee_replica WHERE employee_id = ?", Long.class, 205L))
+                .isEqualTo(2L);
+    }
+
     private EventEnvelope employeeEvent(String eventType, long employeeId, long version, String status,
                                List<Long> jobRoleIds) {
         EventEnvelope envelope = envelope(eventType, employeeId, version,
