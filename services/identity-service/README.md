@@ -120,6 +120,13 @@ Nothing.
 ## Extract from monolith
 `auth/*`: `AuthController`, `JwtService` (sign with RS256 and publish the public key as JWKS), `PepperedPasswordEncoder` and `CustomUserDetailsService`. Migrate `employee.login_password` into the accounts table.
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/identity.yaml`, not a spec generated from the controllers. Maven copies
+the file onto the classpath at build time (`/openapi/identity.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [ ] Local login and Google (or GitHub) login both work through the gateway. (Both work inside the
   service against stubs, `LoginIT` and `OidcIT`; a real provider through the gateway is not verified.)

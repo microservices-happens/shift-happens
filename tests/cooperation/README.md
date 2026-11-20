@@ -32,10 +32,10 @@ published) and the compensation path (a shift that starts within 24 hours is LOC
 
 ```bash
 # 1. Build the images the tests use (CI does this automatically)
-docker build -t shift-happens/identity-service:ci services/identity-service
-docker build -t shift-happens/workforce-service:ci services/workforce-service
-docker build -t shift-happens/leave-service:ci services/leave-service
-docker build -t shift-happens/scheduling-service:ci services/scheduling-service
+docker build --build-context contracts=contracts -t shift-happens/identity-service:ci services/identity-service
+docker build --build-context contracts=contracts -t shift-happens/workforce-service:ci services/workforce-service
+docker build --build-context contracts=contracts -t shift-happens/leave-service:ci services/leave-service
+docker build --build-context contracts=contracts -t shift-happens/scheduling-service:ci services/scheduling-service
 
 # 2. Run
 mvn -B -f tests/cooperation/pom.xml verify
