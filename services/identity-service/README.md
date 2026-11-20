@@ -22,7 +22,8 @@
   to start without `PASSWORD_PEPPER`. A workforce update never touches the hash.
 - JWT claims: `sub` (employee id), `employeeId`, `role`, `iss`, `iat`, `exp` (`JWT_TTL`, default 24 h).
 - Signing key: `JWT_PRIVATE_KEY_PATH` (PKCS#8 PEM). Without it a key is generated at startup, so
-  tokens stop working after a restart; fine for Compose, not for Kubernetes.
+  tokens stop working after a restart; fine for Compose. In Kubernetes the key is mounted from
+  `identity-service-secrets` at `/etc/identity-service/jwt/private-key.pem` (see `kubernetes/README.md`).
 - Every other path requires a valid JWT from this service.
 - Tests: `LoginServiceTest`, `AccountTest`, `LoginIT` (login end to end; the token verifies with only
   the JWKS; missing, forged and expired tokens → 401).
@@ -88,7 +89,9 @@ Registering the redirect URI (`<OIDC_REDIRECT_BASE_URL>/{google|github}/callback
 - **GitHub:** Settings → Developer settings → OAuth Apps → New OAuth App. Authorization callback URL:
   `https://localhost:8443/api/v1/auth/oidc/github/callback`.
 
-Put the ids and secrets in `.env` (Compose) or `kubernetes/shared/secret.yaml` (Kubernetes). The
+Put the ids and secrets in `.env` (Compose). In Kubernetes the client ids are plain env in
+`kubernetes/identity-service/deployment.yaml` and the client secrets go in the git-ignored
+`kubernetes/secrets/secrets.env`, applied by `kubernetes/secrets/create-secrets.sh`. The
 provider endpoints are `app.oidc.*` properties with the real defaults; tests point them at a stub.
 
 - Tests: `PkceTest` (RFC 7636 vector), `LoginAttemptTest` (expiry, randomness, provider binding),
