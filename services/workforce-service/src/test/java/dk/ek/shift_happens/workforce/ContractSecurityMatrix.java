@@ -97,6 +97,11 @@ final class ContractSecurityMatrix {
             return token == null ? null : "Bearer " + token;
         }
 
+        /** The employeeId claim of the token: {@link TestJwks} gives Administrator and Manager 900. */
+        long employeeId() {
+            return this == ADMINISTRATOR || this == MANAGER ? 900 : EMPLOYEE_ID;
+        }
+
         /** The employee id the request acts for, in the body or the path, when the rule depends on it. */
         long actsFor() {
             return this == EMPLOYEE_FOR_SOMEONE_ELSE ? EMPLOYEE_ID + 1 : EMPLOYEE_ID;
@@ -105,9 +110,11 @@ final class ContractSecurityMatrix {
 
     /**
      * Who may call an operation. {@code selfField} is the body field (or {@code {employeeId}} path
-     * parameter, when {@code selfInPath}) that must equal the Employee's JWT employeeId.
+     * parameter, when {@code selfInPath}) that must equal the caller's JWT employeeId. "An Employee for
+     * themself" is the Employee role only ({@code selfForAnyRole} false); "the employee themself" is any
+     * account acting for itself.
      */
-    record Rule(Access access, Set<String> roles, String selfField, boolean selfInPath) {
+    record Rule(Access access, Set<String> roles, String selfField, boolean selfInPath, boolean selfForAnyRole) {
 
         boolean hasSelfRule() {
             return selfField != null;
@@ -127,7 +134,8 @@ final class ContractSecurityMatrix {
             if (rule.access() == Access.ANY_TOKEN || rule.roles().contains(caller.role)) {
                 return Outcome.ALLOWED;
             }
-            boolean forThemself = caller == Caller.EMPLOYEE && rule.hasSelfRule();
+            boolean forThemself = rule.hasSelfRule() && caller.actsFor() == caller.employeeId()
+                    && (rule.selfForAnyRole() || caller == Caller.EMPLOYEE);
             return forThemself ? Outcome.ALLOWED : Outcome.FORBIDDEN;
         }
 
@@ -187,7 +195,7 @@ final class ContractSecurityMatrix {
                     case "date-time" -> "2026-01-05T08:00:00Z";
                     case "uuid" -> "00000000-0000-0000-0000-000000000001";
                     case "email" -> "someone@shift.dk";
-                    default -> "x";
+                    default -> "x".repeat(Math.max(1, ((Number) resolved.getOrDefault("minLength", 1)).intValue()));
                 };
             };
         }
@@ -253,13 +261,13 @@ final class ContractSecurityMatrix {
     private static Rule rule(String method, String path, Map<String, Object> operation) {
         Object security = operation.get("security");
         if (security instanceof List<?> requirements && requirements.isEmpty()) {
-            return new Rule(Access.PUBLIC, Set.of(), null, false);
+            return new Rule(Access.PUBLIC, Set.of(), null, false, false);
         }
         String description = String.valueOf(operation.getOrDefault("description", ""));
         Matcher roles = ROLES.matcher(description);
         if (!roles.find()) {
             if (method.equals("get")) {
-                return new Rule(Access.ANY_TOKEN, Set.of(), null, false);
+                return new Rule(Access.ANY_TOKEN, Set.of(), null, false, false);
             }
             throw new IllegalStateException(method.toUpperCase() + " " + path
                     + " has no 'Roles:' rule in the contract, so the matrix cannot say who may call it");
@@ -276,14 +284,15 @@ final class ContractSecurityMatrix {
             named.add("Employee");
         }
         if (!self) {
-            return new Rule(Access.ROLES, Set.copyOf(named), null, false);
+            return new Rule(Access.ROLES, Set.copyOf(named), null, false, false);
         }
+        boolean anyRole = !allowed.contains("Employee");
         Matcher field = SELF_FIELD.matcher(allowed);
         if (field.find()) {
-            return new Rule(Access.ROLES, Set.copyOf(named), field.group(1), false);
+            return new Rule(Access.ROLES, Set.copyOf(named), field.group(1), false, anyRole);
         }
         if (path.contains("{employeeId}")) {
-            return new Rule(Access.ROLES, Set.copyOf(named), "employeeId", true);
+            return new Rule(Access.ROLES, Set.copyOf(named), "employeeId", true, anyRole);
         }
         throw new IllegalStateException(method.toUpperCase() + " " + path
                 + " allows an Employee for themself but names no field or {employeeId} to compare");
