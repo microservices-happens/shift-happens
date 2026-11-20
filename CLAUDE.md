@@ -1,7 +1,8 @@
 # CLAUDE.md — Shift Happens
 
 Microservices rewrite of the Shift Happens monolith (DLS final project). Rules below were checked
-against the code on 2026-11-04. Where a rule describes the target rather than today's code, it says so.
+against the code on 2026-11-04; the security, CQRS and report lines were re-checked on 2026-11-20.
+Where a rule describes the target rather than today's code, it says so.
 
 ## Before you change anything
 
@@ -23,7 +24,7 @@ against the code on 2026-11-04. Where a rule describes the target rather than to
 - Routing key = `eventType` = `<context>.<entity>.<event>.vN`. Envelope:
   `contracts/events/envelope.schema.json`; `data` is a full entity snapshot.
 - Scheduling and leave are CQRS: one codebase, `APP_ROLE=command|query` (Postgres + outbox for
-  commands, Mongo read model for queries). The query sides are not built yet.
+  commands, Mongo read model for queries). Both query sides are built (scheduling serves GraphQL).
 - The monolith (`src/`, root `pom.xml`, `docker-compose_old.yml`, `*_old*`, `scripts_old/`,
   `docs/old/`) is reference only. Never refactor it.
 
@@ -39,8 +40,11 @@ against the code on 2026-11-04. Where a rule describes the target rather than to
   body differs.
 - Config through environment variables only, named as in `docker-compose.microservices.yml`.
   Never hard-code hosts, ports or secrets. `GET /health` stays public and unrenamed.
-- Security target: every service validates the identity-service JWT itself (RS256, JWKS from
-  `JWT_JWKS_URL`, roles `Administrator|Manager|Employee`). Not implemented anywhere yet (P2.1).
+- Security: every service validates the identity-service JWT itself (RS256, JWKS from `JWT_JWKS_URL`,
+  roles `Administrator|Manager|Employee`). Implemented in identity, workforce, scheduling and ai (P1.7),
+  each with a contract-driven security matrix test (P6.6); workforce, scheduling's REST side and ai
+  answer 401/403 as problem+json, identity does not yet. Still missing in leave, notification and
+  audit: a new endpoint there needs the security chain first.
 - Never log tokens, passwords or salary.
 
 ## Messaging
@@ -86,7 +90,7 @@ against the code on 2026-11-04. Where a rule describes the target rather than to
 
 ## Context hygiene
 
-- `docs/DLS Report-2026-10-21.md` is ~2 MB (embedded images): search it, read line ranges only.
+- `docs/DLS Report-2026-11-20.md` is ~2 MB (embedded images): search it, read line ranges only.
 - Skip `target/`, `node_modules/`, `*.pdf`, and the monolith archives listed above.
 
 ## Talking to the user
