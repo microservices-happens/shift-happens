@@ -222,7 +222,17 @@ jobs:
       - name: OpenAPI
         run: npx --yes @redocly/cli@latest lint --skip-rule operation-4xx-response --skip-rule info-license --skip-rule no-server-example.com contracts/openapi/*.yaml
       - name: AsyncAPI
-        run: npx --yes @asyncapi/cli@latest validate contracts/asyncapi.yaml
+        run: npx --yes @asyncapi/cli@6.3.1 validate contracts/asyncapi.yaml
+      # Human-readable event docs. Fails the job if the spec or a $ref into contracts/events/ cannot be resolved.
+      - name: AsyncAPI HTML
+        run: npx --yes @asyncapi/cli@6.3.1 generate fromTemplate contracts/asyncapi.yaml @asyncapi/html-template@3.5.6 --force-write -o asyncapi-html
+      - name: Upload the AsyncAPI HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: asyncapi-html
+          path: asyncapi-html/
+          if-no-files-found: error
+          retention-days: 14
       - name: GraphQL
         run: |
           npm install --silent --no-save --prefix /tmp/gql graphql@16
