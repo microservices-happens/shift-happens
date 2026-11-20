@@ -39,7 +39,7 @@ function employeeInitials(e: Employee | undefined): string {
   return (f + l).toUpperCase() || '?';
 }
 
-function statusPillClass(status: string | null): string {
+function statusPillClass(status: string | null | undefined): string {
   const s = (status ?? '').toLowerCase();
   if (s === 'approved') return 'pill pill-success';
   if (s === 'rejected' || s === 'denied' || s === 'cancelled')
@@ -48,7 +48,7 @@ function statusPillClass(status: string | null): string {
   return 'pill pill-neutral';
 }
 
-function formatStatus(status: string | null): string {
+function formatStatus(status: string | null | undefined): string {
   if (!status) return 'Unknown';
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }

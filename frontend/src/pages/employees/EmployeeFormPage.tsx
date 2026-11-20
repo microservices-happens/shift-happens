@@ -5,11 +5,12 @@ import {
   getEmployee,
   updateEmployee,
 } from '../../api/employees';
+import { setPassword } from '../../api/accounts';
 import { listWorkLocations } from '../../api/workLocations';
-import type { NewEmployee, WorkLocation } from '../../api/types';
+import type { NewEmployee, RoleName, WorkLocation } from '../../api/types';
 import { ApiError } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
-import { canWrite } from '../../auth/roles';
+import { canWrite, isAdmin } from '../../auth/roles';
 
 const EMPTY_FORM: NewEmployee = {
   employeeNumber: '',
@@ -21,7 +22,6 @@ const EMPTY_FORM: NewEmployee = {
   hireDate: null,
   employmentStatus: 'ACTIVE',
   primaryWorkLocationId: null,
-  loginPassword: '',
 };
 
 export default function EmployeeFormPage() {
@@ -32,8 +32,12 @@ export default function EmployeeFormPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const mayWrite = canWrite(user?.roleName);
+  // identity.yaml: Administrator, or the employee themself.
+  const maySetPassword = isAdmin(user?.roleName) || (numericId !== null && user?.employeeId === numericId);
 
   const [form, setForm] = useState<NewEmployee>(EMPTY_FORM);
+  // Passwords belong to identity-service, not to the workforce Employee resource.
+  const [newPassword, setNewPassword] = useState('');
   const [locations, setLocations] = useState<WorkLocation[]>([]);
   const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
@@ -98,9 +102,8 @@ export default function EmployeeFormPage() {
       if (isNew) {
         await createEmployee(form);
       } else if (numericId !== null) {
-        const { loginPassword, ...patch } = form;
-        const body = loginPassword ? { ...patch, loginPassword } : patch;
-        await updateEmployee(numericId, body);
+        await updateEmployee(numericId, form);
+        if (newPassword) await setPassword(numericId, newPassword);
       }
       navigate('/employees');
     } catch (err) {
@@ -163,7 +166,7 @@ export default function EmployeeFormPage() {
           <span>Role</span>
           <select
             value={form.userRole}
-            onChange={(e) => update('userRole', e.target.value)}
+            onChange={(e) => update('userRole', e.target.value as RoleName)}
             disabled={!mayWrite}
           >
             <option value="Administrator">Administrator</option>
@@ -212,16 +215,20 @@ export default function EmployeeFormPage() {
             <option value="TERMINATED">Terminated</option>
           </select>
         </label>
-        <label className="form-field">
-          <span>{isNew ? 'Password' : 'New password (leave blank to keep)'}</span>
-          <input
-            type="password"
-            value={form.loginPassword ?? ''}
-            onChange={(e) => update('loginPassword', e.target.value)}
-            disabled={!mayWrite}
-            required={isNew}
-          />
-        </label>
+        {/* identity-service creates the account from workforce.employee.created.v1, so a
+            password can only be set once the employee exists (PUT /v1/auth/accounts/{id}/password). */}
+        {!isNew && maySetPassword && (
+          <label className="form-field">
+            <span>New password (leave blank to keep)</span>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={!mayWrite}
+              autoComplete="new-password"
+            />
+          </label>
+        )}
 
         <div className="form-actions">
           <button

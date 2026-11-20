@@ -10,6 +10,7 @@ import { listEmployees } from '../../api/employees';
 import { listLeaveTypes } from '../../api/leaveTypes';
 import type {
   Employee,
+  LeaveRequestStatus,
   LeaveType,
   NewLeaveRequest,
 } from '../../api/types';
@@ -17,7 +18,11 @@ import { ApiError } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
 
-const STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+function formatStatus(status: LeaveRequestStatus | null): string {
+  if (!status) return 'Unknown';
+  const words = status.toLowerCase().replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,9 +34,7 @@ function buildEmpty(employeeId: number | undefined): NewLeaveRequest {
     leaveTypeId: 0,
     startDate: todayISO(),
     endDate: todayISO(),
-    requestStatus: 'PENDING',
     reason: '',
-    requestedDatetime: new Date().toISOString().slice(0, 19),
   };
 }
 
@@ -53,6 +56,7 @@ export default function LeaveRequestFormPage() {
   );
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [status, setStatus] = useState<LeaveRequestStatus | null>(null);
   const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,10 +96,9 @@ export default function LeaveRequestFormPage() {
           leaveTypeId: r.leaveTypeId,
           startDate: r.startDate,
           endDate: r.endDate,
-          requestStatus: r.requestStatus,
           reason: r.reason,
-          requestedDatetime: r.requestedDatetime,
         });
+        setStatus(r.requestStatus ?? null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -114,7 +117,6 @@ export default function LeaveRequestFormPage() {
       ? true
       : originalEmployeeId === user?.employeeId;
   const mayEdit = mayReview || isOwner;
-  const mayChangeStatus = !isNew && mayReview;
 
   function update<K extends keyof NewLeaveRequest>(
     key: K,
@@ -232,20 +234,14 @@ export default function LeaveRequestFormPage() {
           />
         </label>
 
-        <label className="form-field">
-          <span>Status</span>
-          <select
-            value={form.requestStatus ?? 'PENDING'}
-            onChange={(e) => update('requestStatus', e.target.value)}
-            disabled={!mayChangeStatus}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s.charAt(0) + s.slice(1).toLowerCase()}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* requestStatus is read-only in leave.yaml: the leave-approval saga sets it after a
+            decision is posted to /v1/leaveapprovals (approval UI: P5.4). */}
+        {!isNew && (
+          <label className="form-field">
+            <span>Status</span>
+            <input value={formatStatus(status)} disabled readOnly />
+          </label>
+        )}
 
         <div className="form-actions">
           {!isNew && mayEdit && (
