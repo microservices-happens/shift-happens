@@ -12,6 +12,7 @@
 #
 # Manual run: Actions -> ci -> Run workflow with `services` = all | auto | "<space separated list>".
 # The manual run skips the path filter, so you can build and scan any image on demand.
+# Tick `benchmark` to also run scheduling's opt-in CQRS benchmark (off in every other run).
 name: ci
 
 on:
@@ -25,6 +26,11 @@ on:
         required: false
         default: all
         type: string
+      benchmark:
+        description: 'Also run the opt-in CQRS benchmark of scheduling-service (docs/measurements/cqrs-read-model.md)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -129,7 +135,7 @@ jobs:
       # (Failsafe: *IT, which use Testcontainers).
       - name: Unit and integration tests
         working-directory: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
-        run: mvn -B verify -Dmaven.wagon.http.retryHandler.count=3
+        run: mvn -B verify -Dmaven.wagon.http.retryHandler.count=3 -Dcqrs.benchmark=${{ inputs.benchmark == true }}
 
       - name: Upload the test reports
         if: always()

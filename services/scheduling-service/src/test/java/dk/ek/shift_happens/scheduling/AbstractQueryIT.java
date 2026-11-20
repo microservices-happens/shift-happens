@@ -108,6 +108,16 @@ abstract class AbstractQueryIT {
         return mongo.count(new Query(), collection);
     }
 
+    /**
+     * Read round trips this MongoDB has served so far, counted by the server itself
+     * ({@code serverStatus.opcounters}): find commands plus further cursor batches (getMore).
+     */
+    protected long mongoReads() {
+        org.bson.Document counters = mongo.executeCommand(new org.bson.Document("serverStatus", 1))
+                .get("opcounters", org.bson.Document.class);
+        return ((Number) counters.get("query")).longValue() + ((Number) counters.get("getmore")).longValue();
+    }
+
     protected HttpHeaders authorized(String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

@@ -1,5 +1,6 @@
 package dk.ek.shift_happens.scheduling;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.zaxxer.hikari.HikariDataSource;
 import dk.ek.shift_happens.scheduling.application.Viewer;
 import dk.ek.shift_happens.scheduling.domain.AssignmentStatus;
@@ -19,10 +20,14 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -50,32 +55,52 @@ import static org.assertj.core.api.Assertions.assertThat;
  * P3.6: measures the schedule question "one department's week, with staffing and names" answered from the
  * Mongo read model and from the normalised command-side Postgres tables, on the same data.
  *
- * <p>This is a measurement, not a gate: the only assertions are that the three answers are equal. No
- * latency is asserted, so a noisy CI runner cannot fail the build. Method, limits and the numbers CI
- * printed are in docs/measurements/cqrs-read-model.md.
+ * <p>Opt-in: it only runs with {@code -Dcqrs.benchmark=true} (off by default in the pom), because it
+ * takes a minute or two and asserts no latency. In CI: run the {@code ci} workflow by hand with
+ * {@code benchmark} ticked.
  *
- * <p>The three ways of answering:
+ * <p>This is a measurement, not a gate: the assertions are that all answers are equal and that the
+ * deployed endpoint makes the round trips of the variant that stands for it. No latency is asserted, so
+ * a noisy CI runner cannot fail the build. Method, limits and the numbers CI printed are in
+ * docs/measurements/cqrs-read-model.md.
+ *
+ * <p>The ways of answering:
  * <ul>
- *   <li><b>read model, as resolved</b>: the calls the GraphQL resolvers of
+ *   <li><b>read model, per parent</b>: one use-case call per shift and per assignment, which is how the
+ *       GraphQL resolvers read until the nested fields were batched. No longer deployed; kept so the
+ *       same run shows before and after.</li>
+ *   <li><b>read model, batched resolvers</b>: the calls the DataLoaders of
  *       {@code SchedulingGraphQlController} make on {@code SchedulingQueryService} for the schedule
- *       query, field by field. This is what the query role does today.</li>
- *   <li><b>read model, batched</b>: the same Mongo collections read in three round trips. Not what is
- *       deployed; it separates the cost of the store from the cost of resolving field by field.</li>
+ *       query, one per nested field. This is what the query role does today.</li>
+ *   <li><b>read model, three reads</b>: the same Mongo collections read once each. Not deployed; it is
+ *       the floor for these collections.</li>
  *   <li><b>write model, joins</b>: two SQL statements with joins over the Flyway schema of the command
  *       role, on plain JDBC.</li>
+ *   <li><b>deployed query over HTTP</b>: the real request, POST /graphql with a Manager token. It is
+ *       the only variant that pays for HTTP, JWT validation, GraphQL execution and JSON, so its time
+ *       is not comparable with the others; it is there to show what a client waits for and to check
+ *       that the endpoint really makes the round trips of the batched-resolvers variant.</li>
  * </ul>
  *
- * <p>Timed: the database round trips and the mapping to plain records, in this JVM. Not timed: HTTP, JWT
- * validation, GraphQL parsing and execution, JSON serialization, JPA. Both databases are containers on
- * the same host, so there is no real network between the service and its store.
+ * <p>Timed, except for the HTTP variant: the database round trips and the mapping to plain records, in
+ * this JVM. Both databases are containers on the same host, so there is no real network between the
+ * service and its store. The Mongo round trips in the table are counted by the server (find commands
+ * plus getMore), not assumed.
  *
  * <p>Tune with {@code -Dcqrs.benchmark.warmup=N -Dcqrs.benchmark.iterations=N}.
  */
+@EnabledIfSystemProperty(named = "cqrs.benchmark", matches = "true")
 class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
 
     private static final int WARMUP = Integer.getInteger("cqrs.benchmark.warmup", 30);
     private static final int ITERATIONS = Integer.getInteger("cqrs.benchmark.iterations", 200);
     private static final String MARKER = "CQRS-BENCH | ";
+
+    private static final String PER_PARENT = "read model (Mongo), per parent (resolvers before batching)";
+    private static final String BATCHED_RESOLVERS = "read model (Mongo), batched resolvers (deployed)";
+    private static final String THREE_READS = "read model (Mongo), three reads (not deployed)";
+    private static final String JOINS = "write model (Postgres), joins";
+    private static final String OVER_HTTP = "deployed query over HTTP (JWT, GraphQL, JSON included)";
 
     // The organisation: 10 departments of 50 employees, three shifts a day per department, five people
     // on a shift. One year of that is 10,950 shifts and 54,750 assignments.
@@ -93,6 +118,18 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
     private static final Instant TO = EPOCH.plus(Duration.ofDays(21));
     private static final Viewer MANAGER = new Viewer(900L, Viewer.MANAGER);
 
+    /** The schedule query, selecting exactly what a {@link ShiftAnswer} holds. */
+    private static final String WEEK_QUERY = """
+            { shifts(from: "%s", to: "%s", departmentId: %d) {
+                shiftId shiftName departmentId workLocationId startDatetime endDatetime status isUnderstaffed
+                requiredJobRoles { jobRoleId requiredEmployeeCount assignedCount }
+                assignments { shiftAssignmentId status assignedDatetime employee { employeeId firstName lastName } }
+              } }
+            """.formatted(FROM, TO, DEPARTMENT_ID);
+
+    /** A test token lives five minutes, so the HTTP variant gets a fresh one for every history size. */
+    private String managerToken;
+
     private static final LongListConverter JOB_ROLE_IDS = new LongListConverter();
 
     private static PostgreSQLContainer<?> postgres;
@@ -104,7 +141,7 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
     @Autowired
     private ReadModelQueries readModel;
 
-    /** What the schedule page shows for one shift; all three variants must produce exactly this. */
+    /** What the schedule page shows for one shift; all variants must produce exactly this. */
     record ShiftAnswer(long shiftId, String shiftName, long departmentId, long workLocationId, Instant start,
                        Instant end, String status, boolean understaffed, List<RoleAnswer> roles,
                        List<AssignmentAnswer> assignments) {
@@ -153,9 +190,11 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
     @Test
     void measuresTheDepartmentWeekOnTheReadModelAndOnTheWriteModel() throws IOException {
         Map<String, Supplier<List<ShiftAnswer>>> variants = new LinkedHashMap<>();
-        variants.put("read model (Mongo), as the resolvers read it", this::fromTheReadModelAsResolved);
-        variants.put("read model (Mongo), batched", this::fromTheReadModelBatched);
-        variants.put("write model (Postgres), joins", this::fromTheWriteModelWithJoins);
+        variants.put(PER_PARENT, this::fromTheReadModelPerParent);
+        variants.put(BATCHED_RESOLVERS, this::fromTheReadModelAsResolved);
+        variants.put(THREE_READS, this::fromTheReadModelInThreeReads);
+        variants.put(JOINS, this::fromTheWriteModelWithJoins);
+        variants.put(OVER_HTTP, this::overHttp);
 
         List<String> report = new ArrayList<>();
         report.add("environment: " + environment());
@@ -171,12 +210,24 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
             loadDays(loadedDays, days);
             loadedDays = days;
             jdbc.execute("ANALYZE");
+            managerToken = TestJwks.manager();
 
             // Same question, same answer: otherwise the timings below would compare different work.
             List<ShiftAnswer> expected = fromTheWriteModelWithJoins();
             assertThat(expected).isNotEmpty();
             assertThat(expected).allSatisfy(shift -> assertThat(shift.assignments()).isNotEmpty());
             variants.forEach((name, variant) -> assertThat(variant.get()).as(name).isEqualTo(expected));
+
+            // Counted by MongoDB, one answer per variant. Postgres: the two statements of the variant.
+            Map<String, Long> roundTrips = new LinkedHashMap<>();
+            variants.forEach((name, variant) -> {
+                long before = mongoReads();
+                variant.get();
+                roundTrips.put(name, JOINS.equals(name) ? 2 : mongoReads() - before);
+            });
+            assertThat(roundTrips.get(OVER_HTTP))
+                    .as("the endpoint makes the round trips of the variant that stands for the deployed resolvers")
+                    .isEqualTo(roundTrips.get(BATCHED_RESOLVERS));
 
             for (int round = 0; round < WARMUP; round++) {
                 variants.values().forEach(Supplier::get);
@@ -193,12 +244,6 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
             }
 
             int answerAssignments = expected.stream().mapToInt(shift -> shift.assignments().size()).sum();
-            // As resolved: shifts(), then per shift requiredJobRoles (3 reads), isUnderstaffed (3 reads)
-            // and assignments (1 read), then one employee read per assignment.
-            Map<String, Integer> roundTrips = Map.of(
-                    "read model (Mongo), as the resolvers read it", 1 + 7 * expected.size() + answerAssignments,
-                    "read model (Mongo), batched", 3,
-                    "write model (Postgres), joins", 2);
             for (Map.Entry<String, long[]> measured : nanos.entrySet()) {
                 long[] sorted = measured.getValue().clone();
                 Arrays.sort(sorted);
@@ -213,13 +258,14 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
         publishReport(report);
     }
 
-    // ---- variant 1: what the query role does today -------------------------------------------------
+    // ---- variant 1: what the query role did before the nested fields were batched ------------------
 
     /**
-     * The same service calls, in the same number, as the resolvers make for
-     * {@code shifts { ... isUnderstaffed requiredJobRoles { .. } assignments { .. employee { .. } } }}.
+     * One use-case call per parent, as the resolvers made them until P2.11 was batched: per shift
+     * requiredJobRoles and isUnderstaffed (3 reads each) and assignments (1 read), then one employee
+     * read per assignment.
      */
-    private List<ShiftAnswer> fromTheReadModelAsResolved() {
+    private List<ShiftAnswer> fromTheReadModelPerParent() {
         return queries.shifts(MANAGER, FROM, TO, DEPARTMENT_ID, null, null).stream().map(shift -> {
             List<RoleAnswer> roles = queries.requiredJobRoles(shift.shiftId()).stream()
                     .map(role -> new RoleAnswer(role.jobRoleId(), role.requiredEmployeeCount(),
@@ -239,9 +285,38 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
         }).toList();
     }
 
-    // ---- variant 2: the same collections in three round trips --------------------------------------
+    // ---- variant 2: what the query role does today -------------------------------------------------
 
-    private List<ShiftAnswer> fromTheReadModelBatched() {
+    /**
+     * The same service calls, in the same number, as the DataLoaders of SchedulingGraphQlController make
+     * for {@code shifts { ... isUnderstaffed requiredJobRoles { .. } assignments { .. employee { .. } } }}:
+     * the shifts, one staffing batch shared by requiredJobRoles and isUnderstaffed, one assignments
+     * batch and one employee batch. The test asserts that the real endpoint makes as many round trips.
+     */
+    private List<ShiftAnswer> fromTheReadModelAsResolved() {
+        List<ShiftView> shifts = queries.shifts(MANAGER, FROM, TO, DEPARTMENT_ID, null, null);
+        Map<Long, List<RequiredJobRoleView>> staffing = queries.requiredJobRoles(shifts);
+        Map<Long, List<AssignmentView>> assignments = queries.assignmentsOfShifts(
+                shifts.stream().map(ShiftView::shiftId).collect(Collectors.toSet()));
+        Map<Long, EmployeeView> employees = queries.employeesById(assignments.values().stream()
+                .flatMap(List::stream).map(AssignmentView::employeeId).collect(Collectors.toSet()));
+        return shifts.stream().map(shift -> {
+            List<RequiredJobRoleView> roles = staffing.get(shift.shiftId());
+            return answer(shift, roles.stream().anyMatch(RequiredJobRoleView::understaffed),
+                    roles.stream().map(role -> new RoleAnswer(role.jobRoleId(), role.requiredEmployeeCount(),
+                            role.assignedCount())).toList(),
+                    assignments.get(shift.shiftId()).stream().map(assignment -> {
+                        EmployeeView employee = employees.get(assignment.employeeId());
+                        return new AssignmentAnswer(assignment.shiftAssignmentId(), assignment.status().name(),
+                                assignment.assignedDatetime(), employee.employeeId(), employee.firstName(),
+                                employee.lastName());
+                    }).toList());
+        }).toList();
+    }
+
+    // ---- variant 3: the same collections read once each --------------------------------------------
+
+    private List<ShiftAnswer> fromTheReadModelInThreeReads() {
         List<ShiftView> shifts = readModel.findShifts(FROM, TO, DEPARTMENT_ID, null, null);
         List<Long> shiftIds = shifts.stream().map(ShiftView::shiftId).toList();
         List<Document> assignments = mongo.find(
@@ -271,7 +346,7 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
         }).toList();
     }
 
-    // ---- variant 3: the normalised write model -----------------------------------------------------
+    // ---- variant 4: the normalised write model -----------------------------------------------------
 
     private static final String SHIFTS_WITH_ROLES = """
             SELECT s.shift_id, s.shift_name, s.department_id, s.work_location_id, s.start_datetime,
@@ -342,6 +417,44 @@ class CqrsReadModelBenchmarkIT extends AbstractQueryIT {
                     shift.workLocationId(), shift.start(), shift.end(), shift.status(), understaffed(roles),
                     roles, staffed.stream().map(Staffed::assignment).toList());
         }).toList();
+    }
+
+    // ---- variant 5: the deployed endpoint ----------------------------------------------------------
+
+    /** POST /graphql as a client would, with the response parsed back into the same answer. */
+    private List<ShiftAnswer> overHttp() {
+        ResponseEntity<String> response = http.postForEntity("/graphql",
+                new HttpEntity<>(Map.of("query", WEEK_QUERY), authorized(managerToken)), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body;
+        try {
+            body = objectMapper.readTree(response.getBody());
+        } catch (IOException notJson) {
+            throw new IllegalStateException("the GraphQL response is not JSON: " + response.getBody(), notJson);
+        }
+        assertThat(body.path("errors")).as("GraphQL errors: %s", body).isEmpty();
+        List<ShiftAnswer> shifts = new ArrayList<>();
+        for (JsonNode shift : body.path("data").path("shifts")) {
+            List<RoleAnswer> roles = new ArrayList<>();
+            for (JsonNode role : shift.path("requiredJobRoles")) {
+                roles.add(new RoleAnswer(role.path("jobRoleId").asLong(), role.path("requiredEmployeeCount").asInt(),
+                        role.path("assignedCount").asInt()));
+            }
+            List<AssignmentAnswer> assignments = new ArrayList<>();
+            for (JsonNode assignment : shift.path("assignments")) {
+                JsonNode employee = assignment.path("employee");
+                assignments.add(new AssignmentAnswer(assignment.path("shiftAssignmentId").asLong(),
+                        assignment.path("status").asText(), Instant.parse(assignment.path("assignedDatetime").asText()),
+                        employee.path("employeeId").asLong(), employee.path("firstName").asText(),
+                        employee.path("lastName").asText()));
+            }
+            shifts.add(new ShiftAnswer(shift.path("shiftId").asLong(), shift.path("shiftName").asText(),
+                    shift.path("departmentId").asLong(), shift.path("workLocationId").asLong(),
+                    Instant.parse(shift.path("startDatetime").asText()),
+                    Instant.parse(shift.path("endDatetime").asText()), shift.path("status").asText(),
+                    shift.path("isUnderstaffed").asBoolean(), roles, assignments));
+        }
+        return shifts;
     }
 
     // ---- shared shaping ----------------------------------------------------------------------------

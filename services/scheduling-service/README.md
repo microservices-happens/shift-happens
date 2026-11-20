@@ -8,7 +8,7 @@
 | `command` | `scheduling-command` | `scheduling-write-db` (Postgres, Flyway) + outbox + employee replica | REST writes: [`openapi/scheduling.yaml`](../../contracts/openapi/scheduling.yaml) |
 | `query` | `scheduling-query` | `scheduling-read-db` (MongoDB) + projection log | GraphQL reads: [`graphql/scheduling.graphql`](../../contracts/graphql/scheduling.graphql) |
 
-**Why CQRS here:** writes are small, validated transactions (assign, swap, approve). Reads are wide, nested views such as a week's schedule with assignments, employee names and AI suggestions. Mongo documents shaped for those views, served over GraphQL, avoid multi-table joins on every page load. The two roles also scale independently, since reads far outnumber writes. Measured (P3.6, [`docs/measurements/cqrs-read-model.md`](../../docs/measurements/cqrs-read-model.md)): at one year of data the joins are **not** slower than the read model, so the justification is availability and isolation of the read side, not query latency. `CqrsReadModelBenchmarkIT` repeats the measurement in every `mvn verify` (60 to 90 s, no latency assertions).
+**Why CQRS here:** writes are small, validated transactions (assign, swap, approve). Reads are wide, nested views such as a week's schedule with assignments, employee names and AI suggestions. Mongo documents shaped for those views, served over GraphQL, avoid multi-table joins on every page load. The two roles also scale independently, since reads far outnumber writes. Measured (P3.6, [`docs/measurements/cqrs-read-model.md`](../../docs/measurements/cqrs-read-model.md)): at one year of data the joins are **not** slower than the read model (median 2.20 ms against 5.05 ms for the deployed batched resolvers; 66.83 ms before the resolvers were batched), so the justification is availability and isolation of the read side, not query latency. `CqrsReadModelBenchmarkIT` repeats the measurement on request only: `-Dcqrs.benchmark=true`, or the `benchmark` input of a manual `ci` run (about 2 min, no latency assertions).
 
 **Why swaps live here:** a swap only reassigns an existing assignment. Approval and reassignment are one local transaction, so no saga is needed.
 
@@ -107,7 +107,7 @@ GraphQL contract from its Mongo read model.
 
 Separate collections instead of one document per shift: assignment and employee events arrive in any order and are
 versioned per aggregate, so one document per entity keeps every upsert local and a late event can never overwrite a
-newer sibling. GraphQL resolves the nesting with indexed lookups.
+newer sibling. GraphQL resolves the nesting with indexed lookups, one batched read per nested field (see [GraphQL](#graphql)).
 
 - Every write is a version-guarded upsert: an equal or lower `aggregateVersion` is ignored, and a snapshot never
   clears an existing tombstone.
@@ -132,6 +132,15 @@ newer sibling. GraphQL resolves the nesting with indexed lookups.
 - Every request needs a Bearer JWT, verified against `JWT_JWKS_URL` with `iss` checked; Nimbus caches the JWKS.
 - `assignedCount` and `isUnderstaffed` are derived per request from the assignments and the employee copy, which is why
   the read model keeps the employee replica next to the assignments.
+- Nested fields are batched, never read per parent: every nested field queues its key on a per-request DataLoader,
+  and the loader asks `SchedulingQueryService` once for all parents (`ReadModelQueries.find...ByIds` / `...OfShifts`,
+  one `$in` read each). A week of shifts with staffing, assignments and employee names is five MongoDB find commands
+  for a Manager and six for an Employee, however many shifts it returns (a result of more than 101 documents adds
+  a getMore on its cursor; the benchmarked week of 22 shifts and 102 assignments is 7 round trips, down from 257). `GraphQlBatchingTest` (unit, counting port) and
+  `GraphQlRoundTripsIT` (MongoDB's own operation counters) fail if a per-parent read comes back.
+- The visibility rules are applied by the root queries only. A nested field has no rule of its own and is resolved
+  only for a parent that a root query returned to that viewer; the loaders are created per request, so nothing one
+  request loads is served to another.
 - GraphiQL is a development tool: `APP_ROLE=query,dev` (or `GRAPHQL_GRAPHIQL_ENABLED=true`) serves it at `/graphiql`.
 
 ## Run it
@@ -139,6 +148,10 @@ newer sibling. GraphQL resolves the nesting with indexed lookups.
 ```bash
 mvn -B -f services/scheduling-service/pom.xml test     # unit tests, no Docker
 mvn -B -f services/scheduling-service/pom.xml verify   # unit + integration (Docker must be running)
+
+# the same plus the CQRS benchmark (P3.6), which is off by default; it prints lines starting with "CQRS-BENCH |"
+mvn -B -f services/scheduling-service/pom.xml verify -Dcqrs.benchmark=true
+# in CI: gh workflow run ci.yml --ref <branch> -f services=scheduling-service -f benchmark=true
 
 # query role locally, with GraphiQL (the env var wins over APP_ROLE in application.yml)
 SPRING_PROFILES_ACTIVE=query,dev mvn -B -f services/scheduling-service/pom.xml spring-boot:run

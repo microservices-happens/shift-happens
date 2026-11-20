@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * The query role's read model (P2.10): Mongo documents shaped for the GraphQL schedule view.
@@ -213,6 +214,11 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     }
 
     @Override
+    public List<ShiftView> findShiftsByIds(Collection<Long> shiftIds) {
+        return findByIds(SHIFTS, shiftIds).map(ReadModelDocuments::toShiftView).toList();
+    }
+
+    @Override
     public List<ShiftView> findShifts(Instant from, Instant to, Long departmentId, Long workLocationId,
                                       ShiftStatus status) {
         Criteria criteria = Criteria.where("deletedAt").is(null)
@@ -255,6 +261,17 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     }
 
     @Override
+    public List<AssignmentView> findAssignmentsOfShifts(Collection<Long> shiftIds) {
+        if (shiftIds == null || shiftIds.isEmpty()) {
+            return List.of();
+        }
+        Query query = new Query(Criteria.where("shiftId").in(shiftIds).and("deletedAt").is(null))
+                .with(Sort.by("_id"));
+        return mongo.find(query, Document.class, ASSIGNMENTS).stream()
+                .map(ReadModelDocuments::toAssignmentView).toList();
+    }
+
+    @Override
     public List<AssignmentView> findAssignmentsOfEmployee(long employeeId, Instant from, Instant to) {
         Criteria criteria = Criteria.where("employeeId").is(employeeId)
                 .and("deletedAt").is(null)
@@ -273,6 +290,11 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     }
 
     @Override
+    public List<AssignmentView> findAssignmentsByIds(Collection<Long> shiftAssignmentIds) {
+        return findByIds(ASSIGNMENTS, shiftAssignmentIds).map(ReadModelDocuments::toAssignmentView).toList();
+    }
+
+    @Override
     public Optional<EmployeeView> findEmployee(long employeeId) {
         Document document = mongo.findById(employeeId, Document.class, EMPLOYEES);
         return Optional.ofNullable(document).filter(MongoReadModel::hasSnapshot)
@@ -281,13 +303,20 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
 
     @Override
     public List<EmployeeView> findEmployees(Collection<Long> employeeIds) {
-        if (employeeIds == null || employeeIds.isEmpty()) {
-            return List.of();
+        return findByIds(EMPLOYEES, employeeIds).map(ReadModelDocuments::toEmployeeView).toList();
+    }
+
+    /**
+     * The batch form of the reads by id: one query, and like them a tombstone that arrived before
+     * any snapshot is not a view. No ids, no query. (One query is one find command; the driver fetches a
+     * result of more than 101 documents in further cursor batches.)
+     */
+    private Stream<Document> findByIds(String collection, Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Stream.empty();
         }
-        Query query = new Query(Criteria.where("_id").in(employeeIds));
-        return mongo.find(query, Document.class, EMPLOYEES).stream()
-                .filter(MongoReadModel::hasSnapshot)
-                .map(ReadModelDocuments::toEmployeeView).toList();
+        return mongo.find(new Query(Criteria.where("_id").in(ids)), Document.class, collection).stream()
+                .filter(MongoReadModel::hasSnapshot);
     }
 
     @Override
@@ -314,6 +343,16 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     @Override
     public List<SuggestionView> findSuggestions(long shiftId) {
         Query query = new Query(Criteria.where("shiftId").is(shiftId)).with(Sort.by("jobRoleId"));
+        return mongo.find(query, Document.class, SUGGESTIONS).stream()
+                .map(ReadModelDocuments::toSuggestionView).toList();
+    }
+
+    @Override
+    public List<SuggestionView> findSuggestionsOfShifts(Collection<Long> shiftIds) {
+        if (shiftIds == null || shiftIds.isEmpty()) {
+            return List.of();
+        }
+        Query query = new Query(Criteria.where("shiftId").in(shiftIds)).with(Sort.by("shiftId", "jobRoleId"));
         return mongo.find(query, Document.class, SUGGESTIONS).stream()
                 .map(ReadModelDocuments::toSuggestionView).toList();
     }
