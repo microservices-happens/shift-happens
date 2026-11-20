@@ -7,8 +7,8 @@ import type { NewShift, Shift, V1Path } from './types';
 const SHIFTS = '/shifts' satisfies V1Path<keyof paths>;
 const SHIFT = '/shifts/{id}' satisfies V1Path<keyof paths>;
 
-export function createShift(data: NewShift): Promise<Shift> {
-  return apiRequest<Shift>(SHIFTS, { method: 'POST', body: data });
+export function createShift(data: NewShift, idempotencyKey: string): Promise<Shift> {
+  return apiRequest<Shift>(SHIFTS, { method: 'POST', body: data, idempotencyKey });
 }
 
 export function updateShift(id: number, data: NewShift): Promise<Shift> {

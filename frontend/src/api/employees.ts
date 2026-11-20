@@ -14,8 +14,8 @@ export function getEmployee(id: number): Promise<Employee> {
   return apiRequest<Employee>(pathWithParams(EMPLOYEE, { id }));
 }
 
-export function createEmployee(data: NewEmployee): Promise<Employee> {
-  return apiRequest<Employee>(EMPLOYEES, { method: 'POST', body: data });
+export function createEmployee(data: NewEmployee, idempotencyKey: string): Promise<Employee> {
+  return apiRequest<Employee>(EMPLOYEES, { method: 'POST', body: data, idempotencyKey });
 }
 
 export function updateEmployee(id: number, data: Partial<NewEmployee>): Promise<Employee> {

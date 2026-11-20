@@ -9,6 +9,7 @@ import {
 import { listEmployees } from '../../api/employees';
 import type { Employee, NewShiftAssignment } from '../../api/types';
 import { ApiError } from '../../api/types';
+import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
 import { graphqlErrorMessage } from '../../graphql/client';
@@ -69,6 +70,8 @@ export default function ShiftAssignmentFormPage() {
   const mayWrite = canWrite(user?.roleName);
 
   const [form, setForm] = useState<NewShiftAssignment>(buildEmpty);
+  // One Idempotency-Key per submission of this form; a retry of the same data reuses it.
+  const createAction = useIdempotentAction();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +161,7 @@ export default function ShiftAssignmentFormPage() {
     setError(null);
     setSubmitting(true);
     try {
-      if (isNew) await createShiftAssignment(form);
+      if (isNew) await createAction.run(form, (key) => createShiftAssignment(form, key));
       else if (numericId !== null) await updateShiftAssignment(numericId, form);
       navigate('/shift-assignments');
     } catch (err) {

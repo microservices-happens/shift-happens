@@ -6,6 +6,7 @@ import { listDepartments } from '../../api/departments';
 import { listWorkLocations } from '../../api/workLocations';
 import type { Department, NewShift, WorkLocation } from '../../api/types';
 import { ApiError } from '../../api/types';
+import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
 import { graphqlErrorMessage } from '../../graphql/client';
@@ -43,6 +44,8 @@ export default function ShiftFormPage() {
   const mayWrite = canWrite(user?.roleName);
 
   const [form, setForm] = useState<NewShift>(() => buildEmpty(presetDate));
+  // One Idempotency-Key per submission of this form; a retry of the same data reuses it.
+  const createAction = useIdempotentAction();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [locations, setLocations] = useState<WorkLocation[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -107,7 +110,7 @@ export default function ShiftFormPage() {
     setError(null);
     setSubmitting(true);
     try {
-      if (isNew) await createShift(form);
+      if (isNew) await createAction.run(form, (key) => createShift(form, key));
       else if (numericId !== null) await updateShift(numericId, form);
       navigate('/shifts');
     } catch (err) {
