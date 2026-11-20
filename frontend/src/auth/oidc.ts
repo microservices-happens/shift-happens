@@ -1,4 +1,4 @@
-import type { AuthUser } from '../api/types';
+import type { AuthUser, RoleName } from '../api/types';
 
 /**
  * Google/GitHub login (P5.3) against identity-service's authorization-code + PKCE flow
@@ -156,9 +156,15 @@ export async function checkProviderAvailable(provider: OidcProvider): Promise<{ 
 
 // ---- Token claims ---------------------------------------------------------
 
+const ROLE_NAMES: readonly RoleName[] = ['Administrator', 'Manager', 'Employee'];
+
+function isRoleName(value: unknown): value is RoleName {
+  return typeof value === 'string' && (ROLE_NAMES as readonly string[]).includes(value);
+}
+
 interface ShiftHappensClaims {
   employeeId: number;
-  role: string;
+  role: RoleName;
   exp?: number;
 }
 
@@ -183,7 +189,7 @@ export function readTokenClaims(token: string, nowMs: number = Date.now()): Shif
     const employeeId = Number(payload.employeeId ?? payload.sub);
     const role = payload.role;
     const exp = payload.exp;
-    if (!Number.isInteger(employeeId) || typeof role !== 'string' || role === '') return null;
+    if (!Number.isInteger(employeeId) || !isRoleName(role)) return null;
     if (typeof exp === 'number' && exp * 1000 <= nowMs) return null;
     return { employeeId, role, exp: typeof exp === 'number' ? exp : undefined };
   } catch {

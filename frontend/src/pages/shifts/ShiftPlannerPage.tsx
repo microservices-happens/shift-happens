@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listShifts } from '../../api/shifts';
-import { listShiftAssignments } from '../../api/shiftAssignments';
-import { listEmployees } from '../../api/employees';
+import { useQuery } from '@apollo/client/react';
 import { listDepartments } from '../../api/departments';
-import type {
-  Employee,
-  Shift,
-  ShiftAssignment,
-  Department,
-} from '../../api/types';
-import { ApiError } from '../../api/types';
+import type { Department } from '../../api/types';
 import { useAuth } from '../../auth/useAuth';
 import { canWrite } from '../../auth/roles';
+import { graphqlErrorMessage } from '../../graphql/client';
+import {
+  ShiftsWithAssignmentsDocument,
+  type AssignmentStatus,
+  type ShiftsWithAssignmentsQuery,
+} from '../../graphql/generated';
+import { addDays, startOfWeek, weekWindow } from '../../graphql/time';
+import { UnderstaffedShiftsPanel } from './UnderstaffedShiftsPanel';
+
+type WeekShift = ShiftsWithAssignmentsQuery['shifts'][number];
+type WeekAssignment = WeekShift['assignments'][number];
+type PlannerEmployee = WeekAssignment['employee'];
+type PlannerCell = { day: Date; shift: WeekShift; assignment: WeekAssignment };
+
+/** The statuses that occupy an employee (scheduling's AssignmentStatus.isActive). */
+const ACTIVE_STATUSES: ReadonlySet<AssignmentStatus> = new Set(['ASSIGNED', 'APPROVED', 'SWAPPED']);
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -39,21 +47,6 @@ const DEPT_COLORS = [
   '#ec4899',
   '#14b8a6',
 ];
-
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const weekday = d.getDay();
-  const offset = (weekday + 6) % 7;
-  d.setDate(d.getDate() - offset);
-  return d;
-}
-
-function addDays(date: Date, n: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
 
 function isSameDay(a: Date, b: Date): boolean {
   return (
@@ -93,7 +86,7 @@ function isoWeekNumber(date: Date): number {
   return Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
-function initials(e: Employee): string {
+function initials(e: PlannerEmployee): string {
   const f = e.firstName?.[0] ?? '';
   const l = e.lastName?.[0] ?? '';
   return (f + l).toUpperCase() || '?';
@@ -127,35 +120,22 @@ export default function ShiftPlannerPage() {
   const navigate = useNavigate();
 
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [assignments, setAssignments] = useState<ShiftAssignment[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // shifts(from, to) with nested assignments and employees: one round trip per week. An Employee
+  // only gets the shifts they are assigned to (scheduling-query decides).
+  const variables = useMemo(() => weekWindow(weekStart), [weekStart]);
+  const { data, loading, error: queryError } = useQuery(ShiftsWithAssignmentsDocument, { variables });
+  const shifts = useMemo(() => data?.shifts ?? [], [data]);
+  const error = queryError ? graphqlErrorMessage(queryError, 'Failed to load planner') : null;
 
+  const [departments, setDepartments] = useState<Department[]>([]);
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      listShifts(),
-      listShiftAssignments(),
-      listEmployees(),
-      listDepartments(),
-    ])
-      .then(([ss, as, es, ds]) => {
-        if (cancelled) return;
-        setShifts(ss);
-        setAssignments(as);
-        setEmployees(es);
-        setDepartments(ds);
+    listDepartments()
+      .then((ds) => {
+        if (!cancelled) setDepartments(ds);
       })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Failed to load planner');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        /* department names are decoration; the planner still renders */
       });
     return () => {
       cancelled = true;
@@ -168,12 +148,6 @@ export default function ShiftPlannerPage() {
   );
   const weekEnd = weekDays[6];
 
-  const shiftById = useMemo(() => {
-    const map = new Map<number, Shift>();
-    shifts.forEach((s) => map.set(s.shiftId, s));
-    return map;
-  }, [shifts]);
-
   const departmentById = useMemo(() => {
     const map = new Map<number, Department>();
     departments.forEach((d) => map.set(d.departmentId, d));
@@ -181,47 +155,52 @@ export default function ShiftPlannerPage() {
   }, [departments]);
 
   const rows = useMemo(() => {
-    const cellsByEmployee = new Map<
-      number,
-      { day: Date; shift: Shift; assignment: ShiftAssignment }[]
-    >();
-
-    for (const a of assignments) {
-      const shift = shiftById.get(a.shiftId);
-      if (!shift?.startDatetime) continue;
-      const start = new Date(shift.startDatetime);
-      const day = weekDays.find((d) => isSameDay(d, start));
+    const byEmployee = new Map<number, { employee: PlannerEmployee; cells: PlannerCell[] }>();
+    for (const shift of shifts) {
+      const day = weekDays.find((d) => isSameDay(d, new Date(shift.startDatetime)));
       if (!day) continue;
-      const list = cellsByEmployee.get(a.employeeId) ?? [];
-      list.push({ day, shift, assignment: a });
-      cellsByEmployee.set(a.employeeId, list);
-    }
-
-    return employees
-      .filter((e) => cellsByEmployee.has(e.employeeId))
-      .map((e) => {
-        const cells = cellsByEmployee.get(e.employeeId) ?? [];
-        const totalHours = cells.reduce(
-          (sum, c) => sum + hoursBetween(c.shift.startDatetime, c.shift.endDatetime),
-          0
-        );
-        return { employee: e, cells, totalHours };
-      });
-  }, [assignments, employees, shiftById, weekDays]);
-
-  const weekStats = useMemo(() => {
-    const shiftIds = new Set<number>();
-    let hours = 0;
-    for (const row of rows) {
-      for (const cell of row.cells) {
-        if (!shiftIds.has(cell.shift.shiftId)) {
-          shiftIds.add(cell.shift.shiftId);
-          hours += hoursBetween(cell.shift.startDatetime, cell.shift.endDatetime);
-        }
+      for (const assignment of shift.assignments) {
+        if (!ACTIVE_STATUSES.has(assignment.status)) continue;
+        const { employee } = assignment;
+        const row = byEmployee.get(employee.employeeId) ?? { employee, cells: [] };
+        row.cells.push({ day, shift, assignment });
+        byEmployee.set(employee.employeeId, row);
       }
     }
-    return { shifts: shiftIds.size, hours };
-  }, [rows]);
+    return [...byEmployee.values()]
+      .sort((a, b) =>
+        `${a.employee.firstName} ${a.employee.lastName}`.localeCompare(
+          `${b.employee.firstName} ${b.employee.lastName}`
+        )
+      )
+      .map(({ employee, cells }) => ({
+        employee,
+        cells,
+        totalHours: cells.reduce(
+          (sum, c) => sum + hoursBetween(c.shift.startDatetime, c.shift.endDatetime),
+          0
+        ),
+      }));
+  }, [shifts, weekDays]);
+
+  /** Shifts in the week that nobody is actively assigned to (not visible in the team rows). */
+  const openShifts = useMemo(
+    () =>
+      shifts.filter(
+        (s) =>
+          s.status !== 'CANCELLED' && !s.assignments.some((a) => ACTIVE_STATUSES.has(a.status))
+      ),
+    [shifts]
+  );
+
+  const weekStats = useMemo(() => {
+    const visible = shifts.filter((s) => s.status !== 'CANCELLED');
+    return {
+      shifts: visible.length,
+      hours: visible.reduce((sum, s) => sum + hoursBetween(s.startDatetime, s.endDatetime), 0),
+      understaffed: visible.filter((s) => s.isUnderstaffed).length,
+    };
+  }, [shifts]);
 
   const today = new Date();
   const weekNum = isoWeekNumber(weekStart);
@@ -278,9 +257,9 @@ export default function ShiftPlannerPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {loading && <div className="card card--padded page-muted">Loading…</div>}
+      {loading && !data && <div className="card card--padded page-muted">Loading…</div>}
 
-      {!loading && !error && (
+      {data && (
         <div className="planner-card">
           <div className="planner-weekbar">
             <div className="planner-weekbar-left">
@@ -296,6 +275,11 @@ export default function ShiftPlannerPage() {
               <span className="planner-week-stat">
                 {formatHours(weekStats.hours)}
               </span>
+              {mayWrite && weekStats.understaffed > 0 && (
+                <span className="planner-week-stat">
+                  {weekStats.understaffed} understaffed
+                </span>
+              )}
             </div>
           </div>
 
@@ -337,20 +321,43 @@ export default function ShiftPlannerPage() {
             ))}
           </div>
 
-          {rows.length === 0 && (
+          {rows.length === 0 && openShifts.length === 0 && (
             <div className="planner-empty">
               No shifts scheduled this week.
             </div>
           )}
+
+          {openShifts.length > 0 && (
+            <div className="card card--padded" style={{ marginTop: '1rem' }}>
+              <h2 className="page-section-title">Not staffed yet</h2>
+              <ul>
+                {openShifts.map((s) => (
+                  <li key={s.shiftId}>
+                    <Link to={`/shifts/${s.shiftId}`}>{s.shiftName}</Link>{' '}
+                    <span className="page-muted">
+                      {new Date(s.startDatetime).toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}{' '}
+                      · {formatTime(s.startDatetime)} – {formatTime(s.endDatetime)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
+
+      {mayWrite && <UnderstaffedShiftsPanel from={variables.from} to={variables.to} />}
     </div>
   );
 }
 
 interface PlannerRowProps {
-  employee: Employee;
-  cells: { day: Date; shift: Shift; assignment: ShiftAssignment }[];
+  employee: PlannerEmployee;
+  cells: PlannerCell[];
   totalHours: number;
   weekDays: Date[];
   today: Date;
@@ -414,9 +421,7 @@ function PlannerRow({
             }}
           >
             {items.map(({ shift, assignment }) => {
-              const statusClass = shift.shiftStatus
-                ? ` planner-block--status-${shift.shiftStatus.toLowerCase()}`
-                : '';
+              const statusClass = ` planner-block--status-${shift.status.toLowerCase()}`;
               const dept = departmentById.get(shift.departmentId);
               const accent = deptColor(shift.departmentId);
               return (
@@ -433,8 +438,9 @@ function PlannerRow({
                     {formatTime(shift.startDatetime)} –{' '}
                     {formatTime(shift.endDatetime)}
                   </div>
-                  {shift.shiftName && (
-                    <div className="planner-block-name">{shift.shiftName}</div>
+                  <div className="planner-block-name">{shift.shiftName}</div>
+                  {shift.isUnderstaffed && mayWrite && (
+                    <span className="pill pill-danger">Understaffed</span>
                   )}
                   {dept && (
                     <div className="planner-block-dept">
