@@ -19,6 +19,8 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   skipAuth?: boolean;
+  /** Do not trigger the global logout on 401 (for best-effort background calls such as polling). */
+  ignoreUnauthorized?: boolean;
   /**
    * Every POST carries an `Idempotency-Key` (contracts/README.md). Pass the key when the caller
    * retries the same user action; otherwise a fresh one is generated per call.
@@ -54,7 +56,7 @@ function errorMessage(payload: unknown, status: number): string {
 
 export async function apiRequest<T>(
   path: string,
-  { method = 'GET', body, skipAuth = false, idempotencyKey }: RequestOptions = {}
+  { method = 'GET', body, skipAuth = false, ignoreUnauthorized = false, idempotencyKey }: RequestOptions = {}
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json, application/problem+json' };
 
@@ -77,7 +79,7 @@ export async function apiRequest<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  if (response.status === 401 && !skipAuth) {
+  if (response.status === 401 && !skipAuth && !ignoreUnauthorized) {
     unauthorizedHandler();
   }
 
