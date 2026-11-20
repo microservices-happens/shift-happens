@@ -6,8 +6,18 @@
 ## Implemented so far (employee replica, P2.2)
 
 - Consumes `workforce.employee.created/updated/deleted.v1` from the durable queue `identity.accounts`
-  (bound to `workforce.employee.*.v1`, dead-lettered to `shift-happens.dlx` after three attempts;
-  `identity.accounts.dlq` is bound to the DLX with `#`, so it also receives other queues' dead letters).
+  (bound to `workforce.employee.*.v1`). A message that fails three times (or cannot be converted) is
+  republished to `shift-happens.dlx` with the queue name `identity.accounts` as routing key and lands in
+  `identity.accounts.dlq`, which is bound with exactly that key, so it holds only identity's failures. It is
+  never requeued forever. `DeadLetterTopologyIT` covers it.
+- **Upgrading an existing broker needs no manual step.** Older versions bound `identity.accounts.dlq` to the
+  DLX with `#` (it received every service's dead letters). `StaleDeadLetterBindingRemover` deletes that
+  binding on every broker connection, after the topology is declared. The queue arguments are deliberately
+  unchanged (only `x-dead-letter-exchange`; no `x-dead-letter-routing-key` as leave has), because RabbitMQ
+  refuses to redeclare an existing queue with different arguments; the routing key comes from the retry
+  recoverer, the path every failed message takes. Messages already in `identity.accounts` are kept.
+  Messages already in `identity.accounts.dlq` are kept too, including foreign copies received through the
+  old `#` binding: inspect and purge them (docs/wiki/Troubleshooting.md, "Messages pile up in a `.dlq`").
 - Upserts the local `account` row, keeps the highest `aggregateVersion`, keeps tombstoned accounts
   as disabled, and de-duplicates on `eventId` (`processed_events`).
 - The handler is commutative (P3.3): the same events give the same row in any arrival order.
