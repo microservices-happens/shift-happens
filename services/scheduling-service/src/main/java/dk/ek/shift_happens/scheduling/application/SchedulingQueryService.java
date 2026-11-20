@@ -13,10 +13,14 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -29,6 +33,9 @@ import java.util.stream.Collectors;
  * <p>{@code assignedCount} and {@code isUnderstaffed} are derived, not stored: they count active
  * assignments whose employee holds the required job role, which is why the read model keeps the employee
  * replica next to the assignments.
+ *
+ * <p>The nested GraphQL fields are answered by the batch reads at the bottom, one call for all parents of
+ * a field, so a query costs a fixed number of read-model round trips however many shifts it returns.
  */
 @Service
 @Profile("query")
@@ -73,10 +80,12 @@ public class SchedulingQueryService {
                 .filter(assignment -> shiftsInWindow.contains(assignment.shiftId()))
                 .toList();
     }
+
     public List<ShiftView> understaffedShifts(Viewer viewer, Instant from, Instant to) {
-        return shifts(viewer, from, to, null, null, null).stream()
-                .filter(shift -> requiredJobRoles(shift.shiftId()).stream()
-                        .anyMatch(RequiredJobRoleView::understaffed))
+        List<ShiftView> shifts = shifts(viewer, from, to, null, null, null);
+        Map<Long, List<RequiredJobRoleView>> staffing = requiredJobRoles(shifts);
+        return shifts.stream()
+                .filter(shift -> staffing.get(shift.shiftId()).stream().anyMatch(RequiredJobRoleView::understaffed))
                 .toList();
     }
 
@@ -89,25 +98,92 @@ public class SchedulingQueryService {
 
     /** Staffing per required job role of one shift (RequiredJobRole.assignedCount). */
     public List<RequiredJobRoleView> requiredJobRoles(long shiftId) {
-        ShiftView shift = readModel.findShift(shiftId).orElse(null);
-        if (shift == null) {
-            return List.of();
-        }
-        List<AssignmentView> staffing = readModel.findAssignmentsOfShift(shiftId).stream()
-                .filter(AssignmentView::active)
-                .toList();
-        Map<Long, EmployeeView> employees = readModel.findEmployees(staffing.stream()
-                        .map(AssignmentView::employeeId).collect(Collectors.toSet())).stream()
-                .collect(Collectors.toMap(EmployeeView::employeeId, employee -> employee));
-        return shift.requiredJobRoles().stream()
-                .map(role -> new RequiredJobRoleView(role.jobRoleId(), role.requiredEmployeeCount(),
-                        (int) staffing.stream().filter(assignment -> {
-                            EmployeeView employee = employees.get(assignment.employeeId());
-                            return employee != null && !employee.deleted()
-                                    && employee.hasJobRole(role.jobRoleId());
-                        }).count()))
-                .toList();
+        return readModel.findShift(shiftId)
+                .map(shift -> requiredJobRoles(List.of(shift)).get(shiftId))
+                .orElse(List.of());
     }
+
+    // ---- batch reads for the nested GraphQL fields ---------------------------------------------------
+    //
+    // Each method answers for any number of parents in a fixed number of read-model round trips, and
+    // gives every parent exactly what the single read above or below gives it. None of them takes a
+    // Viewer, because the nested fields never did: what a viewer may see is decided by the root queries
+    // above, and a nested field is only resolved for a parent one of them has returned.
+
+    /**
+     * Staffing per required job role for many shifts, by shift id, in two round trips (the assignments
+     * of all shifts, then their employees). The required roles are those of the given snapshots.
+     */
+    public Map<Long, List<RequiredJobRoleView>> requiredJobRoles(Collection<ShiftView> shifts) {
+        if (shifts.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<AssignmentView>> staffing = readModel.findAssignmentsOfShifts(idsOf(shifts)).stream()
+                .filter(AssignmentView::active)
+                .collect(Collectors.groupingBy(AssignmentView::shiftId));
+        Map<Long, EmployeeView> employees = readModel.findEmployees(staffing.values().stream()
+                        .flatMap(List::stream).map(AssignmentView::employeeId).collect(Collectors.toSet())).stream()
+                .collect(Collectors.toMap(EmployeeView::employeeId, employee -> employee));
+        Map<Long, List<RequiredJobRoleView>> roles = new HashMap<>();
+        for (ShiftView shift : shifts) {
+            List<AssignmentView> assigned = staffing.getOrDefault(shift.shiftId(), List.of());
+            roles.put(shift.shiftId(), shift.requiredJobRoles().stream()
+                    .map(role -> new RequiredJobRoleView(role.jobRoleId(), role.requiredEmployeeCount(),
+                            (int) assigned.stream().filter(assignment -> {
+                                EmployeeView employee = employees.get(assignment.employeeId());
+                                return employee != null && !employee.deleted()
+                                        && employee.hasJobRole(role.jobRoleId());
+                            }).count()))
+                    .toList());
+        }
+        return roles;
+    }
+
+    /** {@link #assignmentsOfShift} for many shifts in one round trip; a shift without assignments gets an empty list. */
+    public Map<Long, List<AssignmentView>> assignmentsOfShifts(Collection<Long> shiftIds) {
+        return perShift(shiftIds, readModel.findAssignmentsOfShifts(shiftIds), AssignmentView::shiftId);
+    }
+
+    /** {@link #suggestionsOfShift} for many shifts in one round trip; a shift without suggestions gets an empty list. */
+    public Map<Long, List<SuggestionView>> suggestionsOfShifts(Collection<Long> shiftIds) {
+        return perShift(shiftIds, readModel.findSuggestionsOfShifts(shiftIds), SuggestionView::shiftId);
+    }
+
+    /** {@link #shiftOf} for many ids in one round trip; a missing or deleted shift has no entry. */
+    public Map<Long, ShiftView> shiftsById(Collection<Long> shiftIds) {
+        return readModel.findShiftsByIds(shiftIds).stream()
+                .filter(shift -> !shift.deleted())
+                .collect(Collectors.toMap(ShiftView::shiftId, shift -> shift));
+    }
+
+    /** {@link #assignment} for many ids in one round trip; a missing or deleted assignment has no entry. */
+    public Map<Long, AssignmentView> assignmentsById(Collection<Long> shiftAssignmentIds) {
+        return readModel.findAssignmentsByIds(shiftAssignmentIds).stream()
+                .filter(assignment -> !assignment.deleted())
+                .collect(Collectors.toMap(AssignmentView::shiftAssignmentId, assignment -> assignment));
+    }
+
+    /** {@link #employee} for many ids in one round trip; a missing or deleted employee has no entry. */
+    public Map<Long, EmployeeView> employeesById(Collection<Long> employeeIds) {
+        return readModel.findEmployees(employeeIds).stream()
+                .filter(employee -> !employee.deleted())
+                .collect(Collectors.toMap(EmployeeView::employeeId, employee -> employee));
+    }
+
+    /** Groups rows that arrive ordered, keeping that order inside each shift. */
+    private static <T> Map<Long, List<T>> perShift(Collection<Long> shiftIds, List<T> rows,
+                                                   Function<T, Long> shiftIdOf) {
+        Map<Long, List<T>> grouped = new HashMap<>();
+        shiftIds.forEach(shiftId -> grouped.put(shiftId, new ArrayList<>()));
+        rows.forEach(row -> grouped.get(shiftIdOf.apply(row)).add(row));
+        return grouped;
+    }
+
+    private static Set<Long> idsOf(Collection<ShiftView> shifts) {
+        return shifts.stream().map(ShiftView::shiftId).collect(Collectors.toSet());
+    }
+
+    // ---- single reads --------------------------------------------------------------------------------
 
     public List<AssignmentView> assignmentsOfShift(long shiftId) {
         return readModel.findAssignmentsOfShift(shiftId);
