@@ -4,8 +4,8 @@
 on the normalised PostgreSQL write model of `scheduling-command`?
 
 **Short answer:** no, not at this data volume. With one year of data the write model answers in a median of
-1.55 ms, the read model in 3.20 ms when it is read in batches, and in 43.48 ms the way the GraphQL resolvers
-read it today. Latency does not justify CQRS in scheduling; what does is listed under
+2.09 ms, the read model in 3.79 ms when it is read in batches, and in 66.45 ms the way the GraphQL resolvers
+read it today (1.55, 3.20 and 43.48 ms in an earlier run). Latency does not justify CQRS in scheduling; what does is listed under
 [Conclusion](#conclusion).
 
 ## Method
@@ -63,8 +63,9 @@ writing, and the whole data set fits in memory.
 - Both databases are containers on the same host as the test, so a round trip costs almost nothing. With a
   real network between service and database, the 257-round-trip variant gets worse and the other two barely
   change.
-- GitHub-hosted runners are shared and noisy, and this is one run. Read the numbers as orders of
-  magnitude; differences of a few tenths of a millisecond mean nothing.
+- GitHub-hosted runners are shared and noisy, and there are two runs. Between them the same code moved by
+  roughly 50 % (43 ms against 66 ms for the same variant). Read the numbers as orders of magnitude;
+  differences of a few tenths of a millisecond mean nothing.
 - The week asked for lies at the start of the history. A week at the end could behave differently for the
   time-window indexes; that was not measured.
 - Single-user latency says nothing about throughput under load, which is where scaling the query role
@@ -72,16 +73,35 @@ writing, and the whole data set fits in memory.
 
 ## Environment
 
-- Run: <https://github.com/microservices-happens/shift-happens/actions/runs/44718872539>, job
-  `tests (scheduling-service)`, 2026-11-20, commit `5c1c8e0`, PR #113.
-- GitHub-hosted `ubuntu-latest` runner (image `ubuntu-26.04`, version `20261111.82.6`), as printed by the
-  test: 4 CPUs, 3926 MB max heap, Java 21.0.13, Linux amd64, MongoDB 8.0.38 (`mongo:8.0`), PostgreSQL 17.12
-  (`postgres:17-alpine`), both through Testcontainers.
-- The benchmark took 63.49 s of a 2 min 35 s Maven build.
+Two CI runs of PR #113 on GitHub-hosted `ubuntu-latest` runners (image `ubuntu-26.04`), job
+`tests (scheduling-service)`, both on 2026-11-20. As printed by the test in both: 4 CPUs, Java 21.0.13,
+Linux amd64, MongoDB 8.0.38 (`mongo:8.0`), PostgreSQL 17.12 (`postgres:17-alpine`), both databases through
+Testcontainers.
+
+| | run | commit | max heap | benchmark time | Maven build |
+|---|---|---|---|---|---|
+| Run A (current, branch merged with main) | <https://github.com/microservices-happens/shift-happens/actions/runs/44723271982> | `b91184e` | 3996 MB | 87.36 s | 3 min 11 s |
+| Run B (earlier, same benchmark code) | <https://github.com/microservices-happens/shift-happens/actions/runs/44718872539> | `5c1c8e0` | 3926 MB | 63.49 s | 2 min 35 s |
 
 ## Results
 
-Copied unchanged from the job log of that run (milliseconds).
+Copied unchanged from the job logs (milliseconds).
+
+**Run A** (44723271982):
+
+| history | shifts stored | assignments stored | shifts in answer | assignments in answer | variant | round trips | p50 ms | p95 ms | mean ms | min ms | max ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 30 days | 900 | 4500 | 22 | 102 | read model (Mongo), as the resolvers read it | 257 | 65.68 | 78.17 | 66.94 | 58.42 | 113.79 |
+| 30 days | 900 | 4500 | 22 | 102 | read model (Mongo), batched | 3 | 2.02 | 2.48 | 2.11 | 1.82 | 6.56 |
+| 30 days | 900 | 4500 | 22 | 102 | write model (Postgres), joins | 2 | 1.34 | 1.89 | 1.42 | 1.21 | 2.28 |
+| 90 days | 2700 | 13500 | 22 | 102 | read model (Mongo), as the resolvers read it | 257 | 65.12 | 77.69 | 65.89 | 59.10 | 82.58 |
+| 90 days | 2700 | 13500 | 22 | 102 | read model (Mongo), batched | 3 | 2.28 | 2.74 | 2.32 | 2.08 | 3.64 |
+| 90 days | 2700 | 13500 | 22 | 102 | write model (Postgres), joins | 2 | 1.61 | 2.14 | 1.71 | 1.48 | 4.70 |
+| 365 days | 10950 | 54750 | 22 | 102 | read model (Mongo), as the resolvers read it | 257 | 66.45 | 79.26 | 67.20 | 59.83 | 92.95 |
+| 365 days | 10950 | 54750 | 22 | 102 | read model (Mongo), batched | 3 | 3.79 | 4.31 | 3.85 | 3.47 | 5.95 |
+| 365 days | 10950 | 54750 | 22 | 102 | write model (Postgres), joins | 2 | 2.09 | 2.72 | 2.16 | 1.93 | 3.13 |
+
+**Run B** (44718872539):
 
 | history | shifts stored | assignments stored | shifts in answer | assignments in answer | variant | round trips | p50 ms | p95 ms | mean ms | min ms | max ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -95,22 +115,24 @@ Copied unchanged from the job log of that run (milliseconds).
 | 365 days | 10950 | 54750 | 22 | 102 | read model (Mongo), batched | 3 | 3.20 | 3.88 | 3.34 | 2.78 | 15.02 |
 | 365 days | 10950 | 54750 | 22 | 102 | write model (Postgres), joins | 2 | 1.55 | 1.99 | 1.60 | 1.37 | 2.42 |
 
-What the table shows:
+What the tables show, in both runs:
 
 - **The write model with joins was the fastest variant at every size**, with a median between 1.00 and
-  1.55 ms and a p95 below 2 ms.
-- **The read model as it is resolved today was 28 to 45 times slower at the median** (42 to 45 ms). Its
-  latency did not move with the history size, because it is dominated by the 257 round trips, which depend
-  on the size of the answer and not on the size of the store.
+  2.09 ms and a p95 below 3 ms.
+- **The read model as it is resolved today was 28 to 49 times slower at the median** (42 to 66 ms). Within
+  a run its latency did not move with the history size, because it is dominated by the 257 round trips,
+  which depend on the size of the answer and not on the size of the store.
 - **The same read model read in three round trips was close to Postgres**: 1.4 to 2.1 times its median, a
   difference of 0.5 to 1.7 ms. So the store is not the problem; the field-by-field resolution is.
-- Both batched variants grew with the history (Mongo from 1.55 to 3.20 ms, Postgres from 1.00 to 1.55 ms).
-  We did not look at the query plans, so the cause is not established.
+- Both batched variants grew with the history (in run A, Mongo from 2.02 to 3.79 ms and Postgres from 1.34
+  to 2.09 ms). We did not look at the query plans, so the cause is not established.
+- The absolute numbers differ between the runs by up to about 50 %; the order of the variants and the
+  ratios between them do not.
 
 ## Conclusion
 
 1. **Latency does not justify the read model at this scale.** One year of a 500-employee organisation is
-   small for PostgreSQL: the joins the read model avoids cost under 2 ms. The claim "documents avoid
+   small for PostgreSQL: the joins the read model avoids cost about 2 ms (p95 below 3 ms). The claim "documents avoid
    expensive joins" is not supported by our own numbers, and we should not make it.
 2. **The read model is not a denormalised view today.** Shifts, assignments and employees are separate
    collections, and the nested GraphQL fields are resolved one parent at a time. That N+1 pattern, not
@@ -147,4 +169,4 @@ added to the GitHub Actions job summary. From CI:
 gh run view <run-id> --log | grep 'CQRS-BENCH'
 ```
 
-A new run prints new numbers; the table above is the run linked under [Environment](#environment).
+A new run prints new numbers; the tables above are the two runs linked under [Environment](#environment).
