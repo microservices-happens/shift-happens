@@ -64,14 +64,14 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 
 ### P2: Core services (parallel, one owner each)
 **Identity**
-- [ ] P2.1 Accounts table, `POST /v1/auth/login`, RS256 signing, `/.well-known/jwks.json`
+- [x] P2.1 Accounts table, `POST /v1/auth/login`, RS256 signing, `/.well-known/jwks.json`
 - [ ] P2.2 Consume `workforce.employee.*` → create/update/disable accounts
-- [ ] P2.3 OIDC login with Google and GitHub (authorization code + PKCE), with email matching → JWT redirect
-- [ ] P2.4 `PUT /v1/auth/accounts/{id}/password`
+- [x] P2.3 OIDC login with Google and GitHub (authorization code + PKCE), with email matching → JWT redirect
+- [x] P2.4 `PUT /v1/auth/accounts/{id}/password`
 
 **Workforce**
-- [ ] P2.5 CRUD for employees, contracts, job roles, departments, locations (`openapi/workforce.yaml`)
-- [ ] P2.6 Publish `workforce.employee.created/updated/deleted` (snapshot + tombstone, `jobRoleIds`)
+- [x] P2.5 CRUD for employees, contracts, job roles, departments, locations (`openapi/workforce.yaml`)
+- [x] P2.6 Publish `workforce.employee.created/updated/deleted` (snapshot + tombstone, `jobRoleIds`)
 
 **Scheduling**
 - [x] P2.7 Command role: shifts, required roles, assignments, approvals (REST, Postgres, outbox)
@@ -82,12 +82,12 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 - [ ] P2.12 Publish `scheduling.shift.understaffed.v1` with candidate filtering
 
 **Leave**
-- [ ] P2.13 Leave types, requests, approvals (REST, Postgres, outbox); employee replica
-- [ ] P2.14 Immutable ledger (append-only; no PUT/DELETE) + balance snapshots every 50 entries
-- [ ] P2.15 Query role: Mongo projection for overviews and balances
+- [x] P2.13 Leave types, requests, approvals (REST, Postgres, outbox); employee replica
+- [x] P2.14 Immutable ledger (append-only; no PUT/DELETE) + balance snapshots every 50 entries
+- [x] P2.15 Query role: Mongo projection for overviews and balances
 
 ### P3: Distributed-systems patterns (must be demonstrable)
-- [ ] P3.1 **Saga:** leave approval (Leave orchestrator, saga table, timeout) ↔ Scheduling release/lock rule, with compensation by `REVERSAL` + rejection
+- [x] P3.1 **Saga:** leave approval (Leave orchestrator, saga table, timeout) ↔ Scheduling release/lock rule, with compensation by `REVERSAL` + rejection
 - [ ] P3.2 **Idempotent operations:** `Idempotency-Key` on every POST (store key → response for 24 h; 409 when the body differs); the frontend sends a key per user action
 - [ ] P3.3 **Commutative handlers:** version-based upsert in all projections/replicas; a test that applies the same events in shuffled order and gets the same state
 - [ ] P3.4 **Tombstones:** soft delete + `*.deleted.v1`; consumers keep the tombstone
