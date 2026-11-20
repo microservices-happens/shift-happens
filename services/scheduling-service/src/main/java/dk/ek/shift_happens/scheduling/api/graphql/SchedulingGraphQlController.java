@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  * schedule page gets shift, assignments, employees and AI suggestions in one request.
  *
  * <p>No nested field reads per parent. Each one queues its key on a DataLoader, and the loader asks the
- * use case once for all parents of that field, so a query costs a fixed number of read-model round trips
+ * use case once for all parents of that field, so a query costs a fixed number of read-model queries
  * however many shifts and assignments it returns (pinned by {@code GraphQlBatchingTest}). The role rules
  * are untouched by this: they are applied by the root queries, and a nested field is only resolved for a
  * parent a root query has returned to this viewer.

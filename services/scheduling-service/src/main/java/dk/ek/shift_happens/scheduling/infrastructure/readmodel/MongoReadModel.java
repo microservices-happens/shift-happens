@@ -307,8 +307,9 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     }
 
     /**
-     * The batch form of the reads by id: one round trip, and like them a tombstone that arrived before
-     * any snapshot is not a view. No ids, no round trip.
+     * The batch form of the reads by id: one query, and like them a tombstone that arrived before
+     * any snapshot is not a view. No ids, no query. (One query is one find command; the driver fetches a
+     * result of more than 101 documents in further cursor batches.)
      */
     private Stream<Document> findByIds(String collection, Collection<Long> ids) {
         if (ids == null || ids.isEmpty()) {
