@@ -53,6 +53,24 @@ Locally, without GitHub: `mvn -B -f services/<service>/pom.xml verify` (unit + i
 4. Push to `main` (or run it manually): `system-tests`, where `build-images` fans out and
    `cooperation-tests` waits for both.
 
+## SonarQube Cloud (P1.5)
+
+One SonarQube Cloud project for the whole monorepo, configured by `sonar-project.properties` and run by the
+`sonar` job in `ci.yml`. It excludes the monolith (`src/`, root `pom.xml`), `target/`, `node_modules/` and
+generated code, and fails the job (and so `ci`) when the quality gate is red. Without the setup below the job
+skips and stays green; it also skips on fork and Dependabot PRs, where secrets are unavailable.
+Coverage is not wired in yet (no JaCoCo in the service POMs).
+
+One-time setup (needs admin rights):
+
+1. Sign in to https://sonarcloud.io with GitHub, create or pick an organisation, and import
+   `microservices-happens/shift-happens` as one project. Choose "With GitHub Actions" and turn off Automatic Analysis
+   (project Administration -> Analysis Method), or the CI scan is rejected.
+2. Generate a token (My Account -> Security) and add it as the repository secret `SONAR_TOKEN`.
+3. Add repository variables `SONAR_ORGANIZATION` (organisation key) and `SONAR_PROJECT_KEY` (project key).
+4. Keep the default "Sonar way" quality gate or assign your own under the project's Quality Gate settings.
+5. Re-run `ci` and confirm the `sonarqube` job ran the scan instead of skipping.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |

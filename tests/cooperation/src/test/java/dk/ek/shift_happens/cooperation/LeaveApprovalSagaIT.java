@@ -1,6 +1,7 @@
 package dk.ek.shift_happens.cooperation;
 
 import dk.ek.shift_happens.cooperation.support.ServiceContainer;
+import dk.ek.shift_happens.cooperation.support.TestTokens;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,7 @@ class LeaveApprovalSagaIT {
     private static PostgreSQLContainer<?> schedulingDb;
     private static GenericContainer<?> leave;
     private static GenericContainer<?> scheduling;
+    private static GenericContainer<?> jwks;
 
     @BeforeAll
     static void startStack() {
@@ -86,9 +88,16 @@ class LeaveApprovalSagaIT {
         leaveDb.start();
         schedulingDb.start();
 
+        // Scheduling validates the JWT itself (P1.7). Identity is not part of this test, so a static JWKS
+        // stands in for it and the test signs its own Manager token.
+        jwks = TestTokens.jwksServer(NETWORK);
+        jwks.start();
+
         // The services declare the exchange and their queues on start, so both must be up before anything is published.
         scheduling = ServiceContainer.create("scheduling-service", NETWORK)
-                .withEnv(serviceEnvironment("scheduling-db", "scheduling", "scheduling", "scheduling_dev"));
+                .withEnv(serviceEnvironment("scheduling-db", "scheduling", "scheduling", "scheduling_dev"))
+                .withEnv("JWT_ISSUER", TestTokens.ISSUER)
+                .withEnv("JWT_JWKS_URL", TestTokens.JWKS_URL);
         leave = ServiceContainer.create("leave-service", NETWORK)
                 .withEnv(serviceEnvironment("leave-db", "leave", "leave", "leave_dev"));
         scheduling.start();
@@ -99,6 +108,7 @@ class LeaveApprovalSagaIT {
     static void stopStack() {
         close(leave);
         close(scheduling);
+        close(jwks);
         close(leaveDb);
         close(schedulingDb);
         close(rabbit);
@@ -265,6 +275,8 @@ class LeaveApprovalSagaIT {
                 + service.getMappedPort(ServiceContainer.HTTP_PORT) + path);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", "application/json")
+                // The manager is the caller of every write in this scenario (contracts/README.md, role rules).
+                .header("Authorization", "Bearer " + TestTokens.token(MANAGER, "Manager"))
                 // Every POST requires a per-action key (contracts/README.md, Idempotency).
                 .header("Idempotency-Key", UUID.randomUUID().toString())
                 .POST(HttpRequest.BodyPublishers.ofString(body))

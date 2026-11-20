@@ -3,12 +3,15 @@ package dk.ek.shift_happens.scheduling.api;
 import dk.ek.shift_happens.scheduling.api.dto.CreateShiftSwapRequest;
 import dk.ek.shift_happens.scheduling.api.dto.ShiftSwapResponse;
 import dk.ek.shift_happens.scheduling.api.dto.UpdateShiftSwapRequest;
+import dk.ek.shift_happens.scheduling.api.graphql.Viewers;
 import dk.ek.shift_happens.scheduling.application.IdempotencyService;
 import dk.ek.shift_happens.scheduling.application.ShiftSwapService;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>An employee asks a colleague to take an assignment; a manager decides in
  * {@link ShiftSwapApprovalController}, and an approval moves the assignment in one local transaction.
  * A withdrawal (DELETE) publishes no event, because the event catalog defines no swap deletion.
+ *
+ * <p>Roles (P1.7): Administrator and Manager for everything; an Employee may only POST a swap for their
+ * own assignment ({@code employeeFromId} = JWT {@code employeeId}), otherwise 403.
  */
 @RestController
 @RequestMapping("/v1/shiftswaps")
@@ -42,8 +48,13 @@ public class ShiftSwapController {
     public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateShiftSwapRequest request,
-            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
+            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId,
+            Authentication authentication) {
 
+        // Before the idempotency lookup, so a stored response is never replayed to someone else.
+        if (!Viewers.of(authentication).mayRequestSwapFrom(request.employeeFromId())) {
+            throw new AccessDeniedException("an Employee may only request a swap for their own assignment");
+        }
         return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ShiftSwapResponse.from(swaps.request(request.originalShiftAssignmentId(),
                         request.employeeFromId(), request.employeeToId(), request.reason(), correlationId))));

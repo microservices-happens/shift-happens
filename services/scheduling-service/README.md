@@ -35,6 +35,13 @@ match `scheduling.shift`.
 ## Extract from monolith
 `shift`, `shiftrequiredjobrole`, `shiftassignment`, `shiftapproval`, `shiftswap`, `shiftswapapproval` and `view/employeeshiftoverview` (now GraphQL).
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/scheduling.yaml`, not a spec generated from the controllers. Both the command and the query role serve it. Maven copies
+the file onto the classpath at build time (`/openapi/scheduling.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [ ] The schedule page reads via GraphQL, and create, assign and swap work via REST.
 - [ ] An approved swap moves the assignment, and both events reach notification and audit.
@@ -49,7 +56,7 @@ GraphQL contract from its Mongo read model.
 |---|---|
 | Shifts | `POST`/`PUT`/`DELETE /v1/shifts`; the status only moves forward (`PLANNED → PUBLISHED → LOCKED`, anything → `CANCELLED`); delete is soft and publishes a tombstone |
 | Required job roles | `POST`/`PUT`/`DELETE /v1/shiftrequiredjobroles`; the rows are part of the shift aggregate, so every change bumps its version and republishes `scheduling.shift.updated.v1` |
-| Employee replica | consumes `workforce.employee.*`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared, and `weeklyContractHours` is stored for the candidate list |
+| Employee replica | consumes `workforce.employee.*`: idempotent (`processed_events`), highest `aggregateVersion` wins, a tombstone is retained and never cleared (also when it arrives before the create), and `weeklyContractHours` is stored for the candidate list. Commutative (P3.3): `snapshot_version` (V8) is the version of the snapshot the fields come from, so the same events give the same row in any order (`EmployeeReplicaShuffledOrderTest`) |
 | Assignments | `POST`/`PUT`/`DELETE /v1/shiftassignments`; the employee must be active and qualified **in the replica** and must not already work an overlapping shift (half-open `[start, end)`) |
 | Approvals | `POST`/`PUT`/`DELETE /v1/shiftapprovals`; one decision per assignment, and `APPROVED` moves the assignment in the same transaction |
 | Swaps | `POST`/`PUT`/`DELETE /v1/shiftswaps` and `POST`/`PUT`/`DELETE /v1/shiftswapapprovals`; an approval hands the assignment over (`employeeId` changes, status `SWAPPED`) and publishes `assignment.updated.v1` + `swap.approved.v1` from one commit. A correction (PUT) may change the approver and the comment and republishes the same event type with the next `aggregateVersion`; flipping the decision is a `409`, because the catalog has no reversal event. DELETE removes the record of the decision, not the handover, so no event is published |
@@ -59,12 +66,12 @@ GraphQL contract from its Mongo read model.
 | Query role (P2.10) | `scheduling.projection` is bound to `scheduling.#`, `workforce.employee.#` and `ai.replacement.suggested.v1`; shifts, assignments, employees, swaps and AI suggestions are separate Mongo documents with version-guarded upserts; a tombstone is retained and never cleared; every applied event is logged so the read model can be rebuilt |
 | GraphQL (P2.11) | `/graphql` serves the contract's SDL (copied to `graphql/scheduling.graphqls`, guarded by a drift test) from the read model, with nested shift -> assignments -> employee -> suggestions in one request |
 | Visibility | an Employee sees only their own shifts, schedule and swaps (a `FORBIDDEN` GraphQL error for somebody else's schedule); Manager and Administrator see everything |
-| JWT (query role) | `spring-boot-starter-oauth2-resource-server`, signature checked against `JWT_JWKS_URL` and `iss` validated; `role` becomes `ROLE_<role>`; Security ITs cover `401` for missing and forged tokens |
+| JWT (both roles, P1.7) | `spring-boot-starter-oauth2-resource-server`, signature checked against `JWT_JWKS_URL` (fetched on the first token, then cached by Nimbus) and `iss` validated; `role` becomes `ROLE_<role>`. Query role: every request needs a valid token. Command role: writes need `Administrator` or `Manager`; an `Employee` may only `POST /v1/shiftswaps` with `employeeFromId` = the token's `employeeId`; `401`/`403` are problem+json. `CommandSecurityRulesTest` (no containers), `ViewerTest` and the ITs cover missing, forged, expired and foreign tokens and the role rules |
 | GraphiQL (P8.3) | served at `/graphiql` only when the `dev` profile is active (`APP_ROLE=query,dev`) |
 
 - Events match `contracts/events/payloads/{shift,assignment,swap,tombstone,leave-release,understaffed}.schema.json`; saga replies also set `causationId` to the event that triggered them.
 - Every write commits its event through the outbox in the same transaction; the relay publishes with routing key = `eventType`.
-- Migrations: `V1__init.sql`, `V2__employee_replica.sql`, `V3__assignments.sql`, `V4__idempotency.sql`, `V5__swaps.sql`, `V6__leave_release.sql`, `V7__understaffing_inputs.sql`.
+- Migrations: `V1__init.sql`, `V2__employee_replica.sql`, `V3__assignments.sql`, `V4__idempotency.sql`, `V5__swaps.sql`, `V6__leave_release.sql`, `V7__understaffing_inputs.sql`, `V8__employee_replica_snapshot_version.sql`.
 - The queue has **one** listener that dispatches on `eventType`: two listeners on one queue would be competing consumers.
 - Tests: 63 unit and 59 integration (`*IT` with real PostgreSQL, MongoDB, RabbitMQ and a JWKS endpoint; the command tests share one container pair and the query tests another).
 
@@ -74,7 +81,6 @@ GraphQL contract from its Mongo read model.
 
 | Gap | Reason |
 |---|---|
-| JWT + role rules on the **command** role (P1.7) | Needs Identity's JWKS (P2.1). The query role already validates tokens; the command role has an explicit `permitAll` chain until P1.7 replaces it, because its tests would otherwise need a token issuer that does not exist yet |
 | Reversal of a published swap decision | The event catalog has no `swap.updated` / `swap.reverted`, so a decision can be corrected but not undone, and DELETE only removes the decision record |
 
 ## Read model (query role)
@@ -95,6 +101,14 @@ newer sibling. GraphQL resolves the nesting with indexed lookups.
 
 - Every write is a version-guarded upsert: an equal or lower `aggregateVersion` is ignored, and a snapshot never
   clears an existing tombstone.
+- The projection is commutative (P3.3): shift, assignment, employee and swap documents carry `snapshotVersion` (the
+  version of the snapshot their fields come from) next to `aggregateVersion` (the highest version seen). A snapshot
+  that was published before a delete but arrives after it still refreshes the fields, and a tombstone that arrives
+  before the create is stored as a document without fields (`snapshotVersion` 0, never returned as a view), so the
+  late create cannot resurrect the entity. `SchedulingProjectionShuffledOrderIT` applies one event set in seeded
+  shuffles and with redeliveries and compares the stored documents. It assumes what the producers guarantee: a
+  tombstone is the last event of its entity. Two suggestions of one shift and role with the same `suggestedAt` have
+  no tie-break (the first to arrive stays).
 - The query role has **no DataSource** (`application-query.yml` excludes JPA and Flyway), which is what lets reads keep
   answering while `scheduling-command` and Postgres are down.
 - Rebuild: start the query role with `PROJECTION_REBUILD_ON_START=true`. It empties the read-model collections and

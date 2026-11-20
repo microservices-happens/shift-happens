@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 
-/** JPA mapping for the account table (V1__init.sql). */
+/** JPA mapping for the account table (V1__init.sql, V2__login.sql, V4__account_snapshot_version.sql). */
 @Entity
 @Table(name = "account")
 public class AccountEntity {
@@ -26,7 +26,8 @@ public class AccountEntity {
     @Column(name = "employee_number", length = 50)
     private String employeeNumber;
 
-    @Column(name = "email", nullable = false, length = 255)
+    // email and role are null only for a tombstone that arrived before the create (V4).
+    @Column(name = "email", length = 255)
     private String email;
 
     @Column(name = "first_name", length = 100)
@@ -40,7 +41,7 @@ public class AccountEntity {
     @Column(name = "password_hash", length = 255, updatable = false)
     private String passwordHash;
 
-    @Column(name = "role", nullable = false, length = 20)
+    @Column(name = "role", length = 20)
     private String role;
 
     @Column(name = "active", nullable = false)
@@ -48,6 +49,9 @@ public class AccountEntity {
 
     @Column(name = "aggregate_version", nullable = false)
     private long aggregateVersion;
+
+    @Column(name = "snapshot_version", nullable = false)
+    private long snapshotVersion;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
@@ -66,11 +70,12 @@ public class AccountEntity {
         this.role = account.role();
         this.active = account.active();
         this.aggregateVersion = account.aggregateVersion();
+        this.snapshotVersion = account.snapshotVersion();
         this.updatedAt = Instant.now();
     }
 
     Account toDomain() {
         return new Account(accountId, employeeId, employeeNumber, email, firstName, lastName, role, active,
-                aggregateVersion, passwordHash);
+                aggregateVersion, snapshotVersion, passwordHash);
     }
 }

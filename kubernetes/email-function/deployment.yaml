@@ -28,7 +28,7 @@ spec:
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: email-function-secrets
                   key: RABBITMQ_PASSWORD
             - name: RABBITMQ_VHOST
               value: "shift-happens"
@@ -39,11 +39,14 @@ spec:
             - name: SMTP_PORT
               value: "1025"
             - name: SMTP_USERNAME
-              value: ""
+              valueFrom:
+                secretKeyRef:
+                  name: email-function-secrets
+                  key: SMTP_USERNAME
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: email-function-secrets
                   key: SMTP_PASSWORD
             - name: SMTP_FROM
               value: "no-reply@shift-happens.local"

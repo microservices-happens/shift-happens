@@ -18,6 +18,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -74,6 +76,8 @@ class AiServiceApplicationIT {
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
         startModelStub();
         registry.add("app.llm.base-url", () -> "http://127.0.0.1:" + model.getAddress().getPort());
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     private static void startModelStub() {
@@ -123,6 +127,20 @@ class AiServiceApplicationIT {
         var response = http.getForEntity("/health", String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("\"status\":\"UP\"");
+    }
+
+    @Test
+    void everythingButHealthNeedsAValidToken() {
+        var anonymous = http.getForEntity("/info", String.class);
+        var forged = http.exchange("/info", HttpMethod.GET,
+                new HttpEntity<>(TestJwks.bearer(TestJwks.tokenSignedByAnotherKey(1, "Administrator"))), String.class);
+        var employee = http.exchange("/info", HttpMethod.GET,
+                new HttpEntity<>(TestJwks.bearer(TestJwks.employee(7))), String.class);
+
+        assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(anonymous.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(forged.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(employee.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test

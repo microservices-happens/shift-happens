@@ -28,8 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  *       response and the same key with a different body is a 409.</li>
  *   <li>A command endpoint returns {@code 202 Accepted} with the resulting resource.</li>
  *   <li>DELETE is a soft delete: it publishes scheduling.shift.deleted.v1 with a tombstone.</li>
- *   <li>Security (JWT + Administrator/Manager) is P1.7 and arrives with the Identity service, because
- *       until Identity publishes its JWKS no token can be validated.</li>
+ *   <li>Every write needs a JWT with the Administrator or Manager role (P1.7, {@code CommandSecurityConfig}).</li>
  * </ul>
  */
 @RestController

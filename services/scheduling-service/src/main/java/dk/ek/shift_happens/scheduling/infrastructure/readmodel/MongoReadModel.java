@@ -32,10 +32,14 @@ import java.util.Optional;
  * <p>No JPA and no Postgres here, which is why the query deployment keeps answering while the command
  * role is down.
  *
- * <p>Ordering is never assumed. Every write compares the incoming {@code aggregateVersion} with the
- * stored one, keeps the highest, and never lets a snapshot clear a tombstone. The suggestion is the one
- * exception: it is keyed by shift and job role and the newest {@code suggestedAt} wins, because the AI
- * event carries the shift id, not the shift version.
+ * <p>Ordering is never assumed (P3.3). Every document carries two versions: {@code snapshotVersion} is
+ * the version of the snapshot its fields come from (0 while only a tombstone has arrived) and
+ * {@code aggregateVersion} is the highest version seen, snapshot or tombstone. A snapshot replaces the
+ * fields of an older snapshot only and never clears a tombstone; a tombstone is stored even when the
+ * create has not arrived yet. The same events therefore give the same documents in any order
+ * ({@code SchedulingProjectionShuffledOrderIT}). The suggestion is the one exception: it is keyed by
+ * shift and job role and the newest {@code suggestedAt} wins, because the AI event carries the shift
+ * id, not the shift version.
  */
 @Repository
 @Profile("query")
@@ -46,6 +50,10 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     static final String EMPLOYEES = "employees";
     static final String SWAPS = "swaps";
     static final String SUGGESTIONS = "suggestions";
+
+    private static final String AGGREGATE_VERSION = "aggregateVersion";
+    private static final String SNAPSHOT_VERSION = "snapshotVersion";
+    private static final String DELETED_AT = "deletedAt";
 
     private static final Logger log = LoggerFactory.getLogger(MongoReadModel.class);
 
@@ -75,8 +83,7 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
 
     @Override
     public void deleteShift(long shiftId, long aggregateVersion, Instant deletedAt) {
-        findShift(shiftId).ifPresent(current ->
-                upsert(SHIFTS, ReadModelDocuments.of(current.tombstoned(aggregateVersion, deletedAt))));
+        tombstone(SHIFTS, shiftId, aggregateVersion, deletedAt);
     }
 
     @Override
@@ -86,8 +93,7 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
 
     @Override
     public void deleteAssignment(long shiftAssignmentId, long aggregateVersion, Instant deletedAt) {
-        findAssignment(shiftAssignmentId).ifPresent(current -> upsert(ASSIGNMENTS,
-                ReadModelDocuments.of(current.tombstoned(aggregateVersion, deletedAt))));
+        tombstone(ASSIGNMENTS, shiftAssignmentId, aggregateVersion, deletedAt);
     }
 
     @Override
@@ -97,8 +103,7 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
 
     @Override
     public void deleteEmployee(long employeeId, long aggregateVersion, Instant deletedAt) {
-        findEmployee(employeeId).ifPresent(current ->
-                upsert(EMPLOYEES, ReadModelDocuments.of(current.tombstoned(aggregateVersion, deletedAt))));
+        tombstone(EMPLOYEES, employeeId, aggregateVersion, deletedAt);
     }
 
     @Override
@@ -127,32 +132,84 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     }
 
     /**
-     * The one write rule of the projection: the highest aggregateVersion wins, and an existing tombstone
-     * is never cleared. An equal or lower version is a no-op, so a redelivered event changes nothing.
+     * The snapshot rule of the projection. The fields are replaced only by a newer snapshot than the one
+     * they come from, so an equal or lower version is a no-op and a redelivered event changes nothing.
+     *
+     * <p>On a tombstoned document that still holds for a snapshot older than the tombstone: it was
+     * published before the delete and overtaken by it, and applying it is what makes the document end
+     * with the last snapshot before the delete in any order. A snapshot that is not older than the
+     * tombstone is ignored. The tombstone itself and the highest version are always carried over.
      */
-    private void upsert(String collection, Document document) {
-        long version = ReadModelDocuments.longOf(document, "aggregateVersion");
-        boolean tombstone = document.get("deletedAt") != null;
-        Document current = mongo.findById(document.get("_id"), Document.class, collection);
-        if (current != null) {
-            if (version <= ReadModelDocuments.longOf(current, "aggregateVersion")) {
-                log.debug("Ignoring {}/{} v{}: stored version is {}", collection, document.get("_id"), version,
-                        ReadModelDocuments.longOf(current, "aggregateVersion"));
-                return;
-            }
-            if (current.get("deletedAt") != null && !tombstone) {
-                log.debug("Ignoring {}/{} v{}: the entity is tombstoned", collection, document.get("_id"),
-                        version);
-                return;
-            }
+    private void upsert(String collection, Document snapshot) {
+        long version = ReadModelDocuments.longOf(snapshot, AGGREGATE_VERSION);
+        Document current = mongo.findById(snapshot.get("_id"), Document.class, collection);
+        if (current == null) {
+            mongo.save(snapshot.append(SNAPSHOT_VERSION, version), collection);
+            return;
         }
-        mongo.save(document, collection);
+        long storedVersion = ReadModelDocuments.longOf(current, AGGREGATE_VERSION);
+        if (version <= snapshotVersionOf(current)) {
+            log.debug("Ignoring {}/{} v{}: the stored snapshot is v{}", collection, snapshot.get("_id"), version,
+                    snapshotVersionOf(current));
+            return;
+        }
+        if (current.get(DELETED_AT) != null && version >= storedVersion) {
+            log.debug("Ignoring {}/{} v{}: the entity is tombstoned", collection, snapshot.get("_id"), version);
+            return;
+        }
+        snapshot.put(AGGREGATE_VERSION, Math.max(storedVersion, version));
+        snapshot.put(SNAPSHOT_VERSION, version);
+        if (current.get(DELETED_AT) != null) {
+            snapshot.put(DELETED_AT, current.get(DELETED_AT));
+        }
+        mongo.save(snapshot, collection);
+    }
+
+    /**
+     * The tombstone rule of the projection: the document is kept, marked deleted and moved to the highest
+     * version. When the delete overtook the create there is no document yet; a tombstone without fields
+     * ({@code snapshotVersion} 0) is stored, so the late create cannot resurrect the entity.
+     */
+    private void tombstone(String collection, long id, long version, Instant deletedAt) {
+        Document current = mongo.findById(id, Document.class, collection);
+        if (current == null) {
+            mongo.save(new Document("_id", id)
+                    .append(AGGREGATE_VERSION, version)
+                    .append(SNAPSHOT_VERSION, 0L)
+                    .append(DELETED_AT, ReadModelDocuments.date(deletedAt)), collection);
+            return;
+        }
+        long storedVersion = ReadModelDocuments.longOf(current, AGGREGATE_VERSION);
+        if (current.get(DELETED_AT) != null && version <= storedVersion) {
+            log.debug("Ignoring tombstone {}/{} v{}: already tombstoned at v{}", collection, id, version,
+                    storedVersion);
+            return;
+        }
+        // Written before snapshotVersion existed: the fields belong to the version the document held.
+        current.put(SNAPSHOT_VERSION, snapshotVersionOf(current));
+        current.put(AGGREGATE_VERSION, Math.max(storedVersion, version));
+        if (current.get(DELETED_AT) == null) {
+            current.put(DELETED_AT, ReadModelDocuments.date(deletedAt));
+        }
+        mongo.save(current, collection);
+    }
+
+    /** Documents written before P3.3 have no snapshotVersion: their fields came with their version. */
+    private static long snapshotVersionOf(Document document) {
+        return document.get(SNAPSHOT_VERSION) == null ? ReadModelDocuments.longOf(document, AGGREGATE_VERSION)
+                : ReadModelDocuments.longOf(document, SNAPSHOT_VERSION);
+    }
+
+    /** A tombstone that arrived before any snapshot has no fields to show: it is not a view yet. */
+    private static boolean hasSnapshot(Document document) {
+        return snapshotVersionOf(document) > 0;
     }
 
     @Override
     public Optional<ShiftView> findShift(long shiftId) {
         Document document = mongo.findById(shiftId, Document.class, SHIFTS);
-        return Optional.ofNullable(document).map(ReadModelDocuments::toShiftView);
+        return Optional.ofNullable(document).filter(MongoReadModel::hasSnapshot)
+                .map(ReadModelDocuments::toShiftView);
     }
 
     @Override
@@ -211,13 +268,15 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
     @Override
     public Optional<AssignmentView> findAssignment(long shiftAssignmentId) {
         Document document = mongo.findById(shiftAssignmentId, Document.class, ASSIGNMENTS);
-        return Optional.ofNullable(document).map(ReadModelDocuments::toAssignmentView);
+        return Optional.ofNullable(document).filter(MongoReadModel::hasSnapshot)
+                .map(ReadModelDocuments::toAssignmentView);
     }
 
     @Override
     public Optional<EmployeeView> findEmployee(long employeeId) {
         Document document = mongo.findById(employeeId, Document.class, EMPLOYEES);
-        return Optional.ofNullable(document).map(ReadModelDocuments::toEmployeeView);
+        return Optional.ofNullable(document).filter(MongoReadModel::hasSnapshot)
+                .map(ReadModelDocuments::toEmployeeView);
     }
 
     @Override
@@ -227,6 +286,7 @@ class MongoReadModel implements ReadModelProjection, ReadModelQueries {
         }
         Query query = new Query(Criteria.where("_id").in(employeeIds));
         return mongo.find(query, Document.class, EMPLOYEES).stream()
+                .filter(MongoReadModel::hasSnapshot)
                 .map(ReadModelDocuments::toEmployeeView).toList();
     }
 

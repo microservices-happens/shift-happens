@@ -28,9 +28,4 @@ public record AssignmentView(
     public boolean active() {
         return !deleted() && status.isActive();
     }
-
-    public AssignmentView tombstoned(long version, Instant deletedAt) {
-        return new AssignmentView(shiftAssignmentId, shiftId, employeeId, status, assignedDatetime,
-                checkInDatetime, checkOutDatetime, shiftStartDatetime, shiftEndDatetime, version, deletedAt);
-    }
 }

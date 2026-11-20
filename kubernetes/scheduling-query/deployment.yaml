@@ -27,7 +27,7 @@ spec:
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
+                  name: scheduling-query-secrets
                   key: RABBITMQ_PASSWORD
             - name: APP_ROLE
               value: "query"
@@ -42,8 +42,8 @@ spec:
             - name: MONGO_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: shift-happens-secrets
-                  key: SCHEDULING_MONGO_PASSWORD
+                  name: scheduling-query-secrets
+                  key: MONGO_PASSWORD
             - name: MONGO_AUTH_DATABASE
               value: "admin"
             - name: RABBITMQ_QUEUE

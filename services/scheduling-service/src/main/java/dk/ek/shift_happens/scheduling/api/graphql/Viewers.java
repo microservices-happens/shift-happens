@@ -9,12 +9,12 @@ import org.springframework.security.core.Authentication;
  * Builds the {@link Viewer} from the validated JWT (contracts/README.md: claims {@code employeeId} and
  * {@code role}). The token is already verified by the resource server, so this is only claim extraction.
  */
-final class Viewers {
+public final class Viewers {
 
     private Viewers() {
     }
 
-    static Viewer of(Authentication authentication) {
+    public static Viewer of(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken token) {
             Object claim = token.getToken().getClaim("employeeId");
             Long employeeId = claim instanceof Number number ? number.longValue() : null;
