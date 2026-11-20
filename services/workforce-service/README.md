@@ -54,6 +54,13 @@ Nothing.
 ## Extract from monolith
 `employee`, `employeecontract`, `employeejobrole`, `department`, `jobrole` and `worklocation`. `EmployeeDto.loginPassword` is removed: passwords now live in identity-service.
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/workforce.yaml`, not a spec generated from the controllers. Maven copies
+the file onto the classpath at build time (`/openapi/workforce.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [ ] Employee pages work through the gateway.
 - [ ] Creating an employee reaches identity, scheduling, leave and audit (integration test on the outbox and RabbitMQ).

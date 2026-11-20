@@ -40,3 +40,9 @@ management:
     health:
       probes:
         enabled: true
+
+# Swagger UI renders the hand-written contract (copied from contracts/openapi at build time).
+springdoc:
+  swagger-ui:
+    url: /openapi/leave.yaml
+    disable-swagger-default-url: true

@@ -43,6 +43,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: services/${{ matrix.service }}
+          # Swagger UI serves the hand-written contract, which lives outside the service directory.
+          build-contexts: contracts=contracts
           load: true
           tags: shift-happens/${{ matrix.service }}:ci
           cache-from: type=gha,scope=${{ matrix.service }}

@@ -129,7 +129,7 @@ P0 Architecture ─► P1 Foundation ─┬─► P2 Core services ─┬─► 
 
 ### P8: Documentation (continuous, in the same PR as the code)
 - [ ] P8.1 README for each service: purpose, APIs, events, how to run and test (skeletons exist)
-- [ ] P8.2 Swagger UI per service (springdoc), served from the contract
+- [x] P8.2 Swagger UI per service (springdoc), served from the contract
 - [x] P8.3 GraphQL docs: GraphiQL on scheduling-query + SDL in `contracts/graphql`
 - [ ] P8.4 AsyncAPI HTML generated in CI from `contracts/asyncapi.yaml` (published as a CI artifact or on GitHub Pages)
 - [ ] P8.5 Monorepo README: an **installation procedure** from clone to a running Compose stack and Kubernetes (the course requires this for onboarding)

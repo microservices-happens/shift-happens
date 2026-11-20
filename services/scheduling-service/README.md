@@ -35,6 +35,13 @@ match `scheduling.shift`.
 ## Extract from monolith
 `shift`, `shiftrequiredjobrole`, `shiftassignment`, `shiftapproval`, `shiftswap`, `shiftswapapproval` and `view/employeeshiftoverview` (now GraphQL).
 
+## API docs (Swagger UI)
+
+Swagger UI is at `http://localhost:8080/swagger-ui.html` (service port; through the gateway it is not routed). It renders
+the hand-written contract `contracts/openapi/scheduling.yaml`, not a spec generated from the controllers. Both the command and the query role serve it. Maven copies
+the file onto the classpath at build time (`/openapi/scheduling.yaml`); never edit the copy. The Docker build gets the file
+through `--build-context contracts=contracts` (set in Compose and CI).
+
 ## Done when
 - [ ] The schedule page reads via GraphQL, and create, assign and swap work via REST.
 - [ ] An approved swap moves the assignment, and both events reach notification and audit.
