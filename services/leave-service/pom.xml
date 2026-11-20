@@ -59,6 +59,15 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- JWT validation against identity's JWKS (JWT_JWKS_URL), P1.7 / #88. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
 
         <!-- Query role: MongoDB read model, used through MongoTemplate only. The command role excludes the autoconfig. -->
         <dependency>

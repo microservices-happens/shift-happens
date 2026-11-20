@@ -46,10 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     configureApiClient({
-      getToken: () => state.token,
+      // Read the token from storage at request time, not from this render's state: the OIDC callback
+      // stores the token and navigates in the same tick, so the effect that closes over `state.token`
+      // has not run yet and the first dashboard requests would go out without a bearer token (401 →
+      // logout). localStorage is the single source of truth for the session.
+      getToken: () => localStorage.getItem(TOKEN_KEY),
       onUnauthorized: logout,
     });
-  }, [state.token, logout]);
+  }, [logout]);
 
   const login = useCallback(async (email: string, password: string) => {
     const response = await apiRequest<LoginResponse>('/auth/login', {

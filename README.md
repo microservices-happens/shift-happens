@@ -37,7 +37,7 @@ Compose (development) and on a local Kubernetes cluster (production-like). The d
 ├── frontend/                          # React + Vite SPA; Dockerfile.microservices builds the nginx image
 ├── tests/cooperation/                 # System tests: several real service containers + RabbitMQ
 ├── docker-compose.microservices.yml   # Development environment (this README, section 2)
-├── docker/microservices/              # Config files mounted by that Compose file (OpenTelemetry collector)
+├── docker/microservices/              # Config mounted by that Compose file (OTel collector, Keycloak realm)
 ├── kubernetes/                        # Plain manifests for local Kubernetes (this README, section 3)
 ├── k8s/                               # Older Kustomize scaffold (legacy, see section 3)
 ├── scripts/                           # seed-dev.sh (demo data), docker-env.sh (Testcontainers + Colima)
@@ -143,6 +143,14 @@ cp .env.example .env
    `OIDC_GITHUB_CLIENT_ID`/`OIDC_GITHUB_CLIENT_SECRET`. Step-by-step provider setup:
    [services/identity-service/README.md](services/identity-service/README.md#implemented-so-far-googlegithub-login-p23).
 
+   **Local OIDC demo (no account needed):** Compose also runs Keycloak (`local-oidc`, realm
+   `shift-happens`) and sets `OIDC_LOCAL_CLIENT_ID`, so the **Local demo (Keycloak)** button works out
+   of the box. After `scripts/seed-dev.sh`, sign in with
+   `admin@shift-happens.example`, `sofie.jensen@shift-happens.example` or
+   `ida.hansen@shift-happens.example` and the password `Demo1234!`. It is a real OpenID Connect
+   provider (authorization code + PKCE S256, ID-token signature, issuer and audience checks); Google and
+   GitHub use the same code path.
+
 Database, RabbitMQ and SMTP passwords are not in `.env.example`; Compose falls back to its
 development defaults (`identity_dev`, `shift_dev`, ...). To override one, add it to `.env` using the
 name in `docker-compose.microservices.yml` (for example `RABBITMQ_PASSWORD`, `IDENTITY_DB_PASSWORD`)
@@ -188,8 +196,9 @@ docker compose -f docker-compose.microservices.yml --profile app ps
 
 Wait until every service with a healthcheck shows `(healthy)`. The Java services' healthchecks call
 `GET /health` on port 8080 inside the container. A service can restart a few times while its
-database and RabbitMQ start; that is expected. email-function has no healthcheck and exits when its
-queue is empty, then restarts (`restart: unless-stopped`); that is expected too.
+database and RabbitMQ start; that is expected. email-function has no healthcheck; in Compose it is a
+long-running worker (`EMAIL_FUNCTION_EXIT_WHEN_IDLE=false`), while the Kubernetes SaledJob sets that flag
+to true so each Job drains `email.send` and exits.
 
 The services publish no host ports; everything goes through the gateway. Check one service's
 health directly with:
@@ -203,6 +212,7 @@ Ports published on `127.0.0.1`:
 | What | URL |
 |---|---|
 | Gateway: frontend and `/api/*` | https://localhost:8443 (Caddy `tls internal`, a self-signed certificate: accept the browser warning, use `curl -k`) |
+| Keycloak (local OIDC provider, see 2.5) | http://localhost:8090 (admin console: `admin` / `admin`; demo users use `Demo1234!`) |
 | RabbitMQ management UI | http://localhost:15672 (user `shift`, password `shift_dev` unless you overrode `RABBITMQ_USER`/`RABBITMQ_PASSWORD`) |
 | Mailpit (captured emails) | http://localhost:8025 |
 | OpenTelemetry collector (OTLP gRPC / HTTP) | `localhost:4317` / `localhost:4318` |
@@ -519,6 +529,8 @@ Compose) and [docs/ci-demo.md](docs/ci-demo.md) (CI).
 - [docs/project-plan.md](docs/project-plan.md): work packages and task IDs (P0–P9).
 - [docs/adr/](docs/adr/): architecture decision records.
 - [docs/ci-demo.md](docs/ci-demo.md): the CI workflows and how to run them.
+- [docs/manual-testing.md](docs/manual-testing.md): logins, URLs and copy-paste API calls for trying the
+  running stack by hand.
 
 ## Legacy: the monolith
 

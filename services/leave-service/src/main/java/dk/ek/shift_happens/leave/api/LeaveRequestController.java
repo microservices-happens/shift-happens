@@ -9,6 +9,9 @@ import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,11 +42,26 @@ public class LeaveRequestController {
     public ResponseEntity<?> create(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateLeaveRequest request,
-            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId) {
+            @RequestHeader(name = "X-Correlation-Id", required = false) String correlationId,
+            @AuthenticationPrincipal Jwt jwt) {
 
+        requireSelfForEmployee(jwt, request.employeeId());
         return idempotency.execute(idempotencyKey, request, () -> ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(LeaveRequestResponse.from(requests.submit(request.employeeId(), request.leaveTypeId(),
                         request.startDate(), request.endDate(), request.reason(), correlationId))));
+    }
+
+    /** contracts/README.md: an Employee may submit only their own request (employeeId = JWT employeeId). */
+    private static void requireSelfForEmployee(Jwt jwt, long employeeId) {
+        if (jwt == null || !"Employee".equals(jwt.getClaimAsString("role"))) {
+            return;
+        }
+        Object caller = jwt.getClaim("employeeId");
+        long callerId = caller instanceof Number number ? number.longValue()
+                : Long.parseLong(String.valueOf(caller));
+        if (callerId != employeeId) {
+            throw new AccessDeniedException("An Employee can only create their own leave request");
+        }
     }
 
     @PatchMapping("/{id}")

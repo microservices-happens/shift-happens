@@ -355,3 +355,127 @@ level), security and data management strategies, deployment and release approach
 - 9. References: All major design choices, technical claims, and comparisons must be supported by references. Sources must be cited in the text and listed in the References section. References should primarily be official documentation, textbooks, or academic or technical publications. Web tutorials and blogs may be used sparingly but should not be the primary sources. Use standard formats like APA, IEEE, or Harvard.
 
 ## 10. Appendix
+
+---
+
+# Implementation notes for the report (updated 2026-11-20)
+
+These notes are for the team: they connect the course requirements to the code that now exists and record
+the decisions that are worth arguing in the report. The task-level checklist is
+[`docs/final-project-delivery.md`](final-project-delivery.md); the contracts stay in
+[`contracts/`](../contracts).
+
+## 1. Requirement → implementation in one line
+
+| Requirement | Where it lives | What to show |
+|---|---|---|
+| ≥ 5 independently deployable services | `services/` (7) + `functions/email-function` | one `pom.xml` and Dockerfile per service, one database each |
+| REST and GraphQL for the frontend | REST on all services, GraphQL on scheduling-query | `frontend/src/api` vs `frontend/src/graphql`; `contracts/openapi` vs `contracts/graphql` |
+| Mostly asynchronous communication | RabbitMQ topic exchange, outbox in every producer | `contracts/asyncapi.yaml`, `docs/measurements/cqrs-read-model.md` |
+| JWT + OAuth/OIDC | identity-service issues RS256; each service validates with `JWT_JWKS_URL`; Google, GitHub and local Keycloak | `services/identity-service`, §3 below |
+| AI through an API in a workflow | scheduling → `scheduling.shift.understaffed.v1` → ai-service → Ollama | `services/ai-service`, `SchedulingAiIT` |
+| CQRS | scheduling and leave, `APP_ROLE=command|query` | Compose services `*-command`/`*-query`, `CqrsReadModelBenchmarkIT` |
+| Immutable data | tombstones (`*.deleted.v1`), snapshot payloads, leave ledger | `contracts/events/payloads/tombstone.schema.json`, `LeaveLedgerIT` |
+| Idempotence | `Idempotency-Key` on POST; `processed_event` per consumer; unique `event_id` in audit | `IdempotencyServiceTest`, `NotificationServiceIT`, `AuditServiceIT` |
+| Commutative handlers | version-based upsert, shuffled-order tests | `*ShuffledOrderTest`, `LeaveProjectionReplayIT` |
+| Saga with compensation | leave-command orchestrates, scheduling releases or rejects, ledger reversal | `LeaveApprovalSagaIT` |
+| Serverless | email-function on `email.send`, KEDA ScaledJob | `EmailFunctionIT`, `kubernetes/autoscaling/keda.yaml` |
+| Tests and CI | Surefire/Failsafe/Testcontainers, cooperation tests, CodeQL, Trivy | `.github/workflows`, `docs/ci-demo.md` |
+| Docs | per-service READMEs, springdoc contract UI, AsyncAPI artifact, wiki | `services/*/README.md`, `docs/wiki/` |
+
+## 2. Three services that were skeletons are now real
+
+- **notification-service** consumes `notification.events` (14 routing keys), keeps its own copy of employee
+  e-mail/role/active built from `workforce.employee.*`, stores one in-app notification per event and
+  recipient, and writes `notification.email.requested.v1` to its outbox in the same transaction. The REST
+  read is caller-scoped: an employee can read and acknowledge only their own notifications (the ownership
+  check is the 403 path of `PATCH`).
+- **audit-service** appends every catalogued business event unchanged into `audit_entry` with a unique
+  `event_id` (idempotent) and exposes `GET /v1/auditlogs` to Administrators only, filterable by event type,
+  aggregate, correlation id and time. It is append-only: there is no update or delete path.
+- **email-function** drains `email.send` over real SMTP (Mailpit locally), acks only after SMTP accepted the
+  message, dead-letters after three attempts, and exits when idle so KEDA can scale it to zero. Its dedupe is
+  in memory; the report should present that as the trade-off of a stateless function (see limitations).
+
+## 3. OAuth/OIDC: Google, GitHub and a local provider
+
+The course requires a third-party identity provider. The system has three:
+
+1. **Google** (`OidcProvider.GOOGLE`) — authorization code + PKCE (S256), ID token verified against Google's
+   JWKS, issuer, audience and expiry, `email_verified` required.
+2. **GitHub** (`OidcProvider.GITHUB`) — OAuth 2.0 only; the verified primary e-mail is read from
+   `/user/emails`.
+3. **Local Keycloak** (`OidcProvider.LOCAL`) — a real OpenID Connect provider with discovery endpoints, a
+   login form, a client with PKCE S256 and the same id-token validation. It exists so the flow can be
+   demonstrated and tested without external accounts or secrets.
+
+All three end in the same place: the verified e-mail must match an **existing active account** (accounts come
+only from `workforce.employee.*`), identity stores a link `(provider, subject) -> employeeId`, and the
+callback redirects to the frontend with `#token=<JWT>`. The token is in the fragment, so it never reaches a
+server log or a `Referer` header. Unknown or inactive e-mails are refused with the same error code.
+
+Local demo (Compose):
+
+```bash
+docker compose -f docker-compose.microservices.yml --profile app up -d --build
+scripts/seed-dev.sh
+# https://localhost:8443/login -> "Local demo (Keycloak)"
+# Keycloak users (email / Demo1234!):
+#   admin@shift-happens.example       (Administrator)
+#   sofie.jensen@shift-happens.example (Manager)
+#   ida.hansen@shift-happens.example  (Employee)
+# Keycloak admin console: http://localhost:8090  (admin / admin)
+```
+
+Why a local provider does not weaken the requirement: the protocol, the client registration, PKCE, the
+id-token signature check and the e-mail matching are identical to Google's. The only difference is where the
+user types the password. In the report, present the local provider as the **reproducible development
+identity provider** and Google/GitHub as the production configuration (`OIDC_GOOGLE_*`, `OIDC_GITHUB_*`).
+
+
+## 4. Decisions worth defending in the discussion chapter
+
+| Decision | Why | Cost / alternative |
+|---|---|---|
+| One queue per consumer, routing key = `eventType` | Fan-out without a broker-side registry; each consumer owns its retry/DLQ policy | More queues and bindings than one shared queue; documented in AsyncAPI |
+| Transactional outbox in every producer | A state change can never commit without its event, even if RabbitMQ is down | A relay adds a small latency (2 s default) and a table per service |
+| CQRS only for scheduling and leave | Their reads (nested schedules, balances) are much heavier than their writes and have different scaling needs | Two deployments and a read model to rebuild; justified with measurements |
+| Version-based upsert in every replica | Event order is not guaranteed; a late snapshot must not overwrite a newer one | Every consumer stores `aggregateVersion` |
+| Tombstone kept by the consumer | A delete cannot be undone by a late update | Rows stay; queries filter `deleted` |
+| Audit consumes **all** business events, no email events | Complete traceability without personal data from e-mail payloads | Larger log; a retention policy is future work |
+| In-memory dedupe in email-function | Stateless function, no database, exactly the serverless constraint | A restart can resend; documented limitation and improvement |
+| Keycloak as local OIDC provider | Reproducible demo, real protocol, no secrets in the repo | One more container; production uses Google/GitHub |
+| Hand-written OIDC client instead of `oauth2Login` | The service is stateless and the contract fixes the URL shape | More code to own; covered by `OidcLoginServiceTest` and `OidcIT` |
+
+## 5. Numbers to quote (from the repository, not from memory)
+
+- `docs/measurements/cqrs-read-model.md`: the read-model query plan and latency, with and without the
+  batched GraphQL resolvers.
+- `kubernetes/ollama/latency.md`: the local model latency used for the AI fallback budget.
+- Surefire/Failsafe counts in the CI logs: identity 78 unit + 34 IT, leave 94 unit + 196 IT, notification
+  8 + 5, audit 1 + 2, email-function 2 IT, plus the cooperation tests.
+- `docker-compose.microservices.yml`: seven services, nine databases (Postgres/Mongo), RabbitMQ, Mailpit,
+  OTel collector, Keycloak, Caddy gateway.
+
+## 6. Limitations the report should own
+
+- Email dedupe is process-local; SMTP is not transactional.
+- Manager alerts for understaffed shifts fan out to every active manager (no department-manager relation in
+  the employee snapshot; a synchronous lookup is forbidden).
+- The frontend has no automated unit tests; the backend carries the test strategy.
+- Grafana/Loki/Tempo and KEDA are prepared but not installed in the Docker Desktop cluster (P7.1/P7.4).
+- SonarQube Cloud is configured but skipped until `SONAR_TOKEN` exists.
+
+## 7. Suggested division of the remaining report work
+
+| Section | Source | Who |
+|---|---|---|
+| 1 Introduction, requirements, stack | `docs/architecture.md` §1, §3 | two people |
+| 2.1–2.3 Architecture, services, communication | `docs/architecture.md` §4, `services/*/README.md`, `contracts/README.md` | service owners |
+| 2.4 Patterns | `docs/architecture.md` §4.3, ADRs, this document §4 | one person |
+| 3 Environments | Compose, `kubernetes/`, `.github/workflows`, `docs/ci-demo.md`, cloud plan | one person |
+| 4 Testing | test classes, CI runs, `docs/final-project-delivery.md` §2 | one person |
+| 5 Project management and versioning | `docs/project-plan.md`, git history, ADRs | one person |
+| 6–8 Discussion, reflection, conclusion | this document §4–6 + retro notes | all, one editor |
+| 9 References | official docs: Spring Boot, RabbitMQ, Keycloak, Kubernetes, OAuth 2.0 RFC 6749, PKCE RFC 7636, CQRS/event-sourcing literature | all |
+

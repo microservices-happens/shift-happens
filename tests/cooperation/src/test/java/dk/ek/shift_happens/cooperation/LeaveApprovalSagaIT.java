@@ -99,7 +99,10 @@ class LeaveApprovalSagaIT {
                 .withEnv("JWT_ISSUER", TestTokens.ISSUER)
                 .withEnv("JWT_JWKS_URL", TestTokens.JWKS_URL);
         leave = ServiceContainer.create("leave-service", NETWORK)
-                .withEnv(serviceEnvironment("leave-db", "leave", "leave", "leave_dev"));
+                .withEnv(serviceEnvironment("leave-db", "leave", "leave", "leave_dev"))
+                // Both CQRS roles validate the JWT (#88); the same test JWKS stands in for identity.
+                .withEnv("JWT_ISSUER", TestTokens.ISSUER)
+                .withEnv("JWT_JWKS_URL", TestTokens.JWKS_URL);
         scheduling.start();
         leave.start();
     }

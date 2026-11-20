@@ -61,6 +61,9 @@ abstract class AbstractCommandIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        // Every API request now needs a JWT (#88); the tests mint real RS256 tokens over this JWKS.
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     @Autowired
@@ -75,6 +78,12 @@ abstract class AbstractCommandIT {
     protected TestRestTemplate http;
     @Autowired
     protected ObjectMapper objectMapper;
+
+    /** The API now requires a token (#88); a Manager may call every endpoint these tests use. */
+    @org.junit.jupiter.api.BeforeEach
+    void authenticateAsManager() {
+        TestJwks.authorizeByDefault(http, "Manager");
+    }
 
     /** Declares a throwaway queue bound to the events exchange for one routing key. */
     protected String bindTestQueue(String queueName, String routingKey) {

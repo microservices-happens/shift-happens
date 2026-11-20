@@ -51,7 +51,7 @@ This folder is the single source of truth for how the Shift Happens frontend and
 ## Authentication and authorization
 
 1. **Local login:** `POST /api/v1/auth/login` with email and password returns a JWT.
-2. **Third-party login:** `GET /api/v1/auth/oidc/{google|github}/authorize` runs the OAuth 2.0 authorization-code flow with PKCE. The callback matches the provider's verified email to an existing active account and redirects to the frontend with a Shift Happens JWT. Unknown emails are refused.
+2. **Third-party login:** `GET /api/v1/auth/oidc/{google|github|local}/authorize` runs the OAuth 2.0 authorization-code flow with PKCE. The callback matches the provider's verified email to an existing active account and redirects to the frontend with a Shift Happens JWT. Unknown emails are refused. `local` is a standard OpenID Connect provider (Keycloak in `docker-compose.microservices.yml`) that demonstrates the same flow without a third-party account or secret; Google and GitHub use the identical code path and are enabled by their `OIDC_*` client ids.
 3. The browser sends `Authorization: Bearer <jwt>` on REST and GraphQL requests.
 4. **Every service validates the JWT itself.** It checks the signature against identity's public key at `JWT_JWKS_URL` (cached), plus `iss` and `exp`. The gateway has no business logic and does not check tokens.
 5. **Role rules** (from the monolith):

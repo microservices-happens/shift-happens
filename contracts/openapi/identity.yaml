@@ -46,7 +46,7 @@ paths:
       summary: Start third-party login (OAuth 2.0 authorization code + PKCE)
       operationId: oidcAuthorize
       security: []
-      description: 'Redirects the browser to the provider. Supported providers: google, github.'
+      description: 'Redirects the browser to the provider. Supported providers: google, github, local. local is a standard OpenID Connect provider (Keycloak in docker-compose) used to demonstrate the same authorization-code flow without a third-party account.'
       parameters:
       - name: provider
         in: path
@@ -56,6 +56,7 @@ paths:
           enum:
           - google
           - github
+          - local
       responses:
         '302':
           description: Redirect to the provider's consent page
@@ -80,6 +81,7 @@ paths:
           enum:
           - google
           - github
+          - local
       - name: code
         in: query
         required: true

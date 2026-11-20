@@ -30,7 +30,7 @@ export interface paths {
         };
         /**
          * Start third-party login (OAuth 2.0 authorization code + PKCE)
-         * @description Redirects the browser to the provider. Supported providers: google, github.
+         * @description Redirects the browser to the provider. Supported providers: google, github, local. local is a standard OpenID Connect provider (Keycloak in docker-compose) used to demonstrate the same authorization-code flow without a third-party account.
          */
         get: operations["oidcAuthorize"];
         put?: never;
@@ -248,7 +248,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                provider: "google" | "github";
+                provider: "google" | "github" | "local";
             };
             cookie?: never;
         };
@@ -272,7 +272,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                provider: "google" | "github";
+                provider: "google" | "github" | "local";
             };
             cookie?: never;
         };

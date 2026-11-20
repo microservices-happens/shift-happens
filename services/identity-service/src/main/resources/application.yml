@@ -65,6 +65,15 @@ app:
       token-uri: https://github.com/login/oauth/access_token
       user-uri: https://api.github.com/user
       emails-uri: https://api.github.com/user/emails
+    # A local OpenID Connect provider (Keycloak in docker-compose). Empty client id = disabled, like the
+    # others. The browser reaches Keycloak at localhost:8090; identity calls it at local-oidc:8080.
+    local:
+      client-id: ${OIDC_LOCAL_CLIENT_ID:}
+      client-secret: ${OIDC_LOCAL_CLIENT_SECRET:}
+      authorization-uri: ${OIDC_LOCAL_AUTHORIZATION_URI:http://localhost:8090/realms/shift-happens/protocol/openid-connect/auth}
+      token-uri: ${OIDC_LOCAL_TOKEN_URI:http://local-oidc:8080/realms/shift-happens/protocol/openid-connect/token}
+      jwk-set-uri: ${OIDC_LOCAL_JWK_SET_URI:http://local-oidc:8080/realms/shift-happens/protocol/openid-connect/certs}
+      issuer: ${OIDC_LOCAL_ISSUER:http://localhost:8090/realms/shift-happens}
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:

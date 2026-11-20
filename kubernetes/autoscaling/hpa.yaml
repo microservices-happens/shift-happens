@@ -1,0 +1,42 @@
+# Autoscaling of the deployed services (P7.3). The read sides scale on CPU; queue consumers scale on queue
+# length with KEDA, so a burst of events adds replicas and an idle queue goes back to one.
+# Apply after the services themselves: kubectl apply -f kubernetes/autoscaling/
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scheduling-query
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: scheduling-query }
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: leave-query
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: leave-query }
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notification-service
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: notification-service }
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }

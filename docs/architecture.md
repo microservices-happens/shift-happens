@@ -255,7 +255,7 @@ docker compose -f docker-compose.microservices.yml --profile app --profile ai up
 
 App `https://localhost:8443` · RabbitMQ `http://localhost:15672` · Mailpit `http://localhost:8025`.
 
-For Google/GitHub login, set `OIDC_GOOGLE_CLIENT_ID`/`_SECRET` or `OIDC_GITHUB_CLIENT_ID`/`_SECRET` in a local `.env` (never commit it). Local email/password login works without them.
+For Google/GitHub login, set `OIDC_GOOGLE_CLIENT_ID`/`_SECRET` or `OIDC_GITHUB_CLIENT_ID`/`_SECRET` in a local `.env` (never commit it). Local email/password login works without them. Compose also runs Keycloak as a **local OpenID Connect provider** (`local-oidc`, realm `shift-happens`); the **Local demo (Keycloak)** button on the login page uses it with the demo users and `Demo1234!`, so the OAuth flow can be demonstrated without any third-party account.
 
 **Migration order (strangler):**
 1. Contracts.
