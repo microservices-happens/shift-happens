@@ -6,7 +6,8 @@
 ## Implemented so far (employee replica, P2.2)
 
 - Consumes `workforce.employee.created/updated/deleted.v1` from the durable queue `identity.accounts`
-  (bound to `workforce.employee.*.v1`, dead-lettered to `shift-happens.dlx` after three attempts).
+  (bound to `workforce.employee.*.v1`, dead-lettered to `shift-happens.dlx` after three attempts;
+  `identity.accounts.dlq` is bound to the DLX with `#`, so it also receives other queues' dead letters).
 - Upserts the local `account` row, keeps the highest `aggregateVersion`, keeps tombstoned accounts
   as disabled, and de-duplicates on `eventId` (`processed_events`).
 - The handler is commutative (P3.3): the same events give the same row in any arrival order.
@@ -31,7 +32,11 @@
 - Signing key: `JWT_PRIVATE_KEY_PATH` (PKCS#8 PEM). Without it a key is generated at startup, so
   tokens stop working after a restart; fine for Compose. In Kubernetes the key is mounted from
   `identity-service-secrets` at `/etc/identity-service/jwt/private-key.pem` (see `kubernetes/README.md`).
-- Every other path requires a valid JWT from this service.
+- Every other path requires a valid JWT from this service, except `/health`, `/error`, the OIDC
+  `authorize`/`callback` and the Swagger UI paths (`/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`,
+  `/openapi/**`). A missing or invalid token gets Spring Security's default `401` (`WWW-Authenticate`
+  header, no problem+json body).
+- Migrations: `V1__init.sql`, `V2__login.sql`, `V3__oidc.sql`, `V4__account_snapshot_version.sql`.
 - Tests: `LoginServiceTest`, `AccountTest`, `LoginIT` (login end to end; the token verifies with only
   the JWKS; missing, forged and expired tokens → 401).
 
@@ -41,7 +46,7 @@
   employee themself (the JWT's `employeeId` equals the path id); anyone else gets `403`. The role check
   comes before the lookup, so a non-admin gets `403` even for an unknown id; an admin gets `404`.
   A password shorter than 8 characters (or one bcrypt cannot take: more than 72 bytes with the pepper)
-  is `400`. All errors are problem+json.
+  is `400`. These application errors are problem+json.
 - The JWT `role` claim becomes the authority `ROLE_<role>` (`JwtAuthenticationConverter` in `SecurityConfig`).
 - A deactivated account can get a password; it still cannot log in until workforce reactivates it.
 - First-admin bootstrap: set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` (min. 8 characters;
@@ -112,10 +117,10 @@ provider endpoints are `app.oidc.*` properties with the real defaults; tests poi
   PKCE verifier matches the challenge, happy paths, unknown/inactive/unverified, replayed state, forged
   ID token, link survives an email change), `OidcDisabledProviderIT` (no client id → 400).
 - Not verified: a real login against Google or GitHub, through the gateway. The frontend page at
-  `FRONTEND_LOGIN_CALLBACK_URL` is not part of this service.
+  `FRONTEND_LOGIN_CALLBACK_URL` is not part of this service (it is `frontend/src/pages/LoginCallbackPage.tsx`).
 
-Still to do: JWT validation in the other services, a real Google/GitHub login through the gateway,
-the frontend `/login/callback` page, and mounting the signing key as a Kubernetes secret (P7.2).
+Still to do: a real Google/GitHub login through the gateway, and JWT validation in leave-service,
+notification-service and audit-service (P1.7; workforce, scheduling and ai validate the token already).
 
 ## Provides
 REST: [`contracts/openapi/identity.yaml`](../../contracts/openapi/identity.yaml)
@@ -127,7 +132,7 @@ REST: [`contracts/openapi/identity.yaml`](../../contracts/openapi/identity.yaml)
 ## Consumes
 | Queue | Routing keys | Handling |
 |---|---|---|
-| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it, also when it arrives before the create. Keeps the highest `aggregateVersion`; the result does not depend on arrival order |
+| `identity.accounts` | `workforce.employee.{created,updated,deleted}.v1` (one wildcard binding `workforce.employee.*.v1`) | Upsert the account (email, role, active = `employmentStatus == ACTIVE`). A tombstone disables it, also when it arrives before the create. Keeps the highest `aggregateVersion`; the result does not depend on arrival order |
 
 ## Publishes
 Nothing.
@@ -151,5 +156,7 @@ through `--build-context contracts=contracts` (set in Compose and CI).
 ## Done when
 - [ ] Local login and Google (or GitHub) login both work through the gateway. (Both work inside the
   service against stubs, `LoginIT` and `OidcIT`; a real provider through the gateway is not verified.)
-- [ ] A deactivated employee can no longer log in.
+- [x] A deactivated employee can no longer log in: `LoginIT.aDeactivatedEmployeeCanNoLongerLogIn` (an
+  `employmentStatus` other than `ACTIVE` arrives from workforce, login is then `401`). A tombstone disables the
+  account too (`IdentityApplicationIT`), but no test logs in after one.
 - [x] Security tests: missing/expired/forged token → 401 (`LoginIT`); wrong role → 403 (`SetPasswordIT`).
