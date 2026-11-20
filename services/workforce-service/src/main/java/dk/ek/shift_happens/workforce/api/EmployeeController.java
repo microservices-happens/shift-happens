@@ -24,8 +24,7 @@ import java.util.List;
 /**
  * REST API of contracts/openapi/workforce.yaml.
  *
- * <p>Security (JWT + Administrator/Manager roles for writes) is P1.7 and is added together with the
- * Identity service, because until Identity publishes its JWKS no token can be validated.
+ * <p>Every request needs a JWT; writes need the Administrator or Manager role (P1.7, {@code SecurityConfig}).
  */
 @RestController
 @RequestMapping("/v1/employees")

@@ -82,6 +82,8 @@ class WorkforceApplicationIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     @LocalServerPort
@@ -102,6 +104,12 @@ class WorkforceApplicationIT {
     @Autowired
     private TopicExchange eventsExchange;
 
+    /** The existing tests act as a Manager (P1.7); the security tests below pick their own token or none. */
+    @BeforeEach
+    void actAsAManagerByDefault() {
+        TestJwks.authorizeByDefault(http, "Manager");
+    }
+
     @BeforeEach
     void bindATestQueue() {
         // Durable and non-exclusive: RabbitMQ 4 rejects transient non-exclusive queues.
@@ -116,7 +124,8 @@ class WorkforceApplicationIT {
 
     @Test
     void healthEndpointIsPublicAndUp() {
-        assertThat(http.getForEntity("/health", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(http.exchange("/health", HttpMethod.GET, new HttpEntity<>(TestJwks.anonymous()), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test
@@ -211,6 +220,7 @@ class WorkforceApplicationIT {
                 + "&email=UPDATED&firstName=LAR&lastName=JENS";
         var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + TestJwks.manager())
                 .header("X-Correlation-Id", "employee-update-it")
                 .method("PATCH", HttpRequest.BodyPublishers.ofString("""
                         {"employeeNumber":"EMP-1010","userRole":"Manager","firstName":"Klara",
@@ -326,6 +336,7 @@ class WorkforceApplicationIT {
 
         var update = HttpRequest.newBuilder(URI.create("http://localhost:" + port + item))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + TestJwks.manager())
                 .method(updateMethod, HttpRequest.BodyPublishers.ofString(updateBody))
                 .build();
         try (var client = HttpClient.newHttpClient()) {
@@ -506,6 +517,51 @@ class WorkforceApplicationIT {
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(conflict.getHeaders().getContentType().toString()).contains("application/problem+json");
         assertThat(countEmployeesWithEmail("barbara@shift.dk")).isZero();
+    }
+
+    @Test
+    void aRequestWithoutATokenIsRejectedWith401AndChangesNothing() {
+        CreateEmployeeRequest request = new CreateEmployeeRequest("EMP-1020", "Employee", "Nobody", "Anonymous",
+                "anonymous@shift.dk", null, null, "ACTIVE", null);
+        HttpHeaders anonymous = TestJwks.anonymous();
+        anonymous.set("Idempotency-Key", UUID.randomUUID().toString());
+
+        ResponseEntity<String> read = http.exchange("/v1/employees", HttpMethod.GET,
+                new HttpEntity<>(TestJwks.anonymous()), String.class);
+        ResponseEntity<String> write = http.exchange("/v1/employees", HttpMethod.POST,
+                new HttpEntity<>(request, anonymous), String.class);
+
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(write.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(write.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(countEmployeesWithEmail("anonymous@shift.dk")).isZero();
+    }
+
+    @Test
+    void aTokenSignedByAnotherKeyIsRejectedWith401() {
+        ResponseEntity<String> response = http.exchange("/v1/employees", HttpMethod.GET,
+                new HttpEntity<>(TestJwks.bearer(TestJwks.tokenSignedByAnotherKey(1, "Administrator"))),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void anEmployeeMayReadButNotWrite() {
+        CreateEmployeeRequest request = new CreateEmployeeRequest("EMP-1021", "Employee", "Eve", "Employee",
+                "eve@shift.dk", null, null, "ACTIVE", null);
+        HttpHeaders employee = TestJwks.bearer(TestJwks.employee(7));
+        employee.set("Idempotency-Key", UUID.randomUUID().toString());
+
+        ResponseEntity<String> read = http.exchange("/v1/employees", HttpMethod.GET,
+                new HttpEntity<>(TestJwks.bearer(TestJwks.employee(7))), String.class);
+        ResponseEntity<String> write = http.exchange("/v1/employees", HttpMethod.POST,
+                new HttpEntity<>(request, employee), String.class);
+
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(write.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(write.getHeaders().getContentType().toString()).contains("application/problem+json");
+        assertThat(countEmployeesWithEmail("eve@shift.dk")).isZero();
     }
 
     @Test

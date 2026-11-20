@@ -34,7 +34,13 @@
   Workforce stores the next date to check in PostgreSQL and polls for due employees every minute.
   A changed snapshot is written to the outbox in the same transaction as the next scheduled check.
 
-Still to do: JWT security (P1.7).
+- Security (P1.7): every request except `GET /health` needs a Bearer JWT from identity-service. The
+  service validates it itself: RS256 signature against the JWKS at `JWT_JWKS_URL` (fetched on the first
+  token and cached by Nimbus), plus `iss` (`JWT_ISSUER`) and `exp`. The `role` claim becomes
+  `ROLE_<role>`. `GET` needs any valid token; `POST`, `PUT`, `PATCH` and `DELETE` need `Administrator`
+  or `Manager`. No or an invalid token is `401`, the wrong role is `403`, both as problem+json.
+  Tests: `SecurityRulesTest` (no containers) and the security cases in `WorkforceApplicationIT`;
+  `TestJwks` is the test key, JWKS endpoint and token minter.
 
 ## Provides
 REST: [`contracts/openapi/workforce.yaml`](../../contracts/openapi/workforce.yaml). CRUD under `/v1/employees`, `/v1/employeecontracts`, `/v1/employeejobroles`, `/v1/departments`, `/v1/jobroles` and `/v1/worklocations`.
