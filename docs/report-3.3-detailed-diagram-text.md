@@ -34,7 +34,9 @@ never call each other directly.
 **3. Events and the serverless function.** The orange line shows how services communicate: they publish
 events through their transactional outbox to **Azure Service Bus**, and each consumer reads from its own
 subscription on the `shift-happens-events` topic. A message that fails three times is moved to the
-subscription's dead-letter queue. The **email-function** runs in a separate **Container Apps environment** as
+subscription's dead-letter queue. Service Bus replaces RabbitMQ from the local setup. Because Service Bus
+speaks AMQP 1.0 and RabbitMQ speaks AMQP 0-9-1, the services' messaging adapter has to be rewritten for this
+deployment (see 3.3.2). The **email-function** runs in a separate **Container Apps environment** as
 a Container Apps Job. KEDA starts it only when its subscription has messages, so it scales from zero to five
 instances and back. It delivers e-mail through **Azure Communication Services**, which replaces Mailpit.
 
