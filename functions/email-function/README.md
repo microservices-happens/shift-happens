@@ -22,8 +22,10 @@ An isolated background task, **not a microservice**: no API, no database. It sen
    leads to a redelivery rather than a lost e-mail.
 3. An unusable payload or an SMTP failure is retried three times (1 s, 2 s) and then republished to
    `shift-happens.dlx` with routing key `email.send`, landing in `email.send.dlq`. No infinite requeue.
-4. With `EMAIL_FUNCTION_EXIT_WHEN_IDLE=true`, the process closes after it has sent at least one e-mail and
-   the queue is empty — that is what lets the Kubernetes Job finish and KEDA start a fresh one later.
+4. With `EMAIL_FUNCTION_EXIT_WHEN_IDLE=true`, the process exits after it has sent at least one e-mail and
+   the queue is empty, or after three consecutive empty polls if another Job already drained the burst.
+   It calls `Runtime.halt(0)` because a graceful Spring close can block on listener shutdown; that is what
+   lets the Kubernetes Job finish and KEDA start a fresh one later.
 
 ## Deduplication and its limit
 

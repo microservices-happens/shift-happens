@@ -1,5 +1,6 @@
 # KEDA (P7.3): queue length, not CPU, is the right metric for an event consumer. Requires KEDA in the
-# cluster (k8s/infrastructure/README.md) and the secret below, created from kubernetes/secrets:
+# cluster and the secret below, created from kubernetes/secrets. Install/demo runbook:
+# kubernetes/autoscaling/README.md.
 #
 #   kubectl -n shift-happens create secret generic rabbitmq-keda \
 #     --from-literal=host='amqp://shift:shift_dev@rabbitmq.shift-happens.svc.cluster.local:5672/shift-happens'
@@ -46,12 +47,21 @@ metadata:
   namespace: shift-happens
 spec:
   jobTargetRef:
+    backoffLimit: 2
+    ttlSecondsAfterFinished: 300
     template:
       spec:
         restartPolicy: Never
         containers:
           - name: email-function
             image: ghcr.io/microservices-happens/email-function:main
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
             envFrom:
               - configMapRef: { name: service-env }
               - secretRef: { name: email-function-secrets, optional: true }
@@ -60,6 +70,16 @@ spec:
                 value: "email.send"
               - name: EMAIL_FUNCTION_EXIT_WHEN_IDLE
                 value: "true"
+              - name: SMTP_HOST
+                value: "mailpit"
+              - name: SMTP_PORT
+                value: "1025"
+              - name: SMTP_FROM
+                value: "no-reply@shift-happens.local"
+              - name: SMTP_AUTH
+                value: "false"
+              - name: SMTP_STARTTLS
+                value: "false"
   pollingInterval: 10
   maxReplicaCount: 5
   successfulJobsHistoryLimit: 3

@@ -311,6 +311,11 @@ export interface components {
             /** Format: date-time */
             endDatetime: string;
             shiftStatus: string;
+            /** @description Staffing plan of the shift (jobRoleId + requiredEmployeeCount). POST /v1/shifts may include it; PUT /v1/shifts/{id} without it keeps the roles the shift already has. The same rows can be managed through /v1/shiftrequiredjobroles. */
+            requiredJobRoles?: {
+                jobRoleId: number;
+                requiredEmployeeCount: number;
+            }[];
         };
         ShiftRequiredJobRole: {
             readonly shiftRequiredJobRoleId?: number;

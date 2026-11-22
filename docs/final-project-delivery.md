@@ -35,7 +35,7 @@ do (mostly report, presentation and environment chores), and a 10-minute demo sc
 | Commutative handlers | version-based upserts, shuffled-order tests, ledger sums | `*ShuffledOrderTest`, `LeaveProjectionReplayIT` |
 | Saga with compensation | leave approval → scheduling release → reversal/rejection on timeout | `LeaveApprovalSagaIT`, `LeaveApprovalSagaConcurrencyIT` |
 | Logging/monitoring | correlation id in MDC everywhere; OTel collector; OpenAPI/AsyncAPI docs | `CorrelationIdFilterTest` per service, `docs/ci-demo.md` |
-| Containerized + deployment architecture | Dockerfile per service, Compose, Kubernetes manifests (Docker Desktop path) and Kustomize scaffold | `docker-compose.microservices.yml`, `kubernetes/`, `k8s/` |
+| Containerized + deployment architecture | Dockerfile per service, Compose, plain Kubernetes manifests (Docker Desktop path) | `docker-compose.microservices.yml`, `kubernetes/` |
 | CI/CD with unit, integration, cooperation tests | `ci.yml`, `system-tests.yml`, `codeql.yml` | Actions runs, `docs/ci-demo.md` |
 | Serverless function | email-function as a KEDA ScaledJob on `email.send` | `kubernetes/autoscaling/keda.yaml`, `EmailFunctionIT` |
 | Versioning (git, DB, REST) | short-lived branches, Flyway `V*__`, `/v1` paths, `.vN` events | git history, migrations |
@@ -126,12 +126,13 @@ scripts/seed-dev.sh
   replica would narrow it.
 - **The local OIDC provider is Keycloak in development.** Production uses Google/GitHub (or any OIDC
   provider) by setting the `OIDC_*` variables; the code path is identical.
-- **KEDA and ingress-nginx are prepared but not installed** in the Docker Desktop cluster (P7.1). The
-  manifests and the trigger authentication are in `kubernetes/autoscaling/`.
+- **KEDA is installed** in the Docker Desktop cluster and the `email-function` ScaledJob is verified with a
+  500-message burst; ingress-nginx and CPU HPA (metrics-server) are still open (P7.1/P7.3). The manifests
+  and runbook are in `kubernetes/autoscaling/`.
 - **SonarQube Cloud is configured but skipped** without `SONAR_TOKEN` (P1.5).
 - **The frontend has no automated unit tests.** The pipeline runs typecheck, ESLint, the API/GraphQL type
-  checks and the production build; end-to-end flows are verified manually and by the backend cooperation
-  tests.
+  checks and the production build; the Playwright E2E suite (`frontend/e2e`) covers the business flows,
+  and the backend carries the cooperation and integration tests.
 
 ## 7. Verification commands (copy-paste)
 
@@ -146,6 +147,8 @@ mvn -B -f services/audit-service/pom.xml verify
 mvn -B -f functions/email-function/pom.xml verify
 mvn -B -f tests/cooperation/pom.xml verify
 npm --prefix frontend run check:api && npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run build
+npm --prefix frontend run e2e          # full Compose stack must be up
+node scripts/api-smoke.mjs             # same precondition, no browser
 docker compose -f docker-compose.microservices.yml --profile app config --quiet
 ```
 
@@ -161,11 +164,84 @@ docker compose -f docker-compose.microservices.yml --profile app config --quiet
 | leave-service | `mvn -B -f services/leave-service/pom.xml verify` | 94 unit + 196 IT, green |
 | Cooperation | `SERVICE_IMAGE_TAG=dev mvn -B -f tests/cooperation/pom.xml verify` | 3/3, green |
 | Frontend | `check:api`, `typecheck`, `lint`, `build` | all green (lint: warnings only) |
-| Compose | `docker compose ... --profile app up -d --build` + `config --quiet` | 25 containers up (databases, broker, gateway, Keycloak, services, frontend); every container that defines a healthcheck is healthy |
+| Compose | `docker compose ... --profile app up -d --build` + `config --quiet` | 30 containers up (databases, broker, gateway, Keycloak, services, frontend, Prometheus, Loki, Promtail, Grafana, cAdvisor); every container that defines a healthcheck is healthy |
 | OIDC in a browser | Playwright against `https://localhost:8443` with the self-signed cert accepted | Keycloak login → dashboard as Sofie Jensen (Manager), REST + GraphQL `200` |
 | Event chain in the running stack | leave request via the gateway | notification row, `audit_entry` row, outbox event, Mailpit message (email-function log with correlation id) |
 | Notification UI | Playwright | bell shows 3 unread; `PATCH` marks one read |
 
-The stack is left running after this session; `docker compose -f docker-compose.microservices.yml --profile app down`
-stops it without deleting data, `down -v` also removes the volumes.
+The stack was verified end to end in this session (table above). At the time of writing Docker Desktop was
+stopped, so `docker compose -f docker-compose.microservices.yml --profile app up -d` brings the same stack
+back; `down` stops it without deleting data, `down -v` also removes the volumes.
+
+## 9. Fixed on 2026-11-22 (whole-system walk)
+
+The team reported that shifts, swaps, approvals, leave and employees could not be added from the UI.
+The walk found four independent causes and one missing feature; all are fixed and covered by tests.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Every page refresh returned to the login page, so forms could not be used after a reload | The API client was configured in a parent effect; child effects fetched before it and sent no `Authorization` header, the `401` then cleared the session | `frontend/src/auth/session.ts` gives the client a default token getter that reads `localStorage` at request time (`client.ts`, `AuthContext.tsx`) |
+| **New shift** failed with `400 requiredJobRoles must not be null` | The backend required a staffing plan the contract and the form did not send | `requiredJobRoles` is optional in `CreateShiftRequest` (null → empty) and is now part of the `Shift` contract; the shift form edits the plan (job role + count) and sends it |
+| No leave request could ever be approved | A new leave type has no balance, and the immutable ledger had no UI to grant one, so approval was `409 insufficient leave balance` | New **Leave Types & balances** page (Manager/Administrator) creates a type and records an `ACCRUAL` ledger entry; the read-model lag after creating a type is handled optimistically |
+| Swaps and their approvals were API-only | The frontend had no swap pages | **Request swap** on the assignment list (colleague + reason) and a **Swap Requests** queue with Approve/Reject and comments |
+| A new employee could be created but never assigned | The employee page had no job-role editor, and Scheduling validates `jobRoleIds` | The employee page stays open after Create and manages job roles (`POST/DELETE /v1/employeejobroles`) |
+
+Regression coverage: `frontend/e2e/business-flows.spec.ts` (7 Playwright tests, green locally in 30 s)
+walks login + reload, employee + role, shift + staffing + assignment, swap approval and rejection,
+leave approval and leave rejection; `scripts/api-smoke.mjs` repeats the API chain without a browser. Backend:
+`mvn -B -f services/scheduling-service/pom.xml verify` → **316 unit + 81 IT** green (1 existing benchmark
+skipped); frontend `typecheck`, `lint` and `build` green.
+
+## 10. Runtime and operations documentation (2026-11-22)
+
+- [diagrams/async-services.md](diagrams/async-services.md): database ownership, event-only integration,
+  the employee replica pattern, tombstones, idempotent consumers and what happens when a producer or
+  consumer is down.
+- [diagrams/cqrs-and-saga.md](diagrams/cqrs-and-saga.md): the command/query roles, the outbox → queue →
+  projection path (this is what keeps the read DB current — not a saga), read-model freshness/rebuild,
+  and the leave-approval saga with correlation, timeout, retry and compensation.
+- [diagrams/observability-dlq-recovery.md](diagrams/observability-dlq-recovery.md): current vs planned
+  observability stack, signal sources, query examples, DLQ mechanics and the captured evidence:
+  consumer backlog drain, command-role crash (read side 200, write 503), saga rejection + ledger
+  reversal, a poison message in `scheduling.projection.dlq`, correlation-id tracing across services,
+  and two query replicas serving 1,068 req/s with 0 errors.
+
+Workforce messaging coverage was completed in the same pass: `EventEnvelopeSchemaTest` now also checks
+the employee and tombstone payload schemas, `OutboxRelayTest` covers publish/mark-published and both
+failure paths, and `RabbitTopologyTest` pins the durable exchange names. `mvn -B -f
+services/workforce-service/pom.xml verify` → **302 unit + 22 IT** green.
+
+## 11. Observability and KEDA (2026-11-22, later pass)
+
+The Compose `app` profile now runs the observability stack:
+
+| Component | Port | Role |
+|---|---|---|
+| Prometheus | 9090 | scrapes every service at `/prometheus`, RabbitMQ at `/metrics/per-object`, cAdvisor and KEDA NodePort 32073 |
+| Loki + Promtail | 3100 | Docker stdout with `service`, `container`, `stream` labels |
+| Grafana | 3001 | provisioned **Shift Happens — Live System** dashboard (RED, p95, JVM heap/CPU, queues, DLQ, KEDA, logs) |
+| cAdvisor | 8088 | host/container metrics (Docker Desktop does not expose stable names; JVM process metrics are used per service) |
+
+Every service now has `micrometer-registry-prometheus`; `/prometheus` and `/metrics` are deliberately
+public for scraping, while the business API keeps its JWT rules.
+
+KEDA 2.17 is installed in the Docker Desktop cluster. The real `email-function` ScaledJob was stressed
+with a **500-message** RabbitMQ burst: KEDA showed queue demand 500, started **5 Jobs** (the configured
+maximum), Mailpit received **500** messages, each Job completed in about **12 s** and the queue returned
+to 0. Two defects were fixed: the ScaledJob template lacked SMTP host/port, and idle exit blocked on
+Spring shutdown (now `halt(0)` after three empty polls).
+
+Metrics-server is installed (`kubectl top` works). `kubernetes/autoscaling/hpa.yaml` defines CPU HPAs
+for `scheduling-query`, `leave-query` and `frontend`; the frontend HPA was load-tested and scaled
+**2 → 5** at a 60% CPU target. Queue consumers use KEDA instead of HPA, so one workload never has two
+competing autoscalers.
+
+Evidence: `docs/images/observability/grafana-stress-final.png`,
+`grafana-keda-final.png`, `grafana-keda-queue.png`; runbook: `kubernetes/autoscaling/README.md`;
+metrics-server: `kubernetes/metrics-server/README.md`; alert rules:
+`docker/microservices/observability/alert-rules.yml`.
+
+Still open for a full production cluster: Tempo/traces, the observability stack as Kubernetes
+manifests, ingress-nginx installation and Alertmanager delivery. The local Compose stack, metrics-server,
+HPAs and KEDA ScaledJob are working and documented.
 

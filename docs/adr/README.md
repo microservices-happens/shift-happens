@@ -8,7 +8,7 @@ One short file per significant decision: `NNNN-title.md`, using [`template.md`](
 | [0002](0002-shift-swaps-inside-scheduling.md) | Shift swaps live inside Scheduling; the saga is leave approval | Accepted |
 | [0003](0003-graphql-on-scheduling-read-side.md) | GraphQL on the Scheduling query role; gateway without logic | Accepted |
 | [0004](0004-hand-written-ollama-client.md) | Hand-written Ollama client instead of Spring AI | Proposed |
-| [0005](0005-plain-kubernetes-manifests.md) | Plain manifests in `kubernetes/` instead of Kustomize | Proposed |
+| [0005](0005-plain-kubernetes-manifests.md) | Plain manifests in `kubernetes/` instead of Kustomize | Accepted |
 | [0006](0006-oidc-login-design.md) | OIDC login: hand-written PKCE flow, e-mail matching, token in the URL fragment | Accepted |
 | [0007](0007-local-oidc-provider.md) | A local OpenID Connect provider (Keycloak) for the reproducible OAuth demo | Accepted |
 

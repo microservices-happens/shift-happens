@@ -63,6 +63,10 @@ public class OutboxEventEntity {
         return occurredAt;
     }
 
+    Instant getPublishedAt() {
+        return publishedAt;
+    }
+
     void markPublished(Instant publishedAt) {
         this.publishedAt = publishedAt;
     }

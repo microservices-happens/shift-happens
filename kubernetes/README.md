@@ -13,6 +13,11 @@ kubernetes/
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
   otel-collector/    + configmap.yaml (copy of docker/microservices/otel-collector.yml)
+  autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob)
+  metrics-server/    install note for the metrics API used by the HPAs
+  infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server, observability)
+  namespace.yaml     the shift-happens namespace
+  ingress.yaml       ingress-nginx rules, same paths as the Compose Caddyfile
 ```
 
 Our images are `ghcr.io/microservices-happens/<service>:main`, built and pushed by CI on every
@@ -23,6 +28,16 @@ merge to `main` (multi-platform: linux/amd64 + linux/arm64), pulled with `imageP
 ```bash
 kubectl config use-context docker-desktop
 kubectl get nodes            # one node, Ready
+```
+
+Cluster add-ons used by autoscaling (install once):
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml
+kubectl -n kube-system patch deployment metrics-server --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+# KEDA: see autoscaling/README.md
+# ingress-nginx: see infrastructure/README.md
 ```
 
 ## Secrets (once per cluster, before the first deploy)
@@ -71,7 +86,7 @@ The old shared Secret is no longer referenced: `kubectl delete secret shift-happ
 **Existing RabbitMQ data and the dead-letter fix.** Queues and bindings are durable and live in the hostPath
 `/var/lib/shift-happens/rabbitmq`, so they survive redeploys. Older identity, scheduling and ai versions bound
 their `<queue>.dlq` to `shift-happens.dlx` with `#`. The new versions remove that binding themselves on
-startup and keep their queue arguments, so **no manual step is needed**: `kubectl apply -R -f kubernetes/`
+startup and keep their queue arguments, so **no manual step is needed**: `kubectl apply -n shift-happens -R -f kubernetes/`
 with the new images, and waiting messages are kept. Copies of other services' dead letters that the old
 binding put into those DLQs stay until you purge them, e.g.
 `kubectl exec deployment/rabbitmq -- rabbitmqctl purge_queue -p shift-happens identity.accounts.dlq` (look at
@@ -82,13 +97,14 @@ docs/wiki/Troubleshooting.md, "A service logs `PRECONDITION_FAILED` for its queu
 ## Deploy
 
 ```bash
-kubectl apply -R -f kubernetes/
+kubectl apply -f kubernetes/namespace.yaml
+kubectl apply -n shift-happens -R -f kubernetes/
 kubectl get pods -w          # wait until everything is Running and 1/1 Ready
 ```
 
 App pods may restart a few times until their database and RabbitMQ are up. That is expected.
 A pod stuck in `CreateContainerConfigError` means its Secret is missing: run
-`kubernetes/secrets/create-secrets.sh` (see above). `kubectl apply -R -f kubernetes/` only reads
+`kubernetes/secrets/create-secrets.sh` (see above). `kubectl apply -n shift-happens -R -f kubernetes/` only reads
 `.yaml`/`.json` files, so the script and the env template in `kubernetes/secrets/` are ignored by it.
 
 ## Status
@@ -183,17 +199,15 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
   The model cache lives for the lifetime of the pod. Repeat the pull after pod replacement.
   AI falls back to rule-based ranking while the model is unavailable.
   See [the latency measurement](ollama/latency.md) for the report.
-- **email-function** has no Service and no probe: it has no ports and no healthcheck in compose.
-  It exits when `email.send` is empty, so as a Deployment it keeps restarting (`Completed` →
-  `CrashLoopBackOff` with growing back-off). Compose does the same with `restart: unless-stopped`.
-  The intended fix is a KEDA ScaledJob (0 pods when the queue is empty).
-- **GraphQL** (`/api/graphql`) returns 404: the query role does not implement it yet
-  (see `services/scheduling-service/src/main/resources/graphql/README.md`). Routing through the gateway works.
+- **email-function** has no Service and no probe: it has no ports and no healthcheck. It runs as a
+  KEDA `ScaledJob`, not a Deployment; KEDA creates a Job per burst on `email.send` and the Job exits
+  when the queue is empty. Install KEDA before applying the manifests (see `autoscaling/README.md`).
 - **Caddy data** (`/data`, `/config`) is an `emptyDir`, so the internal TLS certificate is regenerated
   when the gateway pod restarts.
 - Compose network isolation (`internal: true` networks) is not reproduced; all pods can reach each other.
 - Secrets are plain Kubernetes Secrets (base64, not encrypted at rest unless the cluster enables it).
   A real cluster would add encryption at rest or an external secret store (Sealed Secrets, External
   Secrets Operator); the per-service split and key names stay the same.
-- No autoscaling yet (KEDA comes later). Every container has small requests/limits.
-- The older Kustomize scaffold in `/k8s` is separate from this folder and is not used here.
+- Autoscaling: metrics-server + CPU HPA for the query roles/frontend, KEDA for the notification
+  consumer and the email ScaledJob; see `autoscaling/README.md` and `metrics-server/README.md`.
+  The observability stack runs in Compose for the demo.

@@ -237,22 +237,24 @@ integration tests, here is the run" — then move on.
 
 **[SLIDE]**
 - Compose is the development environment you just saw; one command, isolated networks per database
-- Kubernetes: Kustomize base plus a local overlay — one Deployment and Service per service role
+- Kubernetes: plain manifests — one Deployment and Service per service role, one namespace, one Ingress
 - Readiness/liveness probes on `/health`; ConfigMap for shared values; per-service Secrets
-- Ingress with the same routing rules as the local gateway; HPA on the scheduling query role
+- HPA on CPU for the query roles and frontend (metrics-server installed)
 - KEDA: ScaledJob for the email function (0 → 5 jobs on queue length); ScaledObject for a queue consumer
 - Cloud plan (no deployment required): AKS + Flexible Server + Atlas + Key Vault + Managed Grafana
 
-*Say:* "The development environment is the one you saw. For production-like we have a Kustomize base with one
-Deployment and Service per service role, probes on the same health endpoint, configuration in a ConfigMap and
-the passwords in per-service Secrets that never enter the repository. Routing is an Ingress with the same
-path rules as Caddy. Autoscaling is two mechanisms: HPA on CPU for the read side, because reads dominate, and
-KEDA for the queue-driven parts — the email function is a ScaledJob that goes to zero when `email.send` is
-empty. The cloud plan in the report maps each local component to an Azure service, with the note that managed
-databases cost more but remove the operational work."
+*Say:* "The development environment is the one you saw. For production-like we have plain Kubernetes
+manifests with one Deployment and Service per service role, probes on the same health endpoint,
+configuration in a ConfigMap and the passwords in per-service Secrets that never enter the repository.
+Routing is an Ingress with the same path rules as Caddy. Autoscaling uses metrics-server and CPU HPA for
+the read side and frontend, because reads dominate; KEDA handles the queue-driven parts — the email
+function is a ScaledJob that goes to zero when `email.send` is empty. A 500-message burst started five
+Jobs, and the frontend HPA scaled from two to five replicas under load. The cloud plan in the report maps
+each local component to an Azure service, with the note that managed databases cost more but remove the
+operational work."
 
-*Be precise:* the Compose environment and the manifests exist; the cluster itself and the CD step are the
-next slice. See "Claims to soften".
+*Be precise:* the Docker Desktop cluster runs the manifests, metrics-server, HPAs and KEDA; the CD step and
+the Kubernetes observability stack are the next slice. See "Claims to soften".
 
 ---
 

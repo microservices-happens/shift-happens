@@ -1,10 +1,13 @@
 import { ApiError, type Problem } from './types';
+import { readToken } from '../auth/session';
 
 // The gateway exposes every service's `/v1/<resource>` as `/api/v1/<resource>`
 // (contracts/README.md, "REST conventions"). Paths passed to apiRequest are relative to /v1.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-let tokenGetter: () => string | null = () => null;
+// Default to the stored session, not to null: the first effects after a hard reload fire before the
+// auth provider can configure this module, and a request without the bearer token would 401 and log out.
+let tokenGetter: () => string | null = readToken;
 let unauthorizedHandler: () => void = () => {};
 
 export function configureApiClient(opts: {

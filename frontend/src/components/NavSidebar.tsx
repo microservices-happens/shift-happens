@@ -16,8 +16,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/shifts', label: 'Shifts' },
   { to: '/shift-assignments', label: 'Shift Assignments' },
   { to: '/leave-requests', label: 'Leave Requests' },
+  { to: '/swap-requests', label: 'Swap Requests' },
   { to: '/employees', label: 'Employees' },
   { to: '/departments', label: 'Departments' },
+  { to: '/leave-types', label: 'Leave Types' },
   { to: '/audit-log', label: 'Audit Log' },
 ];
 
@@ -29,7 +31,12 @@ const EMPLOYEE_ALLOWED = new Set<string>([
   '/leave-requests',
 ]);
 
-const MANAGE_ROUTES = new Set<string>(['/employees', '/departments']);
+const MANAGE_ROUTES = new Set<string>([
+  '/employees',
+  '/departments',
+  '/leave-types',
+  '/swap-requests',
+]);
 
 /** The audit log is Administrator only, in the service and therefore in the navigation. */
 const ADMIN_ONLY = new Set<string>(['/audit-log']);

@@ -18,6 +18,8 @@ import MySchedulePage from './pages/MySchedulePage';
 import LeaveRequestsListPage from './pages/leave-requests/LeaveRequestsListPage';
 import LeaveRequestFormPage from './pages/leave-requests/LeaveRequestFormPage';
 import AuditLogPage from './pages/audit/AuditLogPage';
+import LeaveTypesPage from './pages/leave-types/LeaveTypesPage';
+import SwapRequestsPage from './pages/swaps/SwapRequestsPage';
 
 export default function App() {
   return (
@@ -51,6 +53,8 @@ export default function App() {
           <Route path="/leave-requests/new" element={<LeaveRequestFormPage />} />
           <Route path="/leave-requests/:id" element={<LeaveRequestFormPage />} />
           <Route path="/audit-log" element={<AuditLogPage />} />
+          <Route path="/leave-types" element={<LeaveTypesPage />} />
+          <Route path="/swap-requests" element={<SwapRequestsPage />} />
           <Route path="*" element={<PlaceholderPage title="Not found" />} />
         </Route>
       </Routes>

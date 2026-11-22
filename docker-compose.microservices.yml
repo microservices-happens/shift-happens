@@ -509,8 +509,10 @@ services:
       RABBITMQ_DEFAULT_VHOST: shift-happens
     ports:
       - "127.0.0.1:15672:15672"
+      - "127.0.0.1:15692:15692"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./docker/microservices/rabbitmq-enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     networks: [service-bus, ops]
     healthcheck:
       test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
@@ -618,6 +620,83 @@ services:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
     networks: [service-bus, ops]
+
+  # Metrics: scrape every service's Micrometer endpoint, RabbitMQ's Prometheus plugin and cAdvisor.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./docker/microservices/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/microservices/observability/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [ops, service-bus]
+
+  # Logs: Promtail tails Docker container stdout/stderr and pushes to Loki.
+  loki:
+    image: grafana/loki:3.3.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./docker/microservices/observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks: [ops]
+
+  promtail:
+    image: grafana/promtail:3.3.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./docker/microservices/observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/positions
+    networks: [ops]
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+    volumes:
+      - ./docker/microservices/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/microservices/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [ops]
+    depends_on:
+      - prometheus
+      - loki
+
+  # Per-container CPU/RAM/network for the stress and autoscaling panels.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "127.0.0.1:8088:8080"
+    networks: [ops]
 
 # Path-based routing. REST is versioned: /api/v1/<resource> -> <service>/v1/<resource>.
 # The gateway only strips /api and forwards; it has no business logic.
@@ -754,6 +833,10 @@ volumes:
   notification-data: {}
   audit-data: {}
   ai-data: {}
+  prometheus-data: {}
+  grafana-data: {}
+  loki-data: {}
+  promtail-positions: {}
   ollama-models: {}
   caddy-data: {}
   caddy-config: {}

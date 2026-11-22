@@ -14,6 +14,9 @@ How to log in and exercise the running stack by hand. It assumes the Compose sta
 | Keycloak (local OIDC provider) | <http://localhost:8090> | realm `shift-happens`; admin console `admin` / `admin` |
 | Mailpit (captured e-mails) | <http://localhost:8025> | one message per notification with an address |
 | RabbitMQ management | <http://localhost:15672> | `shift` / `shift_dev` |
+| Grafana (live dashboard) | <http://localhost:3001> | `admin` / `admin` unless `GRAFANA_PASSWORD` is set; **Shift Happens — Live System** |
+| Prometheus (PromQL) | <http://localhost:9090> | targets, metrics, alerts |
+| Loki (logs) | query through Grafana Explore | label `service` = Compose service name |
 | Swagger / GraphiQL, direct ports | `http://localhost:8081`–`8089` | only with `docker-compose.ports.yml` (section 4) |
 
 The Java services publish no ports by default; everything reaches them through the gateway. That is the
@@ -21,7 +24,8 @@ deployment model, not an accident.
 
 ## 2. Logging in
 
-All demo accounts use the password **`Demo1234!`**. There are two ways in:
+All **active** demo accounts use the password **`Demo1234!`** (the inactive employee 12 has no password).
+There are two ways in:
 
 | Way | Who | How |
 |---|---|---|
@@ -38,9 +42,12 @@ Requests; a Manager also sees Employees and Departments; only an Administrator s
 
 | Flow | Where | What to look for |
 |---|---|---|
-| Schedule | **Shifts** / **My Schedule** | Data comes from scheduling-query over GraphQL (`POST /api/graphql` in DevTools, not one REST call per widget) |
+| Schedule | **Shifts** / **My Schedule** | Data comes from scheduling-query over GraphQL (`POST /api/graphql` in DevTools, not one REST call per widget). **New shift** starts with one required job role; add/remove rows for the staffing plan |
+| Employee | **Employees → New** | After **Create** the page stays on the employee so **Job roles** can be added (e.g. Sygeplejerske). Without a role Scheduling refuses the assignment |
 | Assignment | **Shift Assignments → New** | An assignment publishes `scheduling.assignment.created.v1`; the bell gains a notification; Mailpit gets an e-mail if the employee replica has an address |
+| Swap | **Shift Assignments → Request swap**, then **Swap Requests** as a Manager | The request is `PENDING`; **Approve** moves the assignment to the colleague (`SWAPPED`), **Reject** leaves it unchanged; both publish `scheduling.swap.*` |
 | Understaffed + AI | **Shifts** with a released/cancelled assignment | `UnderstaffedShiftsPanel` shows ranked suggestions (`source: llm` or `rule`) |
+| Leave types | **Leave Types** (Manager/Administrator) | Create a type, then **Grant days** (an `ACCRUAL` ledger entry). A new type has no balance, so approval would be a `409` |
 | Leave + saga | **Leave Requests → New**, then approve as a Manager | Request goes `PENDING → APPROVAL_PENDING → APPROVED`; the overlapping assignment becomes `RELEASED_FOR_LEAVE`; a locked shift gives `REJECTED` with a reason |
 | Notifications | Bell in the header | Polls `GET /api/v1/notifications`; clicking marks one read (`PATCH`) |
 | Audit | **Audit Log** (Administrator) | Filter by `correlationId` to see a whole saga; expand an envelope |
@@ -177,4 +184,56 @@ scripts/seed-dev.sh
 | Swagger 404 on a service port | The override file is not in the `-f` list, or the service was recreated without it |
 | Audit page refuses | It is Administrator only; the nav item is hidden for other roles and the page does not call the API |
 | Frontend healthcheck red | Fixed in this delivery: the healthcheck now uses `127.0.0.1` (busybox wget preferred `::1`, nginx listens on IPv4) |
+
+## 8. Automated browser tests (Playwright)
+
+`frontend/e2e/business-flows.spec.ts` walks the same flows over the real stack, so it needs the full
+Compose profile running (not a mock):
+
+```powershell
+docker compose -f docker-compose.microservices.yml --profile app up -d
+npm --prefix frontend run e2e           # headed: npm --prefix frontend run e2e:headed
+npm --prefix frontend run e2e:report    # HTML report after a failure
+```
+
+The suite logs in as `sofie.jensen@shift-happens.example`, then:
+
+1. reloads the page and proves the session survives (regression: the API client used to send no bearer
+   token before the auth provider configured it, so a refresh logged the user out);
+2. creates an employee and adds the Sygeplejerske job role;
+3. creates a shift with a required job role and assigns that employee;
+4. requests a swap to a freshly created target employee from the assignment list and approves it on **Swap Requests**;
+5. creates a second shift and swap, rejects it, and checks the assignment stayed with the employee;
+6. creates a leave type, grants 25 days, submits a request and approves it (the saga releases shifts);
+7. submits a second request and rejects it with a reason.
+
+It uses the locally installed Chrome by default; `E2E_BROWSER_CHANNEL=chromium` plus
+`npx --prefix frontend playwright install chromium` uses the bundled browser instead. The tests create
+uniquely named data (timestamp suffix) and use far-future days, so repeated runs do not collide.
+
+`scripts/api-smoke.mjs` is the API-only equivalent when a browser is not available:
+`node scripts/api-smoke.mjs` drives login, shift, assignment, swap approval, leave type, accrual,
+leave request/approval and an audit read.
+
+For a load run against the query role, with one or two replicas:
+
+```powershell
+docker compose -f docker-compose.microservices.yml --profile app up -d --scale scheduling-query=2
+$env:LOAD_REQUESTS='10000'; $env:LOAD_CONCURRENCY='50'; node scripts/load-schedule.mjs
+docker stats --no-stream
+```
+
+The captured crash/recovery, saga compensation, DLQ, Grafana stress and KEDA evidence is in
+[docs/diagrams/observability-dlq-recovery.md](diagrams/observability-dlq-recovery.md#6-captured-evidence-2026-11-22-local-compose).
+
+For the KEDA ScaledJob demo, port-forward the cluster RabbitMQ and publish a burst:
+
+```powershell
+kubectl -n shift-happens port-forward svc/rabbitmq 15672:15672
+node scripts/keda-email-burst.mjs 500
+kubectl -n shift-happens get jobs
+```
+
+The live Grafana dashboard is <http://localhost:3001/d/shift-happens-live>; Prometheus is
+<http://localhost:9090>.
 

@@ -44,7 +44,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/v1/**"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers("/health", "/health/**", "/error").permitAll()
+                        .requestMatchers("/health", "/health/**", "/error", "/prometheus", "/metrics").permitAll()
                         .requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/openapi/**").permitAll()
                         // An employee submits their own leave; the controller compares the body with the token.

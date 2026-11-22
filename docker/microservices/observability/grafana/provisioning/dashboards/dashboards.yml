@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: shift-happens
+    orgId: 1
+    folder: Shift Happens
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

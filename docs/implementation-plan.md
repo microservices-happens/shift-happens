@@ -15,7 +15,7 @@ accepted.
 | Email function | Implemented: queue `email.send` → SMTP (Mailpit) → `email.send.dlq`, in-memory dedupe, idle exit for the KEDA ScaledJob |
 | Frontend | React 18 + Vite + TypeScript: hand-written REST client (base URL `VITE_API_BASE_URL`: `/api` in dev, `/api/v1` in the Compose image), auth context with local login and Google/GitHub/**local Keycloak** OIDC (`/login/callback`), CRUD pages, notification bell and an Administrator-only Audit Log page; verified against the running Compose stack (REST + GraphQL + OIDC dashboard + audit). No automated frontend tests |
 | Local infrastructure | `docker-compose.microservices.yml` defines databases, RabbitMQ, Mailpit, OTel, gateway, Keycloak and all services; Ollama under the `ai` profile |
-| Kubernetes | `kubernetes/`: plain manifests for Docker Desktop Kubernetes (ADR 0005), one Secret per service, Ollama, and `kubernetes/autoscaling/` (HPA + KEDA). `k8s/` (Kustomize base + local overlay, HPA, Ingress, KEDA ScaledJob) is not the deployed path; #64 decides which stays |
+| Kubernetes | `kubernetes/`: plain manifests for Docker Desktop Kubernetes (ADR 0005), one Secret per service, namespace/ingress, Ollama, `kubernetes/autoscaling/` (HPA + KEDA), `kubernetes/metrics-server/` and `kubernetes/infrastructure/`. The old `k8s/` Kustomize scaffold was removed on 2026-11-22 |
 | CI | `ci.yml`: contract lint + AsyncAPI HTML artifact, per-service `mvn verify`, image build + Trivy (non-blocking) + GHCR push on `main`, frontend typecheck/ESLint/build, SonarQube Cloud job (skips: no `SONAR_TOKEN`). `codeql.yml`, `system-tests.yml`, `nightly-shift-risk.yml` |
 | Tests | Unit tests and Testcontainers `*IT`s in every implemented service; cooperation tests `EmployeeReplicationIT`, `LeaveApprovalSagaIT` (enabled) and `SchedulingAiIT` |
 
@@ -317,12 +317,12 @@ cooperation test is the acceptance test for P3.1.
 Deferred until at least Workforce + Identity + Scheduling command/query run in Compose, so the
 manifests describe something real.
 
-1. Local cluster (kind or minikube) + Helm infrastructure: ingress-nginx, KEDA, RabbitMQ, PostgreSQL,
-   MongoDB, Ollama, Prometheus/Loki/Tempo/Grafana.
-2. Fill secrets (`identity-service-secrets`, database credentials) and verify
-   `kubectl apply -k k8s/overlays/local`.
-3. Autoscaling demo: HPA on the two query roles, KEDA ScaledObject on the AI consumer and ScaledJob
-   for the email function.
+1. Local cluster (kind or minikube) + Helm infrastructure: ingress-nginx, metrics-server, KEDA,
+   RabbitMQ, PostgreSQL, MongoDB, Ollama, Prometheus/Loki/Tempo/Grafana.
+2. Fill secrets (`identity-service-secrets`, database credentials), apply
+   `kubernetes/namespace.yaml` and verify `kubectl apply -n shift-happens -R -f kubernetes/`.
+3. Autoscaling demo: HPA on the two query roles and frontend (metrics-server installed), KEDA
+   ScaledObject on the notification consumer and ScaledJob for the email function.
 4. OTel traces through REST → RabbitMQ → consumer, with the correlation id visible in Grafana.
 5. CD: images are already pushed to GHCR on `main`; add the deploy + smoke-test step (P7.5).
 

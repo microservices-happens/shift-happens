@@ -463,7 +463,10 @@ identity provider** and Google/GitHub as the production configuration (`OIDC_GOO
 - Manager alerts for understaffed shifts fan out to every active manager (no department-manager relation in
   the employee snapshot; a synchronous lookup is forbidden).
 - The frontend has no automated unit tests; the backend carries the test strategy.
-- Grafana/Loki/Tempo and KEDA are prepared but not installed in the Docker Desktop cluster (P7.1/P7.4).
+- Grafana/Prometheus/Loki run in the Compose `app` profile and KEDA is installed in the Docker Desktop
+  cluster with a verified email ScaledJob. Metrics-server is installed and the frontend CPU HPA was
+  load-tested 2 → 5; the scheduling/leave query HPAs are in the manifest but need the full app stack to
+  be load-tested. Tempo/traces, the Kubernetes Grafana stack and ingress-nginx remain open (P7.1/P7.4).
 - SonarQube Cloud is configured but skipped until `SONAR_TOKEN` exists.
 
 ## 7. Suggested division of the remaining report work

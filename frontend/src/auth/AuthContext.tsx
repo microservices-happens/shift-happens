@@ -3,9 +3,7 @@ import { apiRequest, configureApiClient } from '../api/client';
 import { getEmployee } from '../api/employees';
 import type { AuthUser, LoginResponse } from '../api/types';
 import { readTokenClaims, userFromClaims } from './oidc';
-
-const TOKEN_KEY = 'shift_happens_token';
-const USER_KEY = 'shift_happens_user';
+import { TOKEN_KEY, USER_KEY } from './session';
 
 interface AuthState {
   user: AuthUser | null;

@@ -1,0 +1,47 @@
+groups:
+  - name: shift-happens
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"identity-service|workforce-service|scheduling-command|scheduling-query|leave-command|leave-query|notification-service|audit-service|ai-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is not answering /prometheus"
+          description: "The target has been down for more than 2 minutes."
+
+      - alert: HighServerErrorRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "5xx rate above 1 request/second"
+          description: "Check Grafana request rate and the service logs by correlation id."
+
+      - alert: RabbitDlqNotEmpty
+        expr: sum(rabbitmq_queue_messages_ready{queue=~".*dlq"}) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A dead-letter queue is not empty"
+          description: "Inspect the parked message in RabbitMQ, fix the consumer, then replay or discard."
+
+      - alert: RabbitBacklog
+        expr: sum by (queue) (rabbitmq_queue_messages_ready{queue!~".*dlq"}) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue {{ $labels.queue }} has more than 100 ready messages"
+          description: "A consumer is down, slow or has lost its partition."
+
+      - alert: KedaScaledJobErrors
+        expr: increase(keda_scaled_job_errors_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KEDA reported ScaledJob errors"
+          description: "Check the KEDA operator logs and the ScaledJob events."

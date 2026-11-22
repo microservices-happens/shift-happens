@@ -126,6 +126,7 @@ class IdleExit {
     private final org.springframework.context.ConfigurableApplicationContext context;
     private final boolean exitWhenIdle;
     private final String queue;
+    private final java.util.concurrent.atomic.AtomicInteger emptyPolls = new java.util.concurrent.atomic.AtomicInteger();
 
     IdleExit(EmailService emails, AmqpAdmin admin,
              @Lazy org.springframework.context.ConfigurableApplicationContext context,
@@ -140,13 +141,22 @@ class IdleExit {
 
     @Scheduled(fixedDelayString = "${app.function.idle-poll}")
     public void exitWhenDrained() {
-        if (!exitWhenIdle || !emails.handledSomething()) {
+        if (!exitWhenIdle) {
             return;
         }
         var info = ((RabbitAdmin) admin).getQueueInfo(queue);
-        if (info != null && info.getMessageCount() == 0) {
+        if (info == null || info.getMessageCount() > 0) {
+            emptyPolls.set(0);
+            return;
+        }
+        // A ScaledJob can start after another job drained the burst; it must still finish. Three empty
+        // polls give the listener time to receive the message that triggered the scale-out.
+        int empty = emptyPolls.incrementAndGet();
+        if (emails.handledSomething() || empty >= 3) {
             log.info("Queue {} is empty; the job is done", queue);
-            context.close();
+            // A ScaledJob must terminate for KEDA to count it as complete. halt() bypasses shutdown
+            // hooks: a graceful listener close can block indefinitely on a drained queue.
+            Runtime.getRuntime().halt(0);
         }
     }
 }

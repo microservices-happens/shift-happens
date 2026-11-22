@@ -69,7 +69,13 @@ Where a rule describes the target rather than today's code, it says so.
 | Unit + integration | `./mvnw -B -f services/<svc>/pom.xml verify` |
 | Cooperation tests | `./mvnw -B -f tests/cooperation/pom.xml verify` |
 | Frontend | `npm --prefix frontend ci && npm --prefix frontend run lint && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
+| Browser E2E (stack running) | `npm --prefix frontend run e2e` |
+| API smoke (stack running) | `node scripts/api-smoke.mjs` |
+| Load test (stack running) | `node scripts/load-schedule.mjs` |
+| KEDA email burst | `node scripts/keda-email-burst.mjs 500` |
 | Infrastructure only | `docker compose -f docker-compose.microservices.yml up -d` |
+| Swagger/GraphiQL ports | `docker compose -f docker-compose.microservices.yml -f docker-compose.ports.yml --profile app up -d` |
+| Docs and YAML check | `python scripts/check-docs.py` |
 | Full stack | `docker compose -f docker-compose.microservices.yml --profile app up --build` |
 
 ## Git

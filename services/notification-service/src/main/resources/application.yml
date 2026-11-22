@@ -42,13 +42,17 @@ logging:
 
 # /health is the shared contract for the gateway, Compose and Kubernetes probes.
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       base-path: /
       path-mapping:
         health: health
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
