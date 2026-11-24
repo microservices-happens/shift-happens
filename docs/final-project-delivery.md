@@ -3,7 +3,7 @@
 Status: 2026-11-20. Companion to [`project-plan.md`](project-plan.md) (task IDs) and
 [`architecture.md`](architecture.md) (the design). This document is the checklist for the last stretch: it
 lists what is now implemented, the exact evidence for every course requirement, what the team still has to
-do (mostly report, presentation and environment chores), and a 10-minute demo script for the exam.
+do (mostly report, presentation and environment chores), and a 10-minute demo script for the exam. Course compliance: [course-requirements.md](course-requirements.md). Deferred product requirements: [v1.1-backlog.md](v1.1-backlog.md).
 
 ## 1. What changed on 2026-11-20 (this delivery)
 
@@ -56,9 +56,9 @@ Ordered by what blocks the delivery, not by effort.
 | 1 | Report chapters 1–2 and 4–8 (P0.8, P9.1): assemble from the traceability table above and the service READMEs | all | The technical content exists; write with references to diagrams and tests, not code listings |
 | 2 | Presentation (P0.9) built from §5 | one person | 10 minutes, live demo from a laptop with the stack already running |
 | 3 | `SONAR_TOKEN` + project variables so the SonarQube gate stops skipping (P1.5/P6.7) | repo admin | `ci.yml` job already exists |
-| 4 | Branch protection on `main` with the `ci` aggregate check (P1.4) | repo admin | Screenshot for §5.3 |
-| 5 | Apply `kubernetes/` to Docker Desktop and take the §3.2 screenshots; install ingress-nginx + KEDA if time allows (P7.1) | one person | The autoscaling manifests are ready; KEDA/ingress installation is the remaining infra work |
-| 6 | Prometheus/Grafana/Loki/Tempo stack and a dashboard (P7.4) | one person | Biggest remaining optional item; decide whether the report argues it from the OTel collector + design or installs it |
+| 4 | Branch protection on `main` with the `ci` aggregate check and the separate `system-tests` workflow (P1.4) | repo admin | Screenshot for §5.3; both workflows must be required |
+| 5 | Apply the full `kubernetes/` stack to Docker Desktop and take the §3.2 screenshots (P7.1) | one person | KEDA 2.17 and metrics-server are installed; the frontend HPA and email ScaledJob are verified. ingress-nginx remains optional. |
+| 6 | Finish the observability evidence (P7.4) | one person | The Compose Prometheus/Loki/Grafana stack and dashboard are running. Tempo/traces and the Kubernetes observability stack remain open. |
 | 7 | Semver tags `<service>/v1.0.0` and a release screenshot (P7.6) | one person | `git tag scheduling-service/v1.0.0` and push |
 | 8 | Publish `docs/wiki/` in the GitHub Wiki (P8.6) and finish the installation procedure in the root README (P8.5) | one person | The README already has the Compose and seed procedure; the Kubernetes section is still thin |
 | 9 | Add the new services to the report's §2.2 (purpose, APIs, events, data, logic, scaling, failure) | owners | Start from `services/notification-service/README.md`, `audit-service`, `email-function` |
@@ -126,9 +126,7 @@ scripts/seed-dev.sh
   replica would narrow it.
 - **The local OIDC provider is Keycloak in development.** Production uses Google/GitHub (or any OIDC
   provider) by setting the `OIDC_*` variables; the code path is identical.
-- **KEDA is installed** in the Docker Desktop cluster and the `email-function` ScaledJob is verified with a
-  500-message burst; ingress-nginx and CPU HPA (metrics-server) are still open (P7.1/P7.3). The manifests
-  and runbook are in `kubernetes/autoscaling/`.
+- **KEDA and metrics-server are installed** in the Docker Desktop cluster. The `email-function` ScaledJob is verified with a 500-message burst, `kubectl top` works and the frontend CPU HPA was load-tested 2 -> 5. The query-role HPAs are in the manifest but still need the full app stack. ingress-nginx remains optional. The manifests and runbook are in `kubernetes/autoscaling/` and `kubernetes/metrics-server/`.
 - **SonarQube Cloud is configured but skipped** without `SONAR_TOKEN` (P1.5).
 - **The frontend has no automated unit tests.** The pipeline runs typecheck, ESLint, the API/GraphQL type
   checks and the production build; the Playwright E2E suite (`frontend/e2e`) covers the business flows,
@@ -244,4 +242,3 @@ metrics-server: `kubernetes/metrics-server/README.md`; alert rules:
 Still open for a full production cluster: Tempo/traces, the observability stack as Kubernetes
 manifests, ingress-nginx installation and Alertmanager delivery. The local Compose stack, metrics-server,
 HPAs and KEDA ScaledJob are working and documented.
-

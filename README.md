@@ -552,6 +552,9 @@ Compose) and [docs/ci-demo.md](docs/ci-demo.md) (CI).
 
 ## Further documentation
 
+- [docs/course-requirements.md](docs/course-requirements.md): course-level compliance matrix for the final project description.
+- [docs/v1.1-backlog.md](docs/v1.1-backlog.md): the 65 product requirements, v1.0 status and deliberate v1.1 deferrals.
+
 - [docs/architecture.md](docs/architecture.md): requirements, service decomposition, patterns,
   deployment, CI/CD, testing, monitoring, versioning.
 - [docs/diagrams/](docs/diagrams/): runtime diagrams — asynchronous services and replicas, CQRS and
