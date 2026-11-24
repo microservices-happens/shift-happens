@@ -66,6 +66,8 @@ spec:
               - configMapRef: { name: service-env }
               - secretRef: { name: email-function-secrets, optional: true }
             env:
+              - name: OTEL_SERVICE_NAME
+                value: "email-function"
               - name: RABBITMQ_QUEUE
                 value: "email.send"
               - name: EMAIL_FUNCTION_EXIT_WHEN_IDLE
