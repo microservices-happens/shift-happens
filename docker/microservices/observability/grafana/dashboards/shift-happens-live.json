@@ -6,6 +6,17 @@
   "schemaVersion": 39,
   "refresh": "5s",
   "time": { "from": "now-15m", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Autoscaling demo",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "orange",
+        "target": { "limit": 100, "matchAny": true, "tags": ["autoscale-demo"], "type": "tags" }
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -181,6 +192,96 @@
       "targets": [{ "refId": "A", "expr": "sum(increase(keda_scaled_job_errors_total{namespace=\"shift-happens\"}[1h]))" }],
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Autoscaling demo — notification.events backlog vs ready pods",
+      "description": "KEDA queue length (left axis) and the number of ready notification-service pods (right axis). Load starts with a burst of scheduling.assignment.created.v1 events; KEDA adds replicas above 50 ready messages, then the queue drains and the HPA scales back to one pod after the cooldown.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 11, "w": 16, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(keda_scaler_metrics_value{namespace=\"shift-happens\",scaledObject=\"notification-service\"})",
+          "legendFormat": "Queue messages (notification.events)"
+        },
+        {
+          "refId": "B",
+          "expr": "max(kube_deployment_status_replicas_ready{namespace=\"shift-happens\",deployment=\"notification-service\"})",
+          "legendFormat": "Ready pods (notification-service)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "A" },
+            "properties": [
+              { "id": "displayName", "value": "Queue messages" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } },
+              { "id": "custom.axisPlacement", "value": "left" },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "displayName", "value": "Ready pods" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineInterpolation", "value": "stepAfter" },
+              { "id": "custom.lineWidth", "value": 3 },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "decimals", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "notification-service — queue now",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 35 },
+      "targets": [{ "refId": "A", "expr": "max(keda_scaler_metrics_value{namespace=\"shift-happens\",scaledObject=\"notification-service\"})" }],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 50 }] } }, "overrides": [] }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "notification-service — ready pods now",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 35 },
+      "targets": [{ "refId": "A", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"shift-happens\",deployment=\"notification-service\"})" }],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "green", "value": 2 }] } }, "overrides": [] }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "notification-service — desired vs ready replicas",
+      "description": "kube-state-metrics shows both the Deployment spec and the pods that passed readiness. A gap means a new pod is starting or failing its probe.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 40 },
+      "targets": [
+        { "refId": "A", "expr": "max(kube_deployment_spec_replicas{namespace=\"shift-happens\",deployment=\"notification-service\"})", "legendFormat": "Desired replicas" },
+        { "refId": "B", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"shift-happens\",deployment=\"notification-service\"})", "legendFormat": "Ready replicas" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } }
     }
   ]
 }

@@ -75,7 +75,7 @@ Status key: **Met** means implemented and demonstrable from the repository; **Pa
 | Course requirement | Status | Evidence |
 |---|---|---|
 | Development environment with Docker Compose | Met | `docker-compose.microservices.yml` plus `docker-compose.ports.yml`; `scripts/seed-dev.sh`. |
-| Production-like local Kubernetes | Met | The full `kubernetes/` stack is applied on Docker Desktop: 27 pods are 1/1 Running, the HPA/KEDA targets work, the gateway returns 200, login returns a JWT and the demo seed is loaded. The optional ingress-nginx/ingress path is not required; the Caddy `api-gateway` NodePort is the supported entry point. |
+| Production-like local Kubernetes | Met | The full `kubernetes/` stack is applied on Docker Desktop: all application pods are 1/1 Running (27 pods, plus kube-state-metrics for the Grafana replica series), the HPA/KEDA targets work, the gateway returns 200, login returns a JWT and the demo seed is loaded. The optional ingress-nginx/ingress path is not required; the Caddy `api-gateway` NodePort is the supported entry point. |
 | Cloud deployment plan | Met | `docs/report-3.3-cloud-deployment-plan.md` covers AKS, availability zones, managed databases, scaling and security. |
 
 ## Course-level actions before delivery

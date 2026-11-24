@@ -490,6 +490,7 @@ source scripts/docker-env.sh
 | API smoke (full stack running) | `node scripts/api-smoke.mjs` |
 | Load test (full stack running) | `node scripts/load-schedule.mjs` |
 | KEDA email burst (Kubernetes RabbitMQ) | `node scripts/keda-email-burst.mjs 500` |
+| KEDA notification autoscaling demo (Kubernetes) | `python -m pip install pika` then `.\scripts\notification-burst.ps1 -Count 50000` |
 
 `<service>` is a folder name in `services/`: `identity-service`, `workforce-service`,
 `scheduling-service`, `leave-service`, `ai-service`, `notification-service`, `audit-service`.

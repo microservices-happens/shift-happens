@@ -15,7 +15,8 @@ kubernetes/
   otel-collector/    + configmap.yaml (copy of docker/microservices/otel-collector.yml)
   autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
   metrics-server/    install note for the metrics API used by the HPAs
-  infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server, observability)
+  observability/     kube-state-metrics (Deployment replica metrics for the Grafana autoscaling panel)
+  infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server)
   namespace.yaml     the shift-happens namespace
   ingress.yaml       ingress-nginx rules, same paths as the Compose Caddyfile
 ```
@@ -131,7 +132,13 @@ PowerShell equivalent:
 Get-Content -Raw services/workforce-service/seed/dev-seed.sql | kubectl -n shift-happens exec -i deployment/workforce-db -- sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-Then sign in with the `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from `secrets.env`.
+Then sign in with the `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from `secrets.env`. The seed creates accounts but does not set passwords for the other demo users. To give them the same demo password, log in as the bootstrap admin once and set each account through the identity API:
+
+```powershell
+$login = Invoke-RestMethod -SkipCertificateCheck -Method Post -Uri 'https://localhost:30443/api/v1/auth/login' -ContentType 'application/json' -Body '{"email":"admin@shift-happens.example","password":"<bootstrap-password>"}'
+$h = @{ Authorization = "Bearer $($login.token)" }
+2..11 + 13 | ForEach-Object { Invoke-RestMethod -SkipCertificateCheck -Method Put -Uri "https://localhost:30443/api/v1/auth/accounts/$_/password" -Headers $h -ContentType 'application/json' -Body '{"password":"Demo1234!"}' | Out-Null }
+```
 
 ## Status
 
@@ -235,5 +242,6 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
   A real cluster would add encryption at rest or an external secret store (Sealed Secrets, External
   Secrets Operator); the per-service split and key names stay the same.
 - Autoscaling: metrics-server + CPU HPA for the query roles/frontend, KEDA for the notification
-  consumer and the email ScaledJob; see `autoscaling/README.md` and `metrics-server/README.md`.
-  The observability stack runs in Compose for the demo.
+  consumer and the email ScaledJob, and kube-state-metrics for the replica series in Grafana; see
+  `autoscaling/README.md` and `metrics-server/README.md`. The observability stack runs in Compose
+  for the demo; Prometheus scrapes KEDA (NodePort 32073) and kube-state-metrics (NodePort 32080).
