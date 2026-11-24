@@ -258,10 +258,10 @@ kubectl -n shift-happens get pods -l app=notification-service -w
 kubectl -n shift-happens get hpa keda-hpa-notification-service -w
 ```
 
-Open panel 17 in Grafana:
+Open panel 19 in Grafana:
 
 ```text
-http://localhost:3001/d/shift-happens-live?viewPanel=17
+http://localhost:3001/d/shift-happens-live?viewPanel=19
 ```
 
 Expected: the orange queue line rises to tens of thousands, the blue ready-pod line steps from

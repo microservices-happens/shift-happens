@@ -9,6 +9,9 @@ This README is the **installation procedure**: from `git clone` to a running sta
 Compose (development) and on a local Kubernetes cluster (production-like). The design is in
 [docs/architecture.md](docs/architecture.md).
 
+**In a hurry?** Use the one-page teammate guide: [setup.md](setup.md) — Compose start, demo logins,
+Grafana/Prometheus/Tempo/Loki, RabbitMQ and an optional Kubernetes section.
+
 > The original monolith (databases course) is still in the repository as reference only. Its
 > documentation has moved to [docs/old/monolith-README.md](docs/old/monolith-README.md); see
 > [Legacy: the monolith](#legacy-the-monolith) at the end. Nothing below uses it.

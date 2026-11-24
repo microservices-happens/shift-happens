@@ -124,10 +124,10 @@ kubectl -n shift-happens get hpa keda-hpa-notification-service -w
 kubectl -n shift-happens get pods -l app=notification-service -w
 ```
 
-Open the provisioned dashboard panel:
+Open the provisioned dashboard panel (19):
 
 ```text
-http://localhost:3001/d/shift-happens-live?viewPanel=17
+http://localhost:3001/d/shift-happens-live?viewPanel=19
 ```
 
 The panel uses:
