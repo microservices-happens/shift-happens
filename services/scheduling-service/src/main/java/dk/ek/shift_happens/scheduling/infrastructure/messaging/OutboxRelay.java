@@ -1,5 +1,9 @@
 package dk.ek.shift_happens.scheduling.infrastructure.messaging;
 
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Publishes unpublished outbox rows to the topic exchange. At-least-once: a crash after publish and
@@ -26,6 +31,23 @@ import java.time.Instant;
 public class OutboxRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
+
+    private static final TextMapGetter<OutboxEventEntity> TRACE_HEADERS = new TextMapGetter<>() {
+        @Override
+        public Iterable<String> keys(OutboxEventEntity event) {
+            return List.of("traceparent", "tracestate");
+        }
+
+        @Override
+        public String get(OutboxEventEntity event, String key) {
+            if (event == null) return null;
+            return switch (key) {
+                case "traceparent" -> event.getTraceparent();
+                case "tracestate" -> event.getTracestate();
+                default -> null;
+            };
+        }
+    };
 
     private final OutboxEventJpaRepository repository;
     private final RabbitTemplate rabbitTemplate;
@@ -55,7 +77,12 @@ public class OutboxRelay {
 
     private void publish(OutboxEventEntity event) {
         try {
-            rabbitTemplate.send(exchange, event.getEventType(), messageFor(event));
+            // The request and this scheduled relay run in different threads and transactions.
+            Context context = W3CTraceContextPropagator.getInstance()
+                    .extract(Context.current(), event, TRACE_HEADERS);
+            try (Scope ignored = context.makeCurrent()) {
+                rabbitTemplate.send(exchange, event.getEventType(), messageFor(event));
+            }
             event.markPublished(Instant.now());
             repository.save(event);
             log.info("Published {} for aggregate {}", event.getEventType(), event.getAggregateId());

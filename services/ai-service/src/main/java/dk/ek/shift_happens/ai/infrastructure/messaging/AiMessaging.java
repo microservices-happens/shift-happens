@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import io.opentelemetry.api.trace.Span;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -109,7 +110,11 @@ class AiListener {
     public void receive(byte[] body) throws Exception {
         JsonNode event = mapper.readTree(body);
         // P1.6: the event's correlation id is in every log line written while it is handled.
-        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", event.path("correlationId").asText(null))) {
+        String correlationId = event.path("correlationId").asText(null);
+        if (correlationId != null) {
+            Span.current().setAttribute("app.correlation_id", correlationId);
+        }
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("correlationId", correlationId)) {
             log.info("Received {} event {}", event.path("eventType").asText(), event.path("eventId").asText());
             service.handle(event, memoryOfThisDelivery());
         }

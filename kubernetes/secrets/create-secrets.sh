@@ -67,9 +67,16 @@ value() {
   printf '%s' "$result"
 }
 
+# Add the Grafana password when upgrading an existing secrets.env.
+grafana_password="$(value GRAFANA_ADMIN_PASSWORD)"
+if $generate && { [ -z "$grafana_password" ] || [ "$grafana_password" = "CHANGE_ME" ]; }; then
+  grafana_password="$(openssl rand -hex 24)"
+  printf '\nGRAFANA_ADMIN_PASSWORD=%s\n' "$grafana_password" >> "$ENV_FILE"
+fi
+
 required="RABBITMQ_PASSWORD IDENTITY_DB_PASSWORD PASSWORD_PEPPER WORKFORCE_DB_PASSWORD
   SCHEDULING_DB_PASSWORD SCHEDULING_MONGO_PASSWORD LEAVE_DB_PASSWORD LEAVE_MONGO_PASSWORD
-  NOTIFICATION_DB_PASSWORD AUDIT_DB_PASSWORD AI_DB_PASSWORD"
+  NOTIFICATION_DB_PASSWORD AUDIT_DB_PASSWORD AI_DB_PASSWORD GRAFANA_ADMIN_PASSWORD"
 missing=""
 for key in $required; do
   v="$(value "$key")"
@@ -123,5 +130,7 @@ secret audit-service-secrets RABBITMQ_PASSWORD=RABBITMQ_PASSWORD DB_PASSWORD=AUD
 secret ai-service-secrets RABBITMQ_PASSWORD=RABBITMQ_PASSWORD DB_PASSWORD=AI_DB_PASSWORD
 secret email-function-secrets RABBITMQ_PASSWORD=RABBITMQ_PASSWORD SMTP_USERNAME=SMTP_USERNAME \
   SMTP_PASSWORD=SMTP_PASSWORD
+
+secret grafana-secrets GRAFANA_ADMIN_PASSWORD=GRAFANA_ADMIN_PASSWORD
 
 if $dry_run; then echo "Dry run: nothing was sent to the cluster."; fi

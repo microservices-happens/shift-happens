@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: tempo-pv
+  labels:
+    app: tempo
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 2Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/shift-happens/observability/tempo
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-pvc
+  labels:
+    app: tempo
+spec:
+  storageClassName: manual
+  volumeName: tempo-pv
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi

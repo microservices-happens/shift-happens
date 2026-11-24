@@ -24,6 +24,8 @@ spec:
             - configMapRef:
                 name: service-env
           env:
+            - name: OTEL_SERVICE_NAME
+              value: "audit-service"
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
