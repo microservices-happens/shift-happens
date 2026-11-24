@@ -12,7 +12,8 @@ kubernetes/
   <service>/         deployment.yaml, service.yaml
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
-  otel-collector/    + configmap.yaml (copy of docker/microservices/otel-collector.yml)
+  otel-collector/    + configmap.yaml (Kubernetes OTLP pipelines; copy of docker/microservices/otel-collector.yml)
+  tempo/, loki/, prometheus/, grafana/  local observability stack
   autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
   metrics-server/    install note for the metrics API used by the HPAs
   observability/     kube-state-metrics (Deployment replica metrics for the Grafana autoscaling panel)
@@ -48,7 +49,8 @@ service's database Deployment reads its password from the same Secret. They are 
 git-ignored files in `kubernetes/secrets/`:
 
 ```bash
-kubernetes/secrets/create-secrets.sh --generate
+kubectl apply -f kubernetes/namespace.yaml
+NAMESPACE=shift-happens bash kubernetes/secrets/create-secrets.sh --generate
 ```
 On Windows PowerShell, run the shell script through Git Bash (Git for Windows includes `bash` and `openssl`):
 
@@ -78,6 +80,7 @@ files and prints secret names and keys without touching the cluster.
 | `audit-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | audit-service, audit-db |
 | `ai-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | ai-service, ai-db |
 | `email-function-secrets` | `RABBITMQ_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` | email-function |
+| `grafana-secrets` | `GRAFANA_ADMIN_PASSWORD` | Grafana |
 
 Secret keys are the env var names from `docker-compose.microservices.yml` (databases map
 `DB_PASSWORD`/`MONGO_PASSWORD` onto `POSTGRES_PASSWORD`/`MONGO_INITDB_ROOT_PASSWORD`). Usernames,
@@ -143,9 +146,15 @@ $h = @{ Authorization = "Bearer $($login.token)" }
 ## Status
 
 ```bash
-kubectl get pods,svc
-kubectl get pv,pvc
+kubectl -n shift-happens get pods,svc,pvc
+kubectl get pv
 ```
+
+## Observability stack
+
+The Kubernetes stack runs Tempo, Loki, Prometheus and Grafana. Grafana provisions these
+data sources and a dashboard for Java workload metrics. Follow [OBSERVABILITY.md](OBSERVABILITY.md)
+for setup, login and smoke checks in Compose and Kubernetes.
 
 ## Logs
 
@@ -203,8 +212,9 @@ branch `main`, `services` = `all`.
 kubectl delete -R -f kubernetes/
 ```
 
-The PVs use `Retain` and hostPath `/var/lib/shift-happens/<db>` on the Docker Desktop VM,
-so database data survives a teardown. To start with empty databases, reset the Kubernetes
+The PVs use `Retain` and hostPath on the Docker Desktop VM, so database and observability
+data survives a teardown. Database data is under `/var/lib/shift-happens/<db>` and observability
+data is under `/var/lib/shift-happens/observability/<service>`. To clear it, reset the Kubernetes
 cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster).
 
 ## Localhost URLs
@@ -214,6 +224,7 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 | api-gateway (frontend + `/api/*`) | NodePort 30443 | https://localhost:30443 (self-signed: `curl -k` / accept the browser warning) |
 | rabbitmq management UI | NodePort 31672 (`rabbitmq-management`) | http://localhost:31672 (user `shift`, password `RABBITMQ_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | mailpit UI | NodePort 30025 (`mailpit-ui`) | http://localhost:30025 |
+| Grafana | NodePort 30300 | http://localhost:30300 |
 | everything else | ClusterIP | not reachable from localhost; use `kubectl port-forward svc/<name> <local>:<port>` |
 
 ## Known issues / differences from compose

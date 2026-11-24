@@ -41,6 +41,10 @@ x-service-env: &service-env
   JWT_ISSUER: shift-happens-identity
   JWT_JWKS_URL: http://identity-service:8080/.well-known/jwks.json
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
 
 # Every application exposes GET /health on port 8080 and its image contains
 # curl (or replaces this with an equivalent command).
@@ -164,6 +168,7 @@ services:
     image: ${IDENTITY_IMAGE:-shift-happens/identity-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: identity-service
       DB_HOST: identity-db
       DB_PORT: "5432"
       DB_NAME: identity
@@ -218,6 +223,7 @@ services:
     image: ${WORKFORCE_IMAGE:-shift-happens/workforce-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: workforce-service
       DB_HOST: workforce-db
       DB_PORT: "5432"
       DB_NAME: workforce
@@ -248,6 +254,7 @@ services:
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: scheduling-command
       APP_ROLE: command
       DB_HOST: scheduling-write-db
       DB_PORT: "5432"
@@ -275,6 +282,7 @@ services:
     image: ${SCHEDULING_IMAGE:-shift-happens/scheduling-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: scheduling-query
       APP_ROLE: query
       MONGO_HOST: scheduling-read-db
       MONGO_PORT: "27017"
@@ -306,6 +314,7 @@ services:
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: leave-command
       APP_ROLE: command
       DB_HOST: leave-write-db
       DB_PORT: "5432"
@@ -335,6 +344,7 @@ services:
     image: ${LEAVE_IMAGE:-shift-happens/leave-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: leave-query
       APP_ROLE: query
       MONGO_HOST: leave-read-db
       MONGO_PORT: "27017"
@@ -366,6 +376,7 @@ services:
     image: ${NOTIFICATION_IMAGE:-shift-happens/notification-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: notification-service
       DB_HOST: notification-db
       DB_PORT: "5432"
       DB_NAME: notification
@@ -391,6 +402,11 @@ services:
     build: ./functions/email-function
     image: ${EMAIL_FUNCTION_IMAGE:-shift-happens/email-function:dev}
     environment:
+      OTEL_SERVICE_NAME: email-function
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       RABBITMQ_USER: ${RABBITMQ_USER:-shift}
@@ -425,6 +441,7 @@ services:
     image: ${AUDIT_IMAGE:-shift-happens/audit-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: audit-service
       DB_HOST: audit-db
       DB_PORT: "5432"
       DB_NAME: audit
@@ -450,6 +467,7 @@ services:
     image: ${AI_IMAGE:-shift-happens/ai-service:dev}
     environment:
       <<: *service-env
+      OTEL_SERVICE_NAME: ai-service
       DB_HOST: ai-db
       DB_PORT: "5432"
       DB_NAME: ai
@@ -608,8 +626,18 @@ services:
     volumes: ["ai-data:/var/lib/postgresql/data"]
     networks: [ai-data]
 
-  # Initial observability integration point. It accepts logs, metrics and traces;
-  # replace the debug exporter with Grafana/Jaeger/another backend later.
+  # Local traces. Prometheus and Promtail still collect Compose metrics and logs.
+  tempo:
+    image: grafana/tempo:3.1.1
+    restart: unless-stopped
+    command: ["-target=all", "-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./docker/microservices/tempo.yml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    networks: [ops]
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.136.0
     restart: unless-stopped
@@ -620,6 +648,9 @@ services:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
     networks: [service-bus, ops]
+    depends_on:
+      tempo:
+        condition: service_started
 
   # Metrics: scrape every service's Micrometer endpoint, RabbitMQ's Prometheus plugin and cAdvisor.
   prometheus:
@@ -680,6 +711,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
 
   # Per-container CPU/RAM/network for the stress and autoscaling panels.
   cadvisor:
@@ -840,3 +872,4 @@ volumes:
   ollama-models: {}
   caddy-data: {}
   caddy-config: {}
+  tempo-data: {}

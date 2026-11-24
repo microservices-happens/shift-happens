@@ -15,9 +15,14 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:21-jre
 # curl is used by the Compose healthcheck (GET /health).
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# Pin the agent so local builds remain reproducible across all Java services.
+ARG OTEL_JAVA_AGENT_VERSION=2.33.1
+RUN curl --fail --location --silent --show-error --retry 3 \
+      "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVA_AGENT_VERSION}/opentelemetry-javaagent.jar" \
+      --output /otel-javaagent.jar
 RUN useradd --system --uid 10001 app
 USER app
 WORKDIR /app
 COPY --from=build /src/target/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-javaagent:/otel-javaagent.jar", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]

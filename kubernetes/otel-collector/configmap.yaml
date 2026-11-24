@@ -1,4 +1,5 @@
-# Copy of docker/microservices/otel-collector.yml
+# Kubernetes pipeline: traces to Tempo, metrics exposed for Prometheus scraping,
+# and OTLP logs to Loki.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,19 +18,28 @@ data:
       batch: {}
 
     exporters:
-      debug: {}
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+      prometheus:
+        endpoint: 0.0.0.0:9464
+        resource_to_telemetry_conversion:
+          enabled: true
+      otlphttp/loki:
+        endpoint: http://loki:3100/otlp
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [debug]
+          exporters: [otlp/tempo]
         metrics:
           receivers: [otlp]
           processors: [batch]
-          exporters: [debug]
+          exporters: [prometheus]
         logs:
           receivers: [otlp]
           processors: [batch]
-          exporters: [debug]
+          exporters: [otlphttp/loki]

@@ -10,6 +10,7 @@ import com.networknt.schema.SpecVersion;
 import dk.ek.shift_happens.ai.infrastructure.llm.OllamaClient;
 import dk.ek.shift_happens.ai.infrastructure.persistence.SuggestionPersistence;
 import org.junit.jupiter.api.BeforeAll;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
@@ -60,7 +61,7 @@ class SuggestionEnvelopeSchemaTest {
         OllamaClient llm = mock(OllamaClient.class);
         when(llm.generate(anyString(), any())).thenThrow(new IllegalStateException("model down"));
         SuggestionPersistence persistence = mock(SuggestionPersistence.class);
-        SuggestionService service = new SuggestionService(jdbc, mapper, llm, persistence);
+        SuggestionService service = new SuggestionService(jdbc, mapper, llm, persistence, new SimpleMeterRegistry());
         UUID causeId = UUID.randomUUID();
         JsonNode understaffed = mapper.readTree("""
                 {"eventId":"%s","eventType":"scheduling.shift.understaffed.v1",
