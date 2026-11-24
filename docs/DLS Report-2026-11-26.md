@@ -902,7 +902,7 @@ The v1.1 backlog records 39 met, 18 partial, 6 not met and 2 not verified produc
 - **Scale evidence (P-02, P-04, P-05):** a 1,000-employee dataset, a write-path p95 benchmark and a sustained 200-distinct-user test are still missing.
 - **Structured logs (S-04):** application logs are plain text; a JSON encoder would make Loki queries and correlation-id extraction more reliable.
 
-None of these gaps changes the assessment of the course's core architecture requirements. They are product and production-readiness items, and they are listed honestly rather than hidden behind a claim that all 65 requirements are met.
+None of these gaps changes the assessment of the course's core architecture requirements. They are product and production-readiness items, and they are listed honestly rather than hidden behind a claim that all 65 requirements are met. The complete 26-item deferred list — 18 partial, 6 not met and 2 not verified — with the evidence and suggested v1.1 action is in [`v1.1-backlog.md`](v1.1-backlog.md) and [`report-fix-list.md`](report-fix-list.md).
 
 # **7\. Reflection** {#7.-reflection}
 

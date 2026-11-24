@@ -1,46 +1,97 @@
-# Report audit and remaining fixes
+# Report fix list — do these before submitting
 
-This is the review list for `docs/DLS Report-2026-11-26.md`. It was produced by comparing the report against the repository, the running Kubernetes/Compose stacks and the v1.1 audit in [`v1.1-backlog.md`](v1.1-backlog.md).
+Target: `DLS Report-2026-11-26.md`.
 
-## Fixed in the report
+Full deferred requirements: [`v1.1-backlog.md`](v1.1-backlog.md).
 
-| Severity | Problem | Fix |
-|---|---|---|
-| Critical | A large block of unrelated material was appended after section 5: a security exercise about products/comments/sessions, a “Secure API” exercise about `/projects` and `/submissions`, raw “Claude” output for another assignment, and an old development-environment checklist marked “Not ready”/“Not done”. | Removed the entire block and replaced it with real Discussion, Reflection, Conclusion and References sections (6–9). |
-| Critical | The report stopped at section 5; Discussion, Reflection, Conclusion and References were only outline headings. | Added substantial sections 6–9 based on the implementation, measurements and the v1.1 backlog. |
-| High | Section 3.2 described `kind`/`minikube`, a `k8s/` folder, Kustomize, Helm and NGINX Ingress. The delivered stack is Docker Desktop Kubernetes with plain YAML in `kubernetes/`, a Caddy `api-gateway` NodePort 30443 and an optional, currently incomplete ingress. | Rewrote §3.2 and §3.2.1; described the actual entry point, manifests, secrets, databases and add-ons. |
-| High | §3.2.3 claimed OpenTelemetry traces to Tempo and vendor-neutral trace export. No service has a tracing exporter and Tempo is not running. | Rewrote as Micrometer/Prometheus/Loki/Grafana, correlation-id log tracing, Lens and kube-state-metrics; explicitly marks distributed tracing as v1.1 (S-05). |
-| High | §3.2.4 said HPA 1–5 on query roles and KEDA on the AI service. Actual HPA is 2–5 at 60/70%; KEDA scales `notification-service` and the email ScaledJob. | Corrected the targets and added the measured 50,000-event autoscaling experiment and graph. |
-| High | §3.2.2 claimed an automatic deploy to the local cluster and made SonarQube/Trivy blocking without qualification. | Corrected to the actual workflow: tests, images, contracts, frontend, CodeQL, conditional Sonar, GHCR push, explicit `kubectl apply`. |
-| High | §1.3 and the Deployment Strategy still said the architecture “will be” built and Railway was the primary cloud. | Rewrote in present tense and aligned the strategy with the implemented local stacks and the Azure §3.3 plan. |
-| Medium | §2.3 said AI calls OpenRouter. The implementation uses local Ollama with a rule-based fallback. | Corrected the communication table. |
-| Medium | §2.1 said the system uses relational databases, ignoring the MongoDB read models. | Rewrote to PostgreSQL write models + MongoDB CQRS read models. |
-| Medium | D-01 said “six microservices” while listing seven. | Corrected to seven backend microservices. |
-| Medium | §4.1/§4.2 used future tense (“will be introduced”, “could be used”); §4.6/§4.8 overstated or understated the test/static-analysis evidence. | Rewrote to present tense, added the actual Testcontainers scope, Playwright E2E and the conditional Sonar/Trivy gates. |
-| Low | TOC still linked to the removed Security/Claude sections. | Replaced with sections 6–9. |
+Work top to bottom. Most boxes are 5–20 minutes.
 
-## Remaining author tasks
+## 1. Submit-blockers
 
-These are not code defects; they need a team decision or a screenshot before the PDF export.
+- [ ] **Confirm the file.** Submit `DLS Report-2026-11-26.md`, not `DLS Report-2026-11-20.md`.
+- [ ] **Fix owners.** In §5.2, keep the CODEOWNERS handles and decide owners for **Frontend** and **CI/CD, Kubernetes and monitoring** (currently “Unassigned, issue #32”).
+- [ ] **Add one Lens screenshot** to §3.2: namespace `shift-happens`, **Workloads → Pods** or **Deployments**, with HPA/KEDA visible.
+- [ ] **Add one current CI screenshot** to §3.2.2 showing the matrix (`tests`, `images`, `contracts`, `frontend`, `ci`).
+- [ ] **Regenerate the TOC and page numbers.** The current TOC still has the old page numbers from before sections 6–9 were added.
+- [ ] **Personalize §7 Reflection.** Add 2–3 concrete sentences per team member; keep the factual draft.
+- [ ] **Decide the appendix.** Keep or remove the local demo/autoscaling runbook from the appendix; it is useful for the exam but not required in the report body.
 
-| Task | Why it remains |
-|---|---|
-| Confirm the submitted file is `DLS Report-2026-11-26.md` | `DLS Report-2026-11-20.md` is still in `docs/`; do not export the older copy by mistake. |
-| Confirm the owner handles in §5.2 | The table now mirrors `.github/CODEOWNERS`; frontend and CI/CD are still unassigned (issue #32), so the team must decide who owns them. |
-| Add the Kubernetes/Lens screenshots for §3.2 | The text now points at the actual stack, but the report would be stronger with a Lens namespace view and the `kubectl get pods`/HPA output. `docs/images/observability/autoscaling-queue-vs-pods.png` is already included. |
-| Add a CI pipeline screenshot | §3.2.2 references the pipeline diagram placeholder; the existing `image6`/`image7` show a broken/fixed pipeline but not the current matrix. |
-| Proofread page numbers and regenerate the TOC | The report is Markdown exported from a document; page numbers in the TOC are still the old ones. |
-| Personalize §7 Reflection | The draft is factual and based on the repository, but each team member should add their own experience. |
-| Decide whether to keep the local demo section in the appendix | It is useful for the exam but not required in the report body. |
-| State the v1.1 scope explicitly in the conclusion | The draft already lists the gaps; confirm the team is comfortable with that wording. |
+## 2. Verify these are still true (quick read)
 
-## Claims the report must not make
+No rewrite needed; just confirm the final PDF says this:
 
-- All 65 product requirements are met. The audit is 39 met, 18 partial, 6 not met, 2 not verified.
-- 99.9% availability or production HA from the single-node Docker Desktop cluster.
-- Distributed tracing. Logs carry correlation ids, but no trace spans cross services.
-- 200 concurrent users at a 300 ms p95 target. The measured 200-concurrency p95 was 1,883 ms.
-- A 1,000-employee dataset or a write-path p95 benchmark has been run.
-- Automated daily database backups exist.
-- The optional `kubernetes/ingress.yaml` is correct; its leave routes still send GETs to `leave-command`.
-- Employees can browse open swap requests; v1.0 only supports targeted swaps.
+- [ ] §3.2 uses **Docker Desktop Kubernetes**, plain `kubernetes/` YAML, Caddy `api-gateway` **30443**.
+- [ ] §3.2.3 says **no distributed tracing** and points to S-05.
+- [ ] §3.2.4 keeps the measured numbers: **41,808 backlog**, **1 → 3 → 4** pods, queue **0** by **15:23:30**, back to **1** by **15:26:30**.
+- [ ] §3.2.4 says this is **one node**, not multi-node/99.9% availability.
+- [ ] §3.3 says the Azure plan is a **plan, not deployed**.
+- [ ] §6.4 says **39 met / 18 partial / 6 not met / 2 not verified**.
+- [ ] §8 does **not** claim all 65 requirements are met.
+
+## 3. Remove or qualify risky claims
+
+- [ ] Search the report for `kind`, `minikube`, `Kustomize`, `Helm`, `Tempo`, `OpenRouter`, `six microservices`, `TBD`.
+  - Expected: no hits outside the intentional “does not depend on Kustomize or Helm” sentence and the v1.1 limitations.
+- [ ] Search for `99.9`, `1,000 employee`, `200 concurrent`, `distributed tracing`.
+  - Each hit must be a **limitation/target**, never a result.
+- [ ] Search for `will be`.
+  - Change future/plan language to present or past where the work is already done.
+- [ ] Confirm no “all 65 product requirements are met” sentence exists.
+
+## 4. Deferred v1.0 scope — include it honestly
+
+Summary to keep in §6.4/§8: **39 met, 18 partial, 6 not met, 2 not verified**. Do not claim all 65.
+
+### Not met (6) — say “planned for v1.1”
+
+- [ ] **F-17** — employee-facing open/claimable swap list.
+- [ ] **U-01** — responsive/mobile shift planner.
+- [ ] **R-01** — 99.9% availability; needs multi-zone AKS, not this laptop.
+- [ ] **P-03** — notifications within 5 s; current bell polls every 30 s.
+- [ ] **S-05** — distributed tracing; metrics/logs only today.
+- [ ] **O-04** — automated daily database backups/PITR.
+
+### Not verified (2) — say “not measured”
+
+- [ ] **P-02** — write API p95 under 800 ms; no write benchmark yet.
+- [ ] **P-04** — 1,000 employees; seed has 13, benchmark uses 500.
+
+### Partial (18) — mention by ID, do not overclaim
+
+The six not-met and two not-verified items are listed above; the groups below contain the remaining 18 partial items.
+
+- [ ] **Frontend/UX (5):** F-07, F-08, F-12, F-22, U-03 — missing job-role/work-location pages, department/location filters and field-level validation.
+- [ ] **Authorization (2):** F-03, F-14 — leave reads are broad; Employees must get own-scope reads.
+- [ ] **Notifications/AI (4):** F-18, F-20, F-21, U-04 — swap eligibility picker, shift-update notifications, understaffed-on-create and preferences.
+- [ ] **Reliability/security (4):** R-03, R-06, A-04, SE-01 — liveness/PDB/replicas, publisher confirms, ingress leave route and TLS.
+- [ ] **Logs (1):** S-04 — JSON logs; current logs are plain text.
+- [ ] **Performance/scale (2):** P-01, P-05 — read p95 at 200 users and 200 distinct users.
+
+## 5. Fast verification commands
+
+```powershell
+python scripts/check-docs.py
+```
+
+Expected: `yaml: 0 failure(s)` and `links: 0 failure(s)`.
+
+```powershell
+Test-Path docs/images/observability/autoscaling-queue-vs-pods.png
+Select-String -Path "docs/DLS Report-2026-11-26.md" -Pattern 'TBD|OpenRouter|kind/minikube|six microservices'
+```
+
+Expected: image exists; no accidental stale claims.
+
+```powershell
+git diff --check
+```
+
+Expected: no whitespace errors (CRLF warnings are fine).
+
+## 6. Done when
+
+- [ ] All seven submit-blockers are checked.
+- [ ] The TOC/page numbers match the final PDF.
+- [ ] The deferred section is visible in §6.4 and §8.
+- [ ] `check-docs.py` passes.
+- [ ] You exported `DLS Report-2026-11-26.md`, not the 11-20 file.
