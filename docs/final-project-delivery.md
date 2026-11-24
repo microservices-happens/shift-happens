@@ -57,7 +57,7 @@ Ordered by what blocks the delivery, not by effort.
 | 2 | Presentation (P0.9) built from §5 | one person | 10 minutes, live demo from a laptop with the stack already running |
 | 3 | `SONAR_TOKEN` + project variables so the SonarQube gate stops skipping (P1.5/P6.7) | repo admin | `ci.yml` job already exists |
 | 4 | Branch protection on `main` with the `ci` aggregate check and the separate `system-tests` workflow (P1.4) | repo admin | Screenshot for §5.3; both workflows must be required |
-| 5 | Apply the full `kubernetes/` stack to Docker Desktop and take the §3.2 screenshots (P7.1) | one person | KEDA 2.17 and metrics-server are installed; the frontend HPA and email ScaledJob are verified. ingress-nginx remains optional. |
+| 5 | Capture the Kubernetes screenshots for §3.2 (P7.1) | one person | The full stack is applied: 27 pods are Ready, the gateway/login/seed checks pass, and KEDA/metrics-server/HPA are working. ingress-nginx remains optional. |
 | 6 | Finish the observability evidence (P7.4) | one person | The Compose Prometheus/Loki/Grafana stack and dashboard are running. Tempo/traces and the Kubernetes observability stack remain open. |
 | 7 | Semver tags `<service>/v1.0.0` and a release screenshot (P7.6) | one person | `git tag scheduling-service/v1.0.0` and push |
 | 8 | Publish `docs/wiki/` in the GitHub Wiki (P8.6) and finish the installation procedure in the root README (P8.5) | one person | The README already has the Compose and seed procedure; the Kubernetes section is still thin |

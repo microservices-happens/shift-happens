@@ -108,7 +108,7 @@ cp .env.example .env
    replace it with a random one, for example the output of:
 
    ```bash
-   openssl rand -hex 24
+   openssl rand -hex 20
    ```
 
    Changing the pepper later makes every stored password hash invalid (start over with

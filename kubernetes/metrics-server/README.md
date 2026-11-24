@@ -11,8 +11,7 @@ Docker Desktop's kubelet serves a self-signed certificate that metrics-server do
 For the local cluster only, add the insecure-kubelet flag:
 
 ```bash
-kubectl -n kube-system patch deployment metrics-server --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl -n kube-system patch deployment metrics-server --type=json --patch '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 kubectl -n kube-system rollout status deployment/metrics-server
 kubectl top nodes
 kubectl top pods -n shift-happens

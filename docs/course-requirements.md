@@ -75,7 +75,7 @@ Status key: **Met** means implemented and demonstrable from the repository; **Pa
 | Course requirement | Status | Evidence |
 |---|---|---|
 | Development environment with Docker Compose | Met | `docker-compose.microservices.yml` plus `docker-compose.ports.yml`; `scripts/seed-dev.sh`. |
-| Production-like local Kubernetes | Partial | `kubernetes/` contains the manifests and KEDA/metrics-server/HPA configuration. The full application stack has not been applied and smoke-tested end to end in the local cluster yet; KEDA, the email ScaledJob, metrics-server and the frontend HPA have been verified separately. |
+| Production-like local Kubernetes | Met | The full `kubernetes/` stack is applied on Docker Desktop: 27 pods are 1/1 Running, the HPA/KEDA targets work, the gateway returns 200, login returns a JWT and the demo seed is loaded. The optional ingress-nginx/ingress path is not required; the Caddy `api-gateway` NodePort is the supported entry point. |
 | Cloud deployment plan | Met | `docs/report-3.3-cloud-deployment-plan.md` covers AKS, availability zones, managed databases, scaling and security. |
 
 ## Course-level actions before delivery
@@ -83,7 +83,7 @@ Status key: **Met** means implemented and demonstrable from the repository; **Pa
 These are evidence/operations actions, not new product features:
 
 1. **Make the cooperation workflow a required check.** In GitHub branch protection, require `system-tests` in addition to `ci` on `main`, or document that main is protected by both workflows. `system-tests.yml` already runs automatically on `main` and nightly.
-2. **Apply the full Kubernetes stack once.** Run `kubectl apply -f kubernetes/namespace.yaml` and `kubectl apply -n shift-happens -R -f kubernetes/`, then capture `kubectl get pods`, `kubectl get hpa` and one login/schedule/leave-read result. The primary entry point is the `api-gateway` NodePort `30443`; ingress-nginx is optional.
+2. **Kubernetes is running.** The full stack was applied with `kubectl apply -f kubernetes/namespace.yaml` and `kubectl apply -n shift-happens -R -f kubernetes/`; all pods are Ready and the gateway/login/seed checks pass. Capture those screenshots for the report. The primary entry point is the `api-gateway` NodePort `30443`; ingress-nginx is optional.
 3. **If ingress-nginx is used**, fix or avoid the optional `kubernetes/ingress.yaml` leave route: it currently sends all leave paths to `leave-command`, including GETs. The supported Caddy `api-gateway` path already routes GETs to `leave-query`.
 4. **Optional static-analysis evidence:** set `SONAR_TOKEN` and `TRIVY_EXIT_CODE=1` in repository variables; CodeQL and the test gates already run without them.
 

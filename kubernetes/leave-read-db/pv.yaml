@@ -11,8 +11,9 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
+  # Read models are disposable; -v3 avoids Mongo credentials left by older local attempts.
   hostPath:
-    path: /var/lib/shift-happens/leave-read-db
+    path: /var/lib/shift-happens/leave-read-db-v3
     type: DirectoryOrCreate
 ---
 apiVersion: v1

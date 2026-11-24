@@ -26,13 +26,12 @@ Two mechanisms, both declared here:
 The CRDs are too large for client-side apply in this cluster; use server-side apply:
 
 ```bash
-kubectl apply --server-side --force-conflicts \
-  -f https://github.com/kedacore/keda/releases/download/v2.17.0/keda-2.17.0.yaml
-kubectl apply -f kubernetes/autoscaling/keda-metrics-nodeport.yaml
+kubectl apply --server-side --force-conflicts -f https://github.com/kedacore/keda/releases/download/v2.17.0/keda-2.17.0.yaml
+kubectl apply -n keda -f kubernetes/autoscaling/keda-metrics-nodeport.yaml.example
 kubectl -n keda get pods
 ```
 
-`keda-metrics-nodeport.yaml` exposes the operator metrics on NodePort **32073** so the Compose
+`keda-metrics-nodeport.yaml.example` exposes the operator metrics on NodePort **32073** so the Compose
 Prometheus can scrape KEDA from outside the cluster.
 
 ## CPU HPA and metrics-server
@@ -42,8 +41,7 @@ insecure-kubelet flag because its kubelet certificate is self-signed):
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml
-kubectl -n kube-system patch deployment metrics-server --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl -n kube-system patch deployment metrics-server --type=json --patch '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 kubectl -n kube-system rollout status deployment/metrics-server
 kubectl top nodes
 ```
@@ -62,8 +60,7 @@ The production manifest points at the GHCR image. For a local image, tag it and 
 
 ```bash
 docker tag shift-happens/email-function:dev shift-happens/email-function:keda
-kubectl -n shift-happens patch scaledjob email-function --type=json -p \
-  '[{"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/image","value":"shift-happens/email-function:keda"}]'
+kubectl -n shift-happens patch scaledjob email-function --type=json --patch '[{"op":"replace","path":"/spec/jobTargetRef/template/spec/containers/0/image","value":"shift-happens/email-function:keda"}]'
 ```
 
 Prerequisites: `rabbitmq` and `mailpit` Deployments/Services, the `rabbitmq-secrets`,
@@ -74,10 +71,8 @@ have `x-dead-letter-exchange=shift-happens.dlx` to match the function's declarat
 ```bash
 kubectl create namespace shift-happens
 kubectl -n shift-happens create secret generic rabbitmq-secrets --from-literal=RABBITMQ_DEFAULT_PASS=shift_dev
-kubectl -n shift-happens create secret generic email-function-secrets \
-  --from-literal=RABBITMQ_PASSWORD=shift_dev --from-literal=SMTP_USERNAME='' --from-literal=SMTP_PASSWORD=''
-kubectl -n shift-happens create secret generic rabbitmq-keda \
-  --from-literal=host='amqp://shift:shift_dev@rabbitmq.shift-happens.svc.cluster.local:5672/shift-happens'
+kubectl -n shift-happens create secret generic email-function-secrets --from-literal=RABBITMQ_PASSWORD=shift_dev --from-literal=SMTP_USERNAME='' --from-literal=SMTP_PASSWORD=''
+kubectl -n shift-happens create secret generic rabbitmq-keda --from-literal=host='amqp://shift:shift_dev@rabbitmq.shift-happens.svc.cluster.local:5672/shift-happens'
 ```
 
 Port-forward the management API and generate a burst:
@@ -86,12 +81,12 @@ Port-forward the management API and generate a burst:
 kubectl -n shift-happens port-forward svc/rabbitmq 15672:15672
 node scripts/keda-email-burst.mjs 500
 kubectl -n shift-happens get jobs
-watch -n 2 'kubectl -n shift-happens get jobs'
+kubectl -n shift-happens get jobs -w
 ```
 
 Observed in this environment: queue demand `500`, KEDA started **5** Jobs (the configured
 `maxReplicaCount`), Mailpit received **500** messages, each Job completed in about 12 s, and the queue
-returned to 0. The KEDA operator metrics are exposed locally by `keda-metrics-nodeport.yaml` on
+returned to 0. The KEDA operator metrics are exposed locally by `keda-metrics-nodeport.yaml.example` on
 NodePort 32073 and scraped by Compose Prometheus (job `keda`).
 
 ## Production notes
