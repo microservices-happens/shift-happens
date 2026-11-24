@@ -1,5 +1,6 @@
 package dk.ek.shift_happens.scheduling.config;
 
+import io.opentelemetry.api.trace.Span;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,6 +44,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String correlationId = correlationIdOf(request.getHeader(HEADER));
+        Span.current().setAttribute("app.correlation_id", correlationId);
         MDC.put(MDC_KEY, correlationId);
         response.setHeader(HEADER, correlationId);
         try {

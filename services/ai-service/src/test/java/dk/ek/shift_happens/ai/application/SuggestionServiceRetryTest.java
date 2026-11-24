@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dk.ek.shift_happens.ai.infrastructure.llm.OllamaClient;
 import dk.ek.shift_happens.ai.infrastructure.persistence.SuggestionPersistence;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,8 +22,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,14 +41,14 @@ class SuggestionServiceRetryTest {
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final OllamaClient llm = mock(OllamaClient.class);
     private final SuggestionPersistence persistence = mock(SuggestionPersistence.class);
-    private final SuggestionService service = new SuggestionService(jdbc, mapper, llm, persistence);
+    private final SuggestionService service = new SuggestionService(jdbc, mapper, llm, persistence, new SimpleMeterRegistry());
 
     @Test
     void aRetryAfterADatabaseFailureReusesTheModelAnswer() throws Exception {
         when(llm.generate(anyString(), anyList())).thenReturn(ANSWER);
         when(llm.model()).thenReturn("stub");
-        doThrow(new DataAccessResourceFailureException("db down")).doNothing().when(persistence)
-                .saveIfNew(any(), anyLong(), anyString(), anyString(), anyString(), any(), anyString());
+        when(persistence.saveIfNew(any(), anyLong(), anyString(), anyString(), anyString(), any(), anyString()))
+                .thenThrow(new DataAccessResourceFailureException("db down")).thenReturn(true);
         JsonNode event = event();
         ModelCallMemory memory = new InMemory();
 
@@ -64,8 +63,8 @@ class SuggestionServiceRetryTest {
     @Test
     void aModelFailureIsAnsweredByTheRuleAndNotRetried() throws Exception {
         when(llm.generate(anyString(), anyList())).thenThrow(new HttpTimeoutException("request timed out"));
-        doThrow(new DataAccessResourceFailureException("db down")).doNothing().when(persistence)
-                .saveIfNew(any(), anyLong(), anyString(), any(), anyString(), any(), anyString());
+        when(persistence.saveIfNew(any(), anyLong(), anyString(), any(), anyString(), any(), anyString()))
+                .thenThrow(new DataAccessResourceFailureException("db down")).thenReturn(true);
         JsonNode event = event();
         ModelCallMemory memory = new InMemory();
 
@@ -80,8 +79,7 @@ class SuggestionServiceRetryTest {
     @Test
     void withoutMemoryEveryCallMayCallTheModel() throws Exception {
         when(llm.generate(anyString(), anyList())).thenReturn(ANSWER);
-        doNothing().when(persistence)
-                .saveIfNew(any(), anyLong(), anyString(), anyString(), anyString(), any(), anyString());
+        when(persistence.saveIfNew(any(), anyLong(), anyString(), anyString(), anyString(), any(), anyString())).thenReturn(true);
 
         service.handle(event());
         service.handle(event());

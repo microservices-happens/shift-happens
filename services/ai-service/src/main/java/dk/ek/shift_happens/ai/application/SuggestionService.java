@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dk.ek.shift_happens.ai.domain.Ranking;
 import dk.ek.shift_happens.ai.infrastructure.llm.OllamaClient;
 import dk.ek.shift_happens.ai.infrastructure.persistence.SuggestionPersistence;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,13 +25,17 @@ public class SuggestionService {
     private final ObjectMapper mapper;
     private final OllamaClient llm;
     private final SuggestionPersistence persistence;
+    private final Counter llmSuggestions;
+    private final Counter ruleSuggestions;
 
     public SuggestionService(JdbcTemplate jdbc, ObjectMapper mapper, OllamaClient llm,
-                             SuggestionPersistence persistence) {
+                             SuggestionPersistence persistence, MeterRegistry metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.llm = llm;
         this.persistence = persistence;
+        this.llmSuggestions = metrics.counter("shift.ai.suggestions", "source", "llm");
+        this.ruleSuggestions = metrics.counter("shift.ai.suggestions", "source", "rule");
     }
 
     public void handle(JsonNode event) throws Exception {
@@ -107,8 +113,10 @@ public class SuggestionService {
         output.put("correlationId", event.path("correlationId").asText());
         output.put("causationId", eventId);
         output.put("data", payload);
-        persistence.saveIfNew(eventId, shiftId, prompt, raw, source, outputId,
-                mapper.writeValueAsString(output));
+        if (persistence.saveIfNew(eventId, shiftId, prompt, raw, source, outputId,
+                mapper.writeValueAsString(output))) {
+            (source.equals("llm") ? llmSuggestions : ruleSuggestions).increment();
+        }
     }
 
     /** Never throws: a timeout ({@code LLM_TIMEOUT}), an HTTP error or the model being down is a failed call. */

@@ -13,13 +13,14 @@ public class SuggestionPersistence {
 
     /** Commit deduplication, review log and outgoing event together after inference has finished. */
     @Transactional
-    public void saveIfNew(UUID eventId, long shiftId, String prompt, String modelResponse,
+    public boolean saveIfNew(UUID eventId, long shiftId, String prompt, String modelResponse,
                           String source, UUID outputId, String outputPayload) {
         int inserted = jdbc.update("INSERT INTO processed_event(event_id) VALUES (?) ON CONFLICT DO NOTHING", eventId);
-        if (inserted == 0) return;
+        if (inserted == 0) return false;
         jdbc.update("INSERT INTO suggestion_log(event_id,shift_id,prompt,model_response,source) VALUES (?,?,?,?,?)",
                 eventId, shiftId, prompt, modelResponse, source);
         jdbc.update("INSERT INTO outbox_event(event_id,event_type,payload) VALUES (?,?,?)",
                 outputId, "ai.replacement.suggested.v1", outputPayload);
+        return true;
     }
 }

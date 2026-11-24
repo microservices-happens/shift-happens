@@ -2,6 +2,8 @@ package dk.ek.shift_happens.leave.application;
 
 import dk.ek.shift_happens.leave.domain.LeaveApprovalSaga;
 import dk.ek.shift_happens.leave.domain.LeaveApprovalSagaRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -28,11 +30,14 @@ public class SagaTimeoutJob {
     private final LeaveApprovalSagaRepository sagas;
     private final LeaveApprovalSagaService service;
     private final Clock clock;
+    private final Counter timeouts;
 
-    SagaTimeoutJob(LeaveApprovalSagaRepository sagas, LeaveApprovalSagaService service, Clock clock) {
+    SagaTimeoutJob(LeaveApprovalSagaRepository sagas, LeaveApprovalSagaService service, Clock clock,
+                   MeterRegistry metrics) {
         this.sagas = sagas;
         this.service = service;
         this.clock = clock;
+        this.timeouts = metrics.counter("shift.leave.saga.timeouts");
     }
 
     @Scheduled(fixedDelayString = "${app.saga.poll-delay}")
@@ -52,6 +57,7 @@ public class SagaTimeoutJob {
                 try {
                     if (service.timeOut(saga.sagaId(), saga.leaveRequestId())) {
                         compensated++;
+                        timeouts.increment();
                         log.info("Compensated attempt {} of leave request {}: no answer before {}", saga.attempt(),
                                 saga.leaveRequestId(), saga.deadline());
                     } else {

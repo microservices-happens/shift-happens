@@ -11,7 +11,7 @@ data:
       "tags": ["shift-happens", "observability"],
       "timezone": "browser",
       "schemaVersion": 39,
-      "version": 2,
+      "version": 3,
       "refresh": "15s",
       "time": { "from": "now-15m", "to": "now" },
       "panels": [
@@ -85,7 +85,7 @@ data:
           "id": 7,
           "type": "timeseries",
           "title": "Prometheus scrape target status",
-          "description": "1 means Prometheus can scrape the target. These are Prometheus and the OpenTelemetry Collector, not individual app pods.",
+          "description": "1 means Prometheus can scrape the target. Targets include Prometheus, the Collector and business metric endpoints.",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
           "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1 }, "overrides": [] },
@@ -95,11 +95,69 @@ data:
         {
           "id": 8,
           "type": "text",
-          "title": "Scope and next metrics",
-          "gridPos": { "h": 5, "w": 24, "x": 0, "y": 24 },
+          "title": "Dashboard scope",
+          "gridPos": { "h": 5, "w": 24, "x": 0, "y": 32 },
           "options": {
             "mode": "markdown",
-            "content": "### Current scope\nThe service telemetry currently comes from local Docker Compose workloads and is forwarded to the Kubernetes observability stack. JVM CPU and heap are process-level metrics; they are not Kubernetes pod CPU and memory.\n\n### Still to add for the Kubernetes and KEDA view\nKubernetes container CPU/memory, RabbitMQ queue and dead-letter depth, saga timeout counters, and the AI service LLM fallback counter. Queue scaling should use the RabbitMQ metric consumed by KEDA."
+            "content": "JVM metrics come from instrumented app workloads. For broker queue depth, dead-letter queues and KEDA demand, see the Compose Live System dashboard."
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Leave saga timeouts",
+          "description": "Leave approval attempts compensated after the response deadline in the last 15 minutes.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(shift_leave_saga_timeouts_total[15m]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "AI suggestions using fallback",
+          "description": "Share of saved suggestions using the rule fallback over the last 15 minutes. Gaps indicate that no suggestion was saved in that window.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(shift_ai_suggestions_total{source=\"rule\"}[15m])) / (sum(rate(shift_ai_suggestions_total[15m])) > 0)"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0
+            },
+            "overrides": []
           }
         }
       ]

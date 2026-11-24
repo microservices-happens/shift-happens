@@ -35,16 +35,33 @@ public class OutboxEventEntity {
     @Column(name = "attempts", nullable = false)
     private int attempts;
 
+    @Column(name = "traceparent")
+    private String traceparent;
+
+    @Column(name = "tracestate", columnDefinition = "text")
+    private String tracestate;
+
     protected OutboxEventEntity() {
         // for JPA
     }
 
-    OutboxEventEntity(UUID eventId, String eventType, long aggregateId, String payload, Instant occurredAt) {
+    OutboxEventEntity(UUID eventId, String eventType, long aggregateId, String payload, Instant occurredAt,
+                      String traceparent, String tracestate) {
         this.eventId = eventId;
         this.eventType = eventType;
         this.aggregateId = aggregateId;
         this.payload = payload;
         this.occurredAt = occurredAt;
+        this.traceparent = traceparent;
+        this.tracestate = tracestate;
+    }
+
+    String getTraceparent() {
+        return traceparent;
+    }
+
+    String getTracestate() {
+        return tracestate;
     }
 
     UUID getEventId() {
