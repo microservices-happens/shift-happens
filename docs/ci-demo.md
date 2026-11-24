@@ -77,7 +77,7 @@ One-time setup (needs admin rights):
 |---|---|
 | `status code: 403` from Maven Central | transient CDN rejection. Re-run the failed job (`gh run rerun <id> --failed`); the `-Dmaven.wagon.http.retryHandler.count=3` flag is already set on every Maven call |
 | `Unable to resolve action ... trivy-action@0.28.0` | its tags carry a `v` prefix. We pin `aquasecurity/trivy-action@v0.36.0` |
-| Trivy finds HIGH CVEs but the job is green | intended: the scan is report-only while the services are skeletons. Set the repository variable `TRIVY_EXIT_CODE=1` to make it blocking (P6.7) |
+| Trivy finds HIGH CVEs but the job is green | intended: the scan is report-only while `TRIVY_EXIT_CODE` is unset. Set the repository variable `TRIVY_EXIT_CODE=1` to make it blocking (P6.7) |
 | `system-tests` fails with "image ... not found" | the matrix in `system-tests.yml` lists the images it builds. Add the service the test needs (comment at the top of the file) |
 | A required `ci` check stays "Expected" | the PR must touch a path the workflow listens to, or run it manually with `-f services=...` |
 

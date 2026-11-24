@@ -52,7 +52,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/v1/**"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers("/health", "/health/**", "/error").permitAll()
+                        .requestMatchers("/health", "/health/**", "/error", "/prometheus", "/metrics").permitAll()
                         .requestMatchers(HttpMethod.GET).authenticated()
                         .anyRequest().hasAnyRole("Administrator", "Manager"))
                 .oauth2ResourceServer(server -> server

@@ -3,3 +3,37 @@ spring:
     name: email-function
   main:
     web-application-type: none
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:shift}
+    password: ${RABBITMQ_PASSWORD:shift_dev}
+    virtual-host: ${RABBITMQ_VHOST:shift-happens}
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      # Mailpit accepts anonymous SMTP; a real provider needs auth=true and credentials.
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+
+app:
+  events:
+    exchange: ${EVENT_EXCHANGE:shift-happens.events}
+    dead-letter-exchange: ${DEAD_LETTER_EXCHANGE:shift-happens.dlx}
+  rabbit:
+    queue: ${RABBITMQ_QUEUE:email.send}
+  mail:
+    from: ${SMTP_FROM:no-reply@shift-happens.local}
+  function:
+    # KEDA's ScaledJob sets this to true: the Job pulls until the queue is empty and then exits.
+    # Compose keeps it false, so the local worker stays up.
+    exit-when-idle: ${EMAIL_FUNCTION_EXIT_WHEN_IDLE:false}
+    idle-poll: ${EMAIL_FUNCTION_IDLE_POLL:1000}
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+

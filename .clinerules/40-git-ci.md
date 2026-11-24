@@ -48,4 +48,4 @@ the PR description.
 - Never commit `.env`, keys or passwords. Update `.env.example` instead.
 - CI uses `secrets.GITHUB_TOKEN`. Any new secret is documented in the README and added through
   repository settings.
-- Kubernetes secrets are never committed; `k8s/base/config.yaml` holds non-secret values only.
+- Kubernetes secrets are never committed; `kubernetes/shared/configmap.yaml` holds non-secret values only.

@@ -107,6 +107,10 @@ That gives **7 backend microservices**. The gateway, the frontend, the databases
 
 **Why no synchronous calls between services.** Services that need another service's data keep a local copy fed by snapshot events. For example, Scheduling and Leave keep an employee replica from `workforce.employee.*`. A service therefore keeps working while Workforce is down, and there is no chain of timeouts. The cost is eventual consistency of the replica, which is typically under a second.
 
+The runtime diagrams are in [diagrams/async-services.md](diagrams/async-services.md) (ownership,
+replicas, failure behaviour) and [diagrams/cqrs-and-saga.md](diagrams/cqrs-and-saga.md) (write/read
+paths and the leave saga).
+
 All contracts are in [`contracts/`](../contracts/README.md).
 
 ### 4.3 Architectural patterns
@@ -180,8 +184,8 @@ Team: `Luke3520`, `jarrald`, `Jafarr1`, `drummdurum`, `ViggoBeck`. Contract chan
 - Each service role becomes a Deployment + Service with readiness and liveness probes on `/health`.
 - An NGINX Ingress replaces Caddy.
 - The databases and RabbitMQ run as StatefulSets (or Helm charts).
-- KEDA scales email-function (and optionally the queue consumers).
-- HPA scales the query roles on CPU.
+- KEDA scales email-function (ScaledJob) and the notification consumer (ScaledObject).
+- HPA scales the query roles and frontend on CPU; metrics-server provides the metrics.
 
 **Cloud (no provider decided):**
 | Concern | Implication / plan |
@@ -226,6 +230,14 @@ Any failing step fails the pipeline, and `main` only accepts green pull requests
 - **What we watch:** request rate, errors and latency per service; queue depth and DLQ size (RabbitMQ Prometheus plugin); saga timeouts; the LLM fallback rate.
 - **Alternatives considered:** the ELK stack (heavier), Jaeger (traces only), and managed options (Grafana Cloud, Datadog, cloud-native monitors). Because the collector is vendor-neutral, switching only means changing its exporter.
 
+**What is actually running locally today:** the Compose profile runs **Prometheus, Loki, Promtail,
+Grafana and cAdvisor**, every service exposes Micrometer metrics at `/prometheus`, RabbitMQ exposes
+queue/DLQ metrics at `/metrics/per-object`, KEDA is installed in the Docker Desktop cluster with a
+verified email ScaledJob, and metrics-server backs the CPU HPAs (the frontend HPA was load-tested
+2 → 5). The live dashboard is <http://localhost:3001/d/shift-happens-live>. Tempo/traces are still
+future work; the services do not export spans yet. The diagrams, queries and the DLQ/recovery runbook
+are in [diagrams/observability-dlq-recovery.md](diagrams/observability-dlq-recovery.md).
+
 ## 10. Documentation strategy
 
 - **Contracts first:** `contracts/` (OpenAPI → Swagger UI per service via springdoc, GraphQL SDL + GraphiQL, AsyncAPI → generated HTML docs in CI).
@@ -255,7 +267,7 @@ docker compose -f docker-compose.microservices.yml --profile app --profile ai up
 
 App `https://localhost:8443` · RabbitMQ `http://localhost:15672` · Mailpit `http://localhost:8025`.
 
-For Google/GitHub login, set `OIDC_GOOGLE_CLIENT_ID`/`_SECRET` or `OIDC_GITHUB_CLIENT_ID`/`_SECRET` in a local `.env` (never commit it). Local email/password login works without them.
+For Google/GitHub login, set `OIDC_GOOGLE_CLIENT_ID`/`_SECRET` or `OIDC_GITHUB_CLIENT_ID`/`_SECRET` in a local `.env` (never commit it). Local email/password login works without them. Compose also runs Keycloak as a **local OpenID Connect provider** (`local-oidc`, realm `shift-happens`); the **Local demo (Keycloak)** button on the login page uses it with the demo users and `Demo1234!`, so the OAuth flow can be demonstrated without any third-party account.
 
 **Migration order (strangler):**
 1. Contracts.

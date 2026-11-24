@@ -1,0 +1,16 @@
+# Local-only convenience: expose the KEDA operator metrics to Prometheus running in Docker Compose.
+# In a cluster with kube-prometheus-stack this is unnecessary; Prometheus scrapes the Service directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keda-operator-nodeport
+  namespace: keda
+spec:
+  type: NodePort
+  selector:
+    app: keda-operator
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+      nodePort: 32073

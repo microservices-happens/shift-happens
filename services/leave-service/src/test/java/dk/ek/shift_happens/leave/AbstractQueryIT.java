@@ -78,6 +78,9 @@ abstract class AbstractQueryIT {
         registry.add("spring.rabbitmq.username", () -> "shift");
         registry.add("spring.rabbitmq.password", () -> "shift_dev");
         registry.add("spring.rabbitmq.virtual-host", () -> "/");
+        // The query role validates the token itself (#88), exactly like the command role.
+        registry.add("app.security.jwks-url", TestJwks::jwksUrl);
+        registry.add("app.security.issuer", () -> TestJwks.ISSUER);
     }
 
     @Autowired
@@ -95,6 +98,7 @@ abstract class AbstractQueryIT {
                 "processed_events")) {
             mongo.remove(new Query(), collection);
         }
+        TestJwks.authorizeByDefault(http, "Manager");
     }
 
     // ---- publishing ----

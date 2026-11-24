@@ -32,7 +32,7 @@ public class QuerySecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/health/**", "/error", "/graphiql", "/graphiql/**",
-                                "/vendor/**")
+                                "/vendor/**", "/prometheus", "/metrics")
                         .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(server -> server.jwt(jwt -> jwt.jwtAuthenticationConverter(JwtConfig.roles())));

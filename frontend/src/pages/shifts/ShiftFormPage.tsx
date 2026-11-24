@@ -3,8 +3,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@apollo/client/react';
 import { createShift, deleteShift, updateShift } from '../../api/shifts';
 import { listDepartments } from '../../api/departments';
+import { listJobRoles } from '../../api/jobRoles';
 import { listWorkLocations } from '../../api/workLocations';
-import type { Department, NewShift, WorkLocation } from '../../api/types';
+import type { Department, JobRole, NewShift, WorkLocation } from '../../api/types';
 import { ApiError } from '../../api/types';
 import { useIdempotentAction } from '../../api/idempotency';
 import { useAuth } from '../../auth/useAuth';
@@ -29,6 +30,7 @@ function buildEmpty(dateISO: string | null): NewShift {
     startDatetime: localToDateTime(baseDate, '09:00'),
     endDatetime: localToDateTime(baseDate, '17:00'),
     shiftStatus: 'PLANNED',
+    requiredJobRoles: [],
   };
 }
 
@@ -48,20 +50,27 @@ export default function ShiftFormPage() {
   const createAction = useIdempotentAction();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [locations, setLocations] = useState<WorkLocation[]>([]);
+  const [jobRoles, setJobRoles] = useState<JobRole[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listDepartments(), listWorkLocations()])
-      .then(([ds, ls]) => {
+    Promise.all([listDepartments(), listWorkLocations(), listJobRoles()])
+      .then(([ds, ls, roles]) => {
         if (cancelled) return;
         setDepartments(ds);
         setLocations(ls);
+        setJobRoles(roles);
         setForm((f) => ({
           ...f,
           departmentId: f.departmentId || ds[0]?.departmentId || 0,
           workLocationId: f.workLocationId || ls[0]?.workLocationId || 0,
+          // A new shift starts with one role, so it can actually be staffed; a manager may remove it.
+          requiredJobRoles:
+            f.requiredJobRoles.length > 0 || roles.length === 0
+              ? f.requiredJobRoles
+              : [{ jobRoleId: roles[0].jobRoleId, requiredEmployeeCount: 1 }],
         }));
       })
       .catch(() => {
@@ -91,6 +100,10 @@ export default function ShiftFormPage() {
       startDatetime: loaded.startDatetime,
       endDatetime: loaded.endDatetime,
       shiftStatus: loaded.status,
+      requiredJobRoles: loaded.requiredJobRoles.map((role) => ({
+        jobRoleId: role.jobRoleId,
+        requiredEmployeeCount: role.requiredEmployeeCount,
+      })),
     });
   }
 
@@ -104,10 +117,41 @@ export default function ShiftFormPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function addRole() {
+    const unused = jobRoles.find(
+      (role) => !form.requiredJobRoles.some((row) => row.jobRoleId === role.jobRoleId)
+    );
+    setForm((prev) => ({
+      ...prev,
+      requiredJobRoles: [
+        ...prev.requiredJobRoles,
+        { jobRoleId: unused?.jobRoleId ?? 0, requiredEmployeeCount: 1 },
+      ],
+    }));
+  }
+
+  function updateRole(index: number, patch: { jobRoleId?: number; requiredEmployeeCount?: number }) {
+    setForm((prev) => ({
+      ...prev,
+      requiredJobRoles: prev.requiredJobRoles.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function removeRole(index: number) {
+    setForm((prev) => ({
+      ...prev,
+      requiredJobRoles: prev.requiredJobRoles.filter((_, i) => i !== index),
+    }));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!mayWrite) return;
     setError(null);
+    if (form.requiredJobRoles.some((row) => !row.jobRoleId)) {
+      setError('Choose a job role for every staffing row (or remove the row).');
+      return;
+    }
     setSubmitting(true);
     try {
       if (isNew) await createAction.run(form, (key) => createShift(form, key));
@@ -216,6 +260,56 @@ export default function ShiftFormPage() {
             disabled={!mayWrite}
           />
         </label>
+
+        <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+          <span>Required job roles</span>
+          <p className="page-muted">
+            A shift is understaffed when a released assignment leaves a role below this count.
+          </p>
+          {form.requiredJobRoles.length === 0 && (
+            <p className="page-muted">No staffing requirement yet.</p>
+          )}
+          {form.requiredJobRoles.map((row, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2" style={{ marginBottom: 8 }}>
+              <select
+                aria-label={`Job role ${index + 1}`}
+                value={row.jobRoleId}
+                onChange={(e) => updateRole(index, { jobRoleId: Number(e.target.value) })}
+                disabled={!mayWrite}
+              >
+                <option value={0} disabled>
+                  Select a job role…
+                </option>
+                {jobRoles.map((role) => (
+                  <option key={role.jobRoleId} value={role.jobRoleId}>
+                    {role.roleName}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label={`Required employees ${index + 1}`}
+                type="number"
+                min={1}
+                value={row.requiredEmployeeCount}
+                onChange={(e) =>
+                  updateRole(index, { requiredEmployeeCount: Math.max(1, Number(e.target.value)) })
+                }
+                disabled={!mayWrite}
+                style={{ width: 90 }}
+              />
+              {mayWrite && (
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => removeRole(index)}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          {mayWrite && (
+            <button type="button" className="btn btn-sm" onClick={addRole}>
+              Add job role
+            </button>
+          )}
+        </div>
 
         <div className="form-actions">
           {!isNew && mayWrite && (

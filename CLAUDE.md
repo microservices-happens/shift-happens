@@ -41,10 +41,10 @@ Where a rule describes the target rather than today's code, it says so.
 - Config through environment variables only, named as in `docker-compose.microservices.yml`.
   Never hard-code hosts, ports or secrets. `GET /health` stays public and unrenamed.
 - Security: every service validates the identity-service JWT itself (RS256, JWKS from `JWT_JWKS_URL`,
-  roles `Administrator|Manager|Employee`). Implemented in identity, workforce, scheduling and ai (P1.7),
-  each with a contract-driven security matrix test (P6.6); workforce, scheduling's REST side and ai
-  answer 401/403 as problem+json, identity does not yet. Still missing in leave, notification and
-  audit: a new endpoint there needs the security chain first.
+  roles `Administrator|Manager|Employee`). Implemented in identity, workforce, scheduling, leave (both
+  CQRS roles), ai, notification and audit (P1.7), with contract-driven or explicit security tests
+  (P6.6). All of them answer 401/403 as problem+json; email-function has no HTTP API. A new endpoint
+  always gets a rule in that service's `SecurityConfig` and a row in its security test.
 - Never log tokens, passwords or salary.
 
 ## Messaging
@@ -69,7 +69,13 @@ Where a rule describes the target rather than today's code, it says so.
 | Unit + integration | `./mvnw -B -f services/<svc>/pom.xml verify` |
 | Cooperation tests | `./mvnw -B -f tests/cooperation/pom.xml verify` |
 | Frontend | `npm --prefix frontend ci && npm --prefix frontend run lint && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
+| Browser E2E (stack running) | `npm --prefix frontend run e2e` |
+| API smoke (stack running) | `node scripts/api-smoke.mjs` |
+| Load test (stack running) | `node scripts/load-schedule.mjs` |
+| KEDA email burst | `node scripts/keda-email-burst.mjs 500` |
 | Infrastructure only | `docker compose -f docker-compose.microservices.yml up -d` |
+| Swagger/GraphiQL ports | `docker compose -f docker-compose.microservices.yml -f docker-compose.ports.yml --profile app up -d` |
+| Docs and YAML check | `python scripts/check-docs.py` |
 | Full stack | `docker compose -f docker-compose.microservices.yml --profile app up --build` |
 
 ## Git

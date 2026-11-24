@@ -37,10 +37,10 @@ Compose (development) and on a local Kubernetes cluster (production-like). The d
 ├── frontend/                          # React + Vite SPA; Dockerfile.microservices builds the nginx image
 ├── tests/cooperation/                 # System tests: several real service containers + RabbitMQ
 ├── docker-compose.microservices.yml   # Development environment (this README, section 2)
-├── docker/microservices/              # Config files mounted by that Compose file (OpenTelemetry collector)
+├── docker-compose.ports.yml           # Optional: publish services for Swagger/GraphiQL (docs/manual-testing.md)
+├── docker/microservices/              # Config mounted by that Compose file (OTel collector, Keycloak realm)
 ├── kubernetes/                        # Plain manifests for local Kubernetes (this README, section 3)
-├── k8s/                               # Older Kustomize scaffold (legacy, see section 3)
-├── scripts/                           # seed-dev.sh (demo data), docker-env.sh (Testcontainers + Colima)
+├── scripts/                           # seed-dev.sh (demo data), docker-env.sh (Testcontainers + Colima), check-docs.py
 ├── docs/                              # architecture.md, project-plan.md, ci-demo.md, adr/
 └── .github/workflows/                 # ci.yml, system-tests.yml, codeql.yml, nightly-shift-risk.yml
 ```
@@ -143,6 +143,14 @@ cp .env.example .env
    `OIDC_GITHUB_CLIENT_ID`/`OIDC_GITHUB_CLIENT_SECRET`. Step-by-step provider setup:
    [services/identity-service/README.md](services/identity-service/README.md#implemented-so-far-googlegithub-login-p23).
 
+   **Local OIDC demo (no account needed):** Compose also runs Keycloak (`local-oidc`, realm
+   `shift-happens`) and sets `OIDC_LOCAL_CLIENT_ID`, so the **Local demo (Keycloak)** button works out
+   of the box. After `scripts/seed-dev.sh`, sign in with
+   `admin@shift-happens.example`, `sofie.jensen@shift-happens.example` or
+   `ida.hansen@shift-happens.example` and the password `Demo1234!`. It is a real OpenID Connect
+   provider (authorization code + PKCE S256, ID-token signature, issuer and audience checks); Google and
+   GitHub use the same code path.
+
 Database, RabbitMQ and SMTP passwords are not in `.env.example`; Compose falls back to its
 development defaults (`identity_dev`, `shift_dev`, ...). To override one, add it to `.env` using the
 name in `docker-compose.microservices.yml` (for example `RABBITMQ_PASSWORD`, `IDENTITY_DB_PASSWORD`)
@@ -188,8 +196,9 @@ docker compose -f docker-compose.microservices.yml --profile app ps
 
 Wait until every service with a healthcheck shows `(healthy)`. The Java services' healthchecks call
 `GET /health` on port 8080 inside the container. A service can restart a few times while its
-database and RabbitMQ start; that is expected. email-function has no healthcheck and exits when its
-queue is empty, then restarts (`restart: unless-stopped`); that is expected too.
+database and RabbitMQ start; that is expected. email-function has no healthcheck; in Compose it is a
+long-running worker (`EMAIL_FUNCTION_EXIT_WHEN_IDLE=false`), while the Kubernetes ScaledJob sets that flag
+to true so each Job drains `email.send` and exits.
 
 The services publish no host ports; everything goes through the gateway. Check one service's
 health directly with:
@@ -203,9 +212,23 @@ Ports published on `127.0.0.1`:
 | What | URL |
 |---|---|
 | Gateway: frontend and `/api/*` | https://localhost:8443 (Caddy `tls internal`, a self-signed certificate: accept the browser warning, use `curl -k`) |
+| Keycloak (local OIDC provider, see 2.5) | http://localhost:8090 (admin console: `admin` / `admin`; demo users use `Demo1234!`) |
 | RabbitMQ management UI | http://localhost:15672 (user `shift`, password `shift_dev` unless you overrode `RABBITMQ_USER`/`RABBITMQ_PASSWORD`) |
 | Mailpit (captured emails) | http://localhost:8025 |
+| Grafana (live dashboard) | http://localhost:3001 (`admin` / `admin` unless `GRAFANA_USER`/`GRAFANA_PASSWORD` are set) |
+| Prometheus (metrics + PromQL) | http://localhost:9090 |
+| Loki (log store API) | http://localhost:3100 (view logs through Grafana) |
+| cAdvisor (container metrics) | http://localhost:8088 |
 | OpenTelemetry collector (OTLP gRPC / HTTP) | `localhost:4317` / `localhost:4318` |
+
+To open a service's Swagger UI or GraphiQL directly (they are not routed through the gateway), add the
+optional override; it publishes the services on `127.0.0.1:8081`–`8089` without changing anything else:
+
+```bash
+docker compose -f docker-compose.microservices.yml -f docker-compose.ports.yml --profile app up -d
+```
+
+See [docs/manual-testing.md](docs/manual-testing.md) for the port of each service and copy-paste API calls.
 
 Through the gateway:
 
@@ -279,8 +302,9 @@ from your source: it pulls the images CI publishes on every merge to `main`,
 `ghcr.io/microservices-happens/<service>:main` (public, amd64 + arm64, `imagePullPolicy: Always`).
 Unmerged local changes are not in the cluster; use Compose for those.
 
-`k8s/` is an older Kustomize scaffold, legacy until issue #64 decides between the two folders; it is
-not used here.
+`kubernetes/` is the only Kubernetes tree. It contains the plain manifests, `ingress.yaml`,
+`namespace.yaml`, `metrics-server/`, `autoscaling/` and `infrastructure/`; the old Kustomize scaffold
+has been removed.
 
 What the manifests assume:
 
@@ -309,6 +333,11 @@ On either:
 kubectl config current-context
 kubectl get nodes            # one node, STATUS Ready
 ```
+
+Install the cluster add-ons once before deploying: KEDA (email ScaledJob and notification queue
+scaling) and metrics-server (CPU HPAs). Commands are in
+[kubernetes/autoscaling/README.md](kubernetes/autoscaling/README.md) and
+[kubernetes/metrics-server/README.md](kubernetes/metrics-server/README.md).
 
 ### 3.2 Create the Secrets
 
@@ -346,15 +375,16 @@ Re-run it after every edit of `secrets.env`, then restart the affected Deploymen
 ### 3.3 Deploy
 
 ```bash
-kubectl apply -R -f kubernetes/
+kubectl apply -f kubernetes/namespace.yaml
+kubectl apply -n shift-happens -R -f kubernetes/
 kubectl get pods -w          # wait until every pod is Running and READY 1/1; Ctrl+C to stop watching
 ```
 
 The first start pulls all images and can take several minutes. App pods may restart a few times
-until their database and RabbitMQ are ready; that is expected. Known exception: `email-function`
-exits when its queue is empty, so it cycles through `Completed` and `CrashLoopBackOff`; that is
-expected on these manifests (kubernetes/README.md, "Known issues"). A pod in
-`CreateContainerConfigError` is missing its Secret: run section 3.2.
+until their database and RabbitMQ are ready; that is expected. `email-function` is not a Deployment:
+KEDA starts a `ScaledJob` per burst on `email.send`, and no Job exists while the queue is empty
+(`kubernetes/autoscaling/README.md`). A pod in `CreateContainerConfigError` is missing its Secret:
+run section 3.2.
 
 Optional, for LLM-ranked suggestions (otherwise ai-service uses its rule-based fallback):
 
@@ -456,6 +486,10 @@ source scripts/docker-env.sh
 | Unit + integration tests, one service | `./mvnw -B -f services/<service>/pom.xml verify` |
 | email-function | `./mvnw -B -f functions/email-function/pom.xml verify` |
 | Frontend lint, typecheck, build | `npm --prefix frontend ci && npm --prefix frontend run lint && npm --prefix frontend run typecheck && npm --prefix frontend run build` |
+| Browser end-to-end (full stack running) | `npm --prefix frontend run e2e` |
+| API smoke (full stack running) | `node scripts/api-smoke.mjs` |
+| Load test (full stack running) | `node scripts/load-schedule.mjs` |
+| KEDA email burst (Kubernetes RabbitMQ) | `node scripts/keda-email-burst.mjs 500` |
 
 `<service>` is a folder name in `services/`: `identity-service`, `workforce-service`,
 `scheduling-service`, `leave-service`, `ai-service`, `notification-service`, `audit-service`.
@@ -477,7 +511,14 @@ OpenAPI contract for Swagger UI (all services except ai-service); Compose passes
 `COOPERATION_REQUIRE_IMAGES=true` to make it fail). See
 [tests/cooperation/README.md](tests/cooperation/README.md).
 
-CI runs all of this on every pull request; see [docs/ci-demo.md](docs/ci-demo.md).
+The browser end-to-end suite (`frontend/e2e/business-flows.spec.ts`) and the API smoke script need the
+full Compose profile, not Testcontainers: start it with
+`docker compose -f docker-compose.microservices.yml --profile app up -d` and seed it with
+`scripts/seed-dev.sh`. The suite covers login + reload, employee + job role, shift + staffing plan,
+assignment, swap approval and rejection, leave approval and leave rejection; see
+[docs/manual-testing.md](docs/manual-testing.md#8-automated-browser-tests-playwright).
+
+CI runs the Maven and frontend checks on every pull request; see [docs/ci-demo.md](docs/ci-demo.md).
 
 ## 5. Frontend development
 
@@ -513,12 +554,22 @@ Compose) and [docs/ci-demo.md](docs/ci-demo.md) (CI).
 
 - [docs/architecture.md](docs/architecture.md): requirements, service decomposition, patterns,
   deployment, CI/CD, testing, monitoring, versioning.
+- [docs/diagrams/](docs/diagrams/): runtime diagrams — asynchronous services and replicas, CQRS and
+  the leave saga, observability/DLQ/recovery with captured evidence.
+- [kubernetes/autoscaling/README.md](kubernetes/autoscaling/README.md): install KEDA, run the email
+  ScaledJob burst demo and read the scaling evidence.
+- [kubernetes/metrics-server/README.md](kubernetes/metrics-server/README.md): install metrics-server and
+  the CPU HPA rules.
 - [contracts/README.md](contracts/README.md): REST (OpenAPI), GraphQL and event (AsyncAPI) contracts.
 - `services/<service>/README.md`, `functions/email-function/README.md`: what each part owns, provides,
   consumes and publishes.
 - [docs/project-plan.md](docs/project-plan.md): work packages and task IDs (P0–P9).
 - [docs/adr/](docs/adr/): architecture decision records.
 - [docs/ci-demo.md](docs/ci-demo.md): the CI workflows and how to run them.
+- [docs/manual-testing.md](docs/manual-testing.md): logins, URLs and copy-paste API calls for trying the
+  running stack by hand.
+- `python scripts/check-docs.py`: parses every Compose, Kubernetes and workflow YAML and checks the relative
+  links in the docs and READMEs (no Docker or JVM needed).
 
 ## Legacy: the monolith
 

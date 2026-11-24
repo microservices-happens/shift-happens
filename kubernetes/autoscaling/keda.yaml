@@ -1,0 +1,95 @@
+# KEDA (P7.3): queue length, not CPU, is the right metric for an event consumer. Requires KEDA in the
+# cluster and the secret below, created from kubernetes/secrets. Install/demo runbook:
+# kubernetes/autoscaling/README.md.
+#
+#   kubectl -n shift-happens create secret generic rabbitmq-keda \
+#     --from-literal=host='amqp://shift:shift_dev@rabbitmq.shift-happens.svc.cluster.local:5672/shift-happens'
+#
+# The email function is a ScaledJob: KEDA starts one Job per burst on email.send and the Job exits when
+# EMAIL_FUNCTION_EXIT_WHEN_IDLE=true and the queue is empty.
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-auth
+  namespace: shift-happens
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: rabbitmq-keda
+      key: host
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notification-service
+  namespace: shift-happens
+spec:
+  scaleTargetRef:
+    name: notification-service
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 60
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: notification.events
+        mode: QueueLength
+        value: "50"
+      authenticationRef:
+        name: rabbitmq-auth
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: email-function
+  namespace: shift-happens
+spec:
+  jobTargetRef:
+    backoffLimit: 2
+    ttlSecondsAfterFinished: 300
+    template:
+      spec:
+        restartPolicy: Never
+        containers:
+          - name: email-function
+            image: ghcr.io/microservices-happens/email-function:main
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+            envFrom:
+              - configMapRef: { name: service-env }
+              - secretRef: { name: email-function-secrets, optional: true }
+            env:
+              - name: RABBITMQ_QUEUE
+                value: "email.send"
+              - name: EMAIL_FUNCTION_EXIT_WHEN_IDLE
+                value: "true"
+              - name: SMTP_HOST
+                value: "mailpit"
+              - name: SMTP_PORT
+                value: "1025"
+              - name: SMTP_FROM
+                value: "no-reply@shift-happens.local"
+              - name: SMTP_AUTH
+                value: "false"
+              - name: SMTP_STARTTLS
+                value: "false"
+  pollingInterval: 10
+  maxReplicaCount: 5
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: email.send
+        mode: QueueLength
+        value: "20"
+      authenticationRef:
+        name: rabbitmq-auth

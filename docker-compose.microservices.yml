@@ -124,12 +124,34 @@ services:
     expose: ["80"]
     networks: [edge]
     healthcheck:
-      test: [CMD, wget, -qO-, http://localhost/health]
+      # 127.0.0.1, not localhost: busybox wget prefers ::1 and nginx listens on IPv4 only.
+      test: [CMD, wget, -qO-, http://127.0.0.1/health]
       interval: 10s
       timeout: 3s
       retries: 10
 
-  # Login (local password or Google/GitHub via OIDC), JWT signing. Keeps a login
+  # Local OpenID Connect provider for the OAuth 2.0 authorization-code + PKCE demo. Real Keycloak, real
+  # discovery endpoints and JWKS, real login form; the realm is imported from
+  # docker/microservices/local-oidc/realm.json. The browser reaches it on localhost:8090, identity-service
+  # on local-oidc:8080. Nothing depends on it at startup: identity's OIDC client is lazy.
+  local-oidc:
+    <<: *app
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${LOCAL_OIDC_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${LOCAL_OIDC_ADMIN_PASSWORD:-admin}
+      # The issuer inside every id_token; it must match OIDC_LOCAL_ISSUER in identity-service.
+      KC_HOSTNAME: http://localhost:8090
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./docker/microservices/local-oidc/realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "127.0.0.1:8090:8080"
+    networks: [edge, service-bus]
+
+  # Login (local password or Google/GitHub/local via OIDC), JWT signing. Keeps a login
   # account per employee in sync by consuming workforce.employee.* events.
   # Contract: contracts/openapi/identity.yaml
   identity-service:
@@ -157,12 +179,20 @@ services:
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       # Third-party login (OAuth 2.0 / OpenID Connect). Register the redirect URI
-      # https://localhost:8443/api/v1/auth/oidc/{google|github}/callback with the provider.
+      # https://localhost:8443/api/v1/auth/oidc/{google|github|local}/callback with the provider.
       OIDC_REDIRECT_BASE_URL: https://localhost:8443/api/v1/auth/oidc
       OIDC_GOOGLE_CLIENT_ID: ${OIDC_GOOGLE_CLIENT_ID:-}
       OIDC_GOOGLE_CLIENT_SECRET: ${OIDC_GOOGLE_CLIENT_SECRET:-}
       OIDC_GITHUB_CLIENT_ID: ${OIDC_GITHUB_CLIENT_ID:-}
       OIDC_GITHUB_CLIENT_SECRET: ${OIDC_GITHUB_CLIENT_SECRET:-}
+      # Local OpenID Connect provider (Keycloak, service local-oidc). Enabled by default so the
+      # authorization-code flow can be demonstrated; empty id disables the button like the others.
+      OIDC_LOCAL_CLIENT_ID: ${OIDC_LOCAL_CLIENT_ID:-shift-happens-web}
+      OIDC_LOCAL_CLIENT_SECRET: ${OIDC_LOCAL_CLIENT_SECRET:-}
+      OIDC_LOCAL_AUTHORIZATION_URI: http://localhost:8090/realms/shift-happens/protocol/openid-connect/auth
+      OIDC_LOCAL_TOKEN_URI: http://local-oidc:8080/realms/shift-happens/protocol/openid-connect/token
+      OIDC_LOCAL_JWK_SET_URI: http://local-oidc:8080/realms/shift-happens/protocol/openid-connect/certs
+      OIDC_LOCAL_ISSUER: http://localhost:8090/realms/shift-happens
       FRONTEND_LOGIN_CALLBACK_URL: https://localhost:8443/login/callback
     expose: ["8080"]
     # egress: token and JWKS calls to the external identity providers.
@@ -172,6 +202,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      local-oidc:
+        condition: service_started
     healthcheck: *app-healthcheck
 
   # Employees, contracts, departments, job roles and work locations.
@@ -370,6 +402,8 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-no-reply@shift-happens.local}
+      # Compose keeps the worker alive; the KEDA ScaledJob sets this to true so the Job completes.
+      EMAIL_FUNCTION_EXIT_WHEN_IDLE: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     # egress lets SMTP_HOST point at a real provider instead of Mailpit.
     networks: [service-bus, egress]
@@ -475,8 +509,10 @@ services:
       RABBITMQ_DEFAULT_VHOST: shift-happens
     ports:
       - "127.0.0.1:15672:15672"
+      - "127.0.0.1:15692:15692"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./docker/microservices/rabbitmq-enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     networks: [service-bus, ops]
     healthcheck:
       test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
@@ -584,6 +620,83 @@ services:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
     networks: [service-bus, ops]
+
+  # Metrics: scrape every service's Micrometer endpoint, RabbitMQ's Prometheus plugin and cAdvisor.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./docker/microservices/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/microservices/observability/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [ops, service-bus]
+
+  # Logs: Promtail tails Docker container stdout/stderr and pushes to Loki.
+  loki:
+    image: grafana/loki:3.3.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./docker/microservices/observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks: [ops]
+
+  promtail:
+    image: grafana/promtail:3.3.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./docker/microservices/observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/positions
+    networks: [ops]
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+    volumes:
+      - ./docker/microservices/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/microservices/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [ops]
+    depends_on:
+      - prometheus
+      - loki
+
+  # Per-container CPU/RAM/network for the stress and autoscaling panels.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "127.0.0.1:8088:8080"
+    networks: [ops]
 
 # Path-based routing. REST is versioned: /api/v1/<resource> -> <service>/v1/<resource>.
 # The gateway only strips /api and forwards; it has no business logic.
@@ -720,6 +833,10 @@ volumes:
   notification-data: {}
   audit-data: {}
   ai-data: {}
+  prometheus-data: {}
+  grafana-data: {}
+  loki-data: {}
+  promtail-positions: {}
   ollama-models: {}
   caddy-data: {}
   caddy-config: {}

@@ -10,13 +10,13 @@ reference for every detail is
 [`kubernetes/README.md`](https://github.com/microservices-happens/shift-happens/blob/main/kubernetes/README.md);
 this page is the short path through it for both cluster types the team uses.
 
-The older Kustomize scaffold in `k8s/` is not covered here; issue #64 decides which folder stays.
+The old Kustomize scaffold has been removed; `kubernetes/` is the only deployment tree.
 
 ## What the manifests expect from the cluster
 
 | Requirement | Where it comes from | What it means for you |
 |---|---|---|
-| One namespace for everything | No manifest sets `metadata.namespace` | Everything lands in the current context's namespace (normally `default`). Services find each other by short name (`identity-db`, `rabbitmq`, `JWT_JWKS_URL: http://identity-service:8080/...` in `kubernetes/shared/configmap.yaml`), so all of it must be in the same namespace |
+| One namespace for everything | `kubernetes/namespace.yaml`; Deployments rely on `kubectl -n shift-happens` | Everything lands in `shift-happens`. Services find each other by short name (`identity-db`, `rabbitmq`, `JWT_JWKS_URL: http://identity-service:8080/...` in `kubernetes/shared/configmap.yaml`), so all of it must be in the same namespace |
 | hostPath volumes | `kubernetes/<db>/pv.yaml`: `hostPath: /var/lib/shift-happens/<db>`, `type: DirectoryOrCreate`, `storageClassName: manual`, `persistentVolumeReclaimPolicy: Retain`, PVC bound by `volumeName` | Data lives on the node's file system (inside the Docker Desktop or Colima VM), survives `kubectl delete`, and does not depend on the cluster's default storage class. 10 PVs: `identity-db`, `workforce-db`, `scheduling-write-db`, `scheduling-read-db`, `leave-write-db`, `leave-read-db`, `notification-db`, `audit-db`, `ai-db`, `rabbitmq` |
 | NodePorts | `api-gateway/service.yaml` 30443, `rabbitmq/service.yaml` (`rabbitmq-management`) 31672, `mailpit/service.yaml` (`mailpit-ui`) 30025 | The only ports opened to the host. Everything else is ClusterIP |
 | Secrets created out of band | `kubernetes/secrets/create-secrets.sh` | No Secret is in git. Without them the pods stay in `CreateContainerConfigError` |
@@ -79,14 +79,15 @@ shared Secret is no longer used: `kubectl delete secret shift-happens-secrets`.
 ## 3. Deploy
 
 ```bash
-kubectl apply -R -f kubernetes/
+kubectl apply -f kubernetes/namespace.yaml
+kubectl apply -n shift-happens -R -f kubernetes/
 kubectl get pods -w          # wait until everything is Running and 1/1 Ready
 ```
 
 `-R` only reads `.yaml`/`.json`, so the script and env template in `kubernetes/secrets/` are skipped.
 App pods may restart a few times until their database and RabbitMQ are up; that is expected.
-`email-function` keeps cycling between `Completed` and `CrashLoopBackOff` by design (see
-[Troubleshooting](https://github.com/microservices-happens/shift-happens/blob/main/docs/wiki/Troubleshooting.md#email-function-is-in-crashloopbackoff)).
+`email-function` is a KEDA `ScaledJob`: KEDA creates a Job only when `email.send` has messages, so
+there is no idle pod to crash.
 
 Load the LLM once Ollama is up (the model lives as long as the pod; AI falls back to rule-based ranking
 without it):
@@ -171,5 +172,5 @@ with `kubectl delete secret <name>` if you want to regenerate them.
 
 From `kubernetes/README.md` ("Known issues"): the Caddy data is an `emptyDir` (new internal TLS
 certificate on every gateway restart), the compose `internal: true` networks are not reproduced, Secrets
-are plain base64 Kubernetes Secrets, there is no autoscaling yet (KEDA comes later), and email-function is
-a Deployment instead of a KEDA ScaledJob.
+are plain base64 Kubernetes Secrets, and autoscaling is CPU HPA for the query roles/frontend plus KEDA
+for the notification consumer and the email ScaledJob.

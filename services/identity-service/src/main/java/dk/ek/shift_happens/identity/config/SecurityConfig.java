@@ -40,7 +40,7 @@ class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/health", "/health/**", "/error").permitAll()
+                        .requestMatchers("/health", "/health/**", "/error", "/prometheus", "/metrics").permitAll()
                         // Swagger UI (P8.2): the page, its assets, springdoc's UI config and the contract file.
                         .requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/openapi/**").permitAll()

@@ -16,7 +16,9 @@ import java.util.List;
  * Request body of POST /v1/shifts (contracts/openapi/scheduling.yaml, schema Shift).
  *
  * <p>{@code shiftStatus} is required by the contract; a new shift may only be PLANNED or PUBLISHED
- * (the domain rule rejects CANCELLED and LOCKED).
+ * (the domain rule rejects CANCELLED and LOCKED). {@code requiredJobRoles} is optional: a manager may
+ * create the shift first and add its staffing plan through /v1/shiftrequiredjobroles, or send both in
+ * one request.
  */
 public record CreateShiftRequest(
         @Positive long departmentId,
@@ -26,13 +28,15 @@ public record CreateShiftRequest(
         @NotNull Instant endDatetime,
         @NotBlank @Pattern(regexp = "PLANNED|PUBLISHED|CANCELLED|LOCKED",
                 message = "must be PLANNED, PUBLISHED, CANCELLED or LOCKED") String shiftStatus,
-        @NotNull @Valid List<RequiredJobRoleRequest> requiredJobRoles) {
+        @Valid List<RequiredJobRoleRequest> requiredJobRoles) {
 
     public NewShift toNewShift() {
-        return new NewShift(departmentId, workLocationId, shiftName, startDatetime, endDatetime,
-                ShiftStatus.valueOf(shiftStatus),
-                requiredJobRoles.stream()
+        List<RequiredJobRole> roles = requiredJobRoles == null
+                ? List.of()
+                : requiredJobRoles.stream()
                         .map(role -> new RequiredJobRole(role.jobRoleId(), role.requiredEmployeeCount()))
-                        .toList());
+                        .toList();
+        return new NewShift(departmentId, workLocationId, shiftName, startDatetime, endDatetime,
+                ShiftStatus.valueOf(shiftStatus), roles);
     }
 }

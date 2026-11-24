@@ -73,19 +73,24 @@ accounts arrive here through the normal `workforce.employee.*` events, and passw
 bootstrap admin and `PUT .../password` (see "Local demo data" in
 [workforce-service/README.md](../workforce-service/README.md)).
 
-## Implemented so far (Google/GitHub login, P2.3)
+## Implemented so far (Google/GitHub/local login, P2.3)
 
 OAuth 2.0 authorization code with PKCE (S256), written by hand (no Spring `oauth2Login`, which needs
-an HTTP session and its own URL shapes).
+an HTTP session and its own URL shapes). Three providers use the same code path:
 
-1. `GET /v1/auth/oidc/{google|github}/authorize` stores a random `state` and PKCE `code_verifier` in
+- **Google** and **GitHub** — the production third-party providers.
+- **local** — a standard OpenID Connect provider (Keycloak in `docker-compose.microservices.yml`, realm
+  `shift-happens`) that makes the flow demonstrable and testable without external accounts or secrets.
+  Only the four endpoints and the client registration differ.
+
+1. `GET /v1/auth/oidc/{google|github|local}/authorize` stores a random `state` and PKCE `code_verifier` in
    `oidc_login_attempt` (Postgres, valid 10 minutes, not an HTTP session, so any replica can take the
    callback) and answers `302` to the provider with `state` and `code_challenge`.
 2. The provider sends the browser to `GET /v1/auth/oidc/{provider}/callback?code&state`. The state
    row is deleted as it is read (`DELETE ... RETURNING`), so a state works once.
 3. The code is exchanged together with the verifier.
-   - **Google** (`openid email`): the ID token is verified against Google's JWKS (RS256, issuer,
-     audience = our client id, expiry), and `email_verified` must be true.
+   - **Google and local** (`openid email`): the ID token is verified against the provider's JWKS (RS256,
+     issuer, audience = our client id, expiry), and `email_verified` must be true.
    - **GitHub** (`user:email`, OAuth only): `GET /user` gives the stable id, `GET /user/emails` the
      primary email, which must be verified.
 4. The account is found by its link in `external_identity` (provider + subject) if this provider
@@ -106,15 +111,22 @@ secrets are never logged.
 | `OIDC_REDIRECT_BASE_URL` | Browser-facing base of the callbacks, e.g. `https://localhost:8443/api/v1/auth/oidc` |
 | `OIDC_GOOGLE_CLIENT_ID` / `OIDC_GOOGLE_CLIENT_SECRET` | Google OAuth client (empty = Google disabled) |
 | `OIDC_GITHUB_CLIENT_ID` / `OIDC_GITHUB_CLIENT_SECRET` | GitHub OAuth app (empty = GitHub disabled) |
+| `OIDC_LOCAL_CLIENT_ID` / `OIDC_LOCAL_CLIENT_SECRET` | Local OpenID Connect client (empty = local disabled; Compose sets `shift-happens-web`, a public PKCE client) |
+| `OIDC_LOCAL_AUTHORIZATION_URI`, `OIDC_LOCAL_TOKEN_URI`, `OIDC_LOCAL_JWK_SET_URI`, `OIDC_LOCAL_ISSUER` | Endpoints of the local provider. The browser-facing issuer is `http://localhost:8090/realms/shift-happens`; identity calls Keycloak at `http://local-oidc:8080` inside Compose, which is why the URIs are separate |
 | `FRONTEND_LOGIN_CALLBACK_URL` | Frontend page that reads `#token=` / `#error=` |
 
-Registering the redirect URI (`<OIDC_REDIRECT_BASE_URL>/{google|github}/callback`):
+Registering the redirect URI (`<OIDC_REDIRECT_BASE_URL>/{google|github|local}/callback`):
 
 - **Google:** Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → *Web
   application*. Authorized redirect URI: `https://localhost:8443/api/v1/auth/oidc/google/callback`
   (locally). Configure the consent screen with the `openid` and `email` scopes.
 - **GitHub:** Settings → Developer settings → OAuth Apps → New OAuth App. Authorization callback URL:
   `https://localhost:8443/api/v1/auth/oidc/github/callback`.
+- **Local (Keycloak):** already configured in `docker/microservices/local-oidc/realm.json`
+  (`https://localhost:8443/api/v1/auth/oidc/local/callback`, public client, PKCE S256). The realm
+  imports users `admin@shift-happens.example`, `sofie.jensen@shift-happens.example` and
+  `ida.hansen@shift-happens.example` with the password `Demo1234!`; they match the demo employees, so
+  no extra setup is needed after `scripts/seed-dev.sh`.
 
 Put the ids and secrets in `.env` (Compose). In Kubernetes the client ids are plain env in
 `kubernetes/identity-service/deployment.yaml` and the client secrets go in the git-ignored

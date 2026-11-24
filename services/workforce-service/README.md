@@ -15,7 +15,9 @@
 - `workforce.employee.created.v1` written to the outbox in the same transaction as the employee, and
   published by `OutboxRelay` to `shift-happens.events` with routing key = eventType.
 - Tests: `EmployeeTest` (domain), `EmployeeJobRoleDatesTest`, `EmployeeServiceTest`, `IdempotencyServiceTest`,
-  `SwaggerContractTest`, `WorkforceApplicationIT` (REST → PostgreSQL → outbox → RabbitMQ, including the
+  `SwaggerContractTest`, `EventEnvelopeSchemaTest` (envelope + employee/tombstone payload schemas),
+  `OutboxRelayTest` (publish, broker failure retry, database failure), `RabbitTopologyTest` (durable
+  exchanges, JSON converter), `WorkforceApplicationIT` (REST → PostgreSQL → outbox → RabbitMQ, including the
   idempotency replay and 409 paths) and `DevSeedIT`. Run with `./mvnw -B -f services/workforce-service/pom.xml test`
   (unit) or `verify` (adds the `*IT`, Docker required).
 

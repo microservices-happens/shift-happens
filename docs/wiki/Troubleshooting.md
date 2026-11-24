@@ -10,7 +10,7 @@ Trivy, a `ci` check stuck on "Expected", a missing image in `system-tests`) are 
 - Kubernetes: [pod stuck in `CreateContainerConfigError`](#pod-stuck-in-createcontainerconfigerror) ·
   [database or RabbitMQ rejects the password](#a-database-or-rabbitmq-rejects-the-password-after-creating-the-secrets) ·
   [`ImagePullBackOff` or old code in the cluster](#imagepullbackoff-or-the-cluster-runs-old-code) ·
-  [email-function in `CrashLoopBackOff`](#email-function-is-in-crashloopbackoff) ·
+  [email-function Jobs are not created](#email-function-jobs-are-not-created) ·
   [Google/GitHub login lands on the wrong port](#googlegithub-login-redirects-to-the-wrong-port)
 - Identity and login: [identity-service does not start](#identity-service-does-not-start) ·
   [every request is 401 after identity restarts](#every-request-is-401-after-identity-service-restarts) ·
@@ -81,14 +81,17 @@ docker login                                            # raises the Docker Hub 
 
 Unmerged code is never in the cluster. Use Compose (`docker compose -f docker-compose.microservices.yml --profile app up --build`) to try it.
 
-### email-function is in `CrashLoopBackOff`
+### email-function Jobs are not created
 
-**Symptom.** `email-function` alternates between `Completed` and `CrashLoopBackOff` with a growing back-off.
+**Symptom.** Messages stay on `email.send`; `kubectl -n shift-happens get jobs` shows no email Job.
 
-**Cause.** Expected. It exits when the `email.send` queue is empty and, as a plain Deployment, is restarted.
-The intended fix is a KEDA ScaledJob (`kubernetes/README.md`, "Known issues").
+**Cause.** KEDA is not installed, the `email-function` ScaledJob is missing, or its `rabbitmq-auth`
+TriggerAuthentication cannot read the `rabbitmq-keda` Secret.
 
-**Fix.** None needed.
+**Fix.** Install KEDA, create the `rabbitmq-keda` Secret exactly as in
+`kubernetes/autoscaling/keda.yaml`, apply `kubernetes/autoscaling/keda.yaml`, then check
+`kubectl -n shift-happens get scaledjob email-function` and
+`kubectl -n shift-happens logs -l keda.sh/scalerName=rabbitmq`.
 
 ### Google/GitHub login redirects to the wrong port
 
@@ -242,7 +245,7 @@ Wiping the whole broker also works but loses every waiting message of every serv
 `docker compose -f docker-compose.microservices.yml down -v` (wipes **every** Compose volume, databases
 included), or on Kubernetes `kubectl delete -R -f kubernetes/rabbitmq/` and removing
 `/var/lib/shift-happens/rabbitmq` on the node (on Docker Desktop: reset the Kubernetes cluster, which wipes all
-hostPath data) before `kubectl apply -R -f kubernetes/`.
+hostPath data) before `kubectl apply -n shift-happens -R -f kubernetes/`.
 
 ### A CQRS role does the wrong job
 

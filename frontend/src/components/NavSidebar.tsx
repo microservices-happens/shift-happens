@@ -16,8 +16,11 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/shifts', label: 'Shifts' },
   { to: '/shift-assignments', label: 'Shift Assignments' },
   { to: '/leave-requests', label: 'Leave Requests' },
+  { to: '/swap-requests', label: 'Swap Requests' },
   { to: '/employees', label: 'Employees' },
   { to: '/departments', label: 'Departments' },
+  { to: '/leave-types', label: 'Leave Types' },
+  { to: '/audit-log', label: 'Audit Log' },
 ];
 
 const EMPLOYEE_ALLOWED = new Set<string>([
@@ -28,19 +31,28 @@ const EMPLOYEE_ALLOWED = new Set<string>([
   '/leave-requests',
 ]);
 
-const MANAGE_ROUTES = new Set<string>(['/employees', '/departments']);
+const MANAGE_ROUTES = new Set<string>([
+  '/employees',
+  '/departments',
+  '/leave-types',
+  '/swap-requests',
+]);
+
+/** The audit log is Administrator only, in the service and therefore in the navigation. */
+const ADMIN_ONLY = new Set<string>(['/audit-log']);
 
 export function NavSidebar({ collapsed }: NavSidebarProps) {
   const { user } = useAuth();
   const role = user?.roleName;
 
-  const visible =
-    role === 'Employee'
-      ? NAV_ITEMS.filter((item) => EMPLOYEE_ALLOWED.has(item.to))
-      : NAV_ITEMS;
+  const visible = NAV_ITEMS.filter((item) => {
+    if (role === 'Employee') return EMPLOYEE_ALLOWED.has(item.to);
+    if (ADMIN_ONLY.has(item.to)) return role === 'Administrator';
+    return true;
+  });
 
-  const primary = visible.filter((i) => !MANAGE_ROUTES.has(i.to));
-  const manage = visible.filter((i) => MANAGE_ROUTES.has(i.to));
+  const primary = visible.filter((i) => !MANAGE_ROUTES.has(i.to) && !ADMIN_ONLY.has(i.to));
+  const manage = visible.filter((i) => MANAGE_ROUTES.has(i.to) || ADMIN_ONLY.has(i.to));
 
   return (
     <aside

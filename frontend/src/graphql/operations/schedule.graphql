@@ -48,6 +48,10 @@ query ShiftOptions($from: DateTime!, $to: DateTime!) {
 query ShiftById($shiftId: Int!) {
   shift(shiftId: $shiftId) {
     ...ShiftSummary
+    requiredJobRoles {
+      jobRoleId
+      requiredEmployeeCount
+    }
     assignments {
       ...AssignmentRow
       assignedDatetime
@@ -65,6 +69,47 @@ query MySchedule($employeeId: Int!, $from: DateTime!, $to: DateTime!) {
     shift {
       ...ShiftSummary
     }
+  }
+}
+
+# Shift swaps: the manager queue for the swap approval page.
+query SwapRequests($status: SwapStatus) {
+  swapRequests(status: $status) {
+    shiftSwapId
+    status
+    reason
+    requestDatetime
+    assignment {
+      shiftAssignmentId
+      shift {
+        shiftId
+        shiftName
+        startDatetime
+        endDatetime
+      }
+      employee {
+        employeeId
+        firstName
+        lastName
+      }
+    }
+    from {
+      employeeId
+      firstName
+      lastName
+    }
+    to {
+      employeeId
+      firstName
+      lastName
+    }
+    decidedBy {
+      employeeId
+      firstName
+      lastName
+    }
+    decisionComment
+    decisionDatetime
   }
 }
 

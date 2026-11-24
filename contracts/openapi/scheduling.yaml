@@ -633,6 +633,20 @@ components:
           format: date-time
         shiftStatus:
           type: string
+        requiredJobRoles:
+          type: array
+          description: 'Staffing plan of the shift (jobRoleId + requiredEmployeeCount). POST /v1/shifts may include it; PUT /v1/shifts/{id} without it keeps the roles the shift already has. The same rows can be managed through /v1/shiftrequiredjobroles.'
+          items:
+            type: object
+            required:
+            - jobRoleId
+            - requiredEmployeeCount
+            properties:
+              jobRoleId:
+                type: integer
+              requiredEmployeeCount:
+                type: integer
+                minimum: 1
     ShiftRequiredJobRole:
       type: object
       required:

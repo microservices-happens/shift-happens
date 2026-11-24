@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EventEnvelopeSchemaTest {
 
     private static final Path ENVELOPE_SCHEMA = Path.of("../../contracts/events/envelope.schema.json");
+    private static final Path PAYLOAD_SCHEMAS = Path.of("../../contracts/events/payloads");
 
     /** Same settings as the ObjectMapper Spring Boot gives the outbox: ISO dates, unknown fields ignored. */
     private final ObjectMapper mapper = Jackson2ObjectMapperBuilder.json()
@@ -31,12 +32,21 @@ class EventEnvelopeSchemaTest {
             .build();
 
     private static JsonSchema schema;
+    private static JsonSchema employeeSchema;
+    private static JsonSchema tombstoneSchema;
 
     @BeforeAll
     static void loadSchema() throws Exception {
         SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build();
+        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
         try (InputStream in = Files.newInputStream(ENVELOPE_SCHEMA)) {
-            schema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(in, config);
+            schema = factory.getSchema(in, config);
+        }
+        try (InputStream in = Files.newInputStream(PAYLOAD_SCHEMAS.resolve("employee.schema.json"))) {
+            employeeSchema = factory.getSchema(in, config);
+        }
+        try (InputStream in = Files.newInputStream(PAYLOAD_SCHEMAS.resolve("tombstone.schema.json"))) {
+            tombstoneSchema = factory.getSchema(in, config);
         }
     }
 
@@ -70,5 +80,54 @@ class EventEnvelopeSchemaTest {
         JsonNode json = mapper.readTree(mapper.writeValueAsString(envelope));
 
         assertThat(schema.validate(json)).isNotEmpty();
+    }
+
+    @Test
+    void anEmployeeSnapshotMatchesThePayloadContract() throws Exception {
+        JsonNode payload = mapper.readTree("""
+                {
+                  "employeeId": 42,
+                  "employeeNumber": "E-42",
+                  "userRole": "Employee",
+                  "firstName": "Ada",
+                  "lastName": "Lovelace",
+                  "email": "ada@shift.dk",
+                  "phoneNumber": "+45 12345678",
+                  "hireDate": "2024-01-01",
+                  "employmentStatus": "ACTIVE",
+                  "primaryWorkLocationId": 1,
+                  "weeklyContractHours": 37.5,
+                  "jobRoleIds": [1, 3]
+                }
+                """);
+
+        assertThat(employeeSchema.validate(payload)).isEmpty();
+    }
+
+    @Test
+    void anEmployeeSnapshotWithoutJobRolesIsRejected() throws Exception {
+        JsonNode payload = mapper.readTree("""
+                {
+                  "employeeId": 42,
+                  "employeeNumber": "E-42",
+                  "userRole": "Employee",
+                  "firstName": "Ada",
+                  "lastName": "Lovelace",
+                  "email": "ada@shift.dk",
+                  "employmentStatus": "ACTIVE",
+                  "weeklyContractHours": 37.5
+                }
+                """);
+
+        assertThat(employeeSchema.validate(payload)).isNotEmpty();
+    }
+
+    @Test
+    void aTombstoneMatchesThePayloadContract() throws Exception {
+        JsonNode payload = mapper.readTree("""
+                {"entityType": "employee", "entityId": 42, "deletedAt": "2026-11-20T08:15:00Z"}
+                """);
+
+        assertThat(tombstoneSchema.validate(payload)).isEmpty();
     }
 }

@@ -1,0 +1,52 @@
+# Autoscaling of the deployed services (P7.3). The read sides and the static frontend scale on CPU;
+# queue consumers scale on queue length with KEDA (keda.yaml), so a burst of events adds replicas and
+# an idle queue goes back to one. Do not put an HPA and a KEDA ScaledObject on the same Deployment.
+# Apply after the services themselves: kubectl apply -f kubernetes/autoscaling/
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scheduling-query
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: scheduling-query }
+  minReplicas: 2
+  maxReplicas: 5
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: leave-query
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: leave-query }
+  minReplicas: 2
+  maxReplicas: 5
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: shift-happens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend }
+  minReplicas: 2
+  maxReplicas: 5
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
