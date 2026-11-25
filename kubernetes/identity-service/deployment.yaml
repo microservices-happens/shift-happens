@@ -5,7 +5,7 @@ metadata:
   labels:
     app: identity-service
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: identity-service
@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         app: identity-service
+        version: v1.0.0
     spec:
       # The image runs as non-root uid 10001. fsGroup gives the process group 10001, which owns the
       # mounted signing key (mode 0440), so the key is readable without making it world-readable.

@@ -201,8 +201,8 @@ The rollout dashboard is in **Compose Grafana** (`3001`) because that Prometheus
 Kubernetes kube-state-metrics endpoint. Start with the Compose observability stack running, then:
 
 ```powershell
-# New ReplicaSet, paused for 60 s so the old + new pods are visible in Grafana.
-.\scripts\kubernetes-rollout-demo.ps1 -Deployment identity-service -PauseSeconds 60
+# identity-service is prepared at 3 x v1.0.0, then rolled to 3 x v1.0.1.
+.\scripts\kubernetes-rollout-demo.ps1 -Deployment identity-service -Replicas 3 -PauseSeconds 60
 
 # Create request logs in Identity and Workforce for the same dashboard.
 .\scripts\live-log-demo.ps1 -Gateway https://localhost:8443 -Count 12
@@ -213,8 +213,8 @@ Open:
 <http://localhost:3001/d/shift-happens-kubernetes-rollout>
 
 The screenshot is [`docs/images/observability/kubernetes-rolling-update.png`](docs/images/observability/kubernetes-rolling-update.png).
-The panel shows desired, ready, updated, unavailable and **pods (old + new)**; the logs panel shows
-both services with the `log-demo-*` correlation ids. See
+The **Pods by version** panel shows **3 × v1.0.0**, then **3 × v1.0.0 + 1 × v1.0.1**, then **0 ×
+v1.0.0 + 3 × v1.0.1**. The logs panel shows both services with the `log-demo-*` correlation ids. See
 [`kubernetes/README.md`](kubernetes/README.md#rolling-update-demo-grafana) for the full explanation.
 
 > The `5xx / min` is a stat panel on the normal Live System dashboard. It counts 5xx responses in

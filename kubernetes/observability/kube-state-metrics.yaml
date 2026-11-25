@@ -1,14 +1,15 @@
 # Minimal kube-state-metrics for the local Docker Desktop cluster.
 #
-# The KEDA operator exposes the queue length, but not the number of replicas. The
-# autoscaling dashboard therefore reads two series from this exporter:
+# KEDA exposes the queue length, and kube-state-metrics exposes Deployment
+# replica state plus pod labels. The rollout demo uses the pod labels to count
+# how many Running pods still carry each version:
 #
-#   kube_deployment_status_replicas_ready{deployment="notification-service"}
-#   kube_deployment_spec_replicas{deployment="notification-service"}
+#   kube_deployment_status_replicas_ready{deployment="identity-service"}
+#   kube_pod_labels{label_app="identity-service",label_version="v1.0.0"}
 #
-# It is deliberately restricted to Deployments in the application namespace, so it
-# needs only list/watch on deployments. The NodePort is for the Compose Prometheus
-# instance, which scrapes the Kubernetes cluster through host.docker.internal.
+# It is restricted to Deployments and Pods in the application namespace. The
+# NodePort is for the Compose Prometheus instance, which scrapes the Kubernetes
+# cluster through host.docker.internal.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -26,6 +27,9 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -65,8 +69,9 @@ spec:
           image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
           imagePullPolicy: IfNotPresent
           args:
-            - --resources=deployments
+            - --resources=deployments,pods
             - --namespaces=shift-happens
+            - --metric-labels-allowlist=pods=[app,version]
             - --port=8080
             - --telemetry-port=8081
           ports:

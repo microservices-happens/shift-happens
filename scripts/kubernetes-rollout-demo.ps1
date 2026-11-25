@@ -1,11 +1,14 @@
 param(
-    [string]$Deployment = 'frontend',
+    [string]$Deployment = 'identity-service',
     [string]$Namespace = 'shift-happens',
     [string]$GrafanaUrl = 'http://localhost:3001',
     [string]$GrafanaUser = 'admin',
     [string]$GrafanaPassword = 'admin',
-    [int]$WaitSeconds = 120,
-    [int]$PauseSeconds = 0,
+    [string]$FromVersion = 'v1.0.0',
+    [string]$ToVersion = 'v1.0.1',
+    [int]$Replicas = 3,
+    [int]$WaitSeconds = 300,
+    [int]$PauseSeconds = 60,
     [int]$SettleSeconds = 20
 )
 
@@ -20,6 +23,20 @@ function Get-DeploymentState {
         Available   = [int]($deployment.status.availableReplicas)
         Unavailable = [int]($deployment.status.unavailableReplicas)
     }
+}
+
+function Set-VersionLabel {
+    param([string]$Version)
+    $patch = @{
+        spec = @{
+            template = @{
+                metadata = @{
+                    labels = @{ version = $Version }
+                }
+            }
+        }
+    } | ConvertTo-Json -Depth 10
+    kubectl -n $Namespace patch "deployment/$Deployment" --type=merge -p $patch | Out-Null
 }
 
 function Add-RolloutAnnotation {
@@ -39,49 +56,40 @@ function Add-RolloutAnnotation {
     }
 }
 
-$before = Get-DeploymentState
-if ($before.Desired -lt 1) {
-    throw "Deployment $Deployment has no desired replicas."
-}
+Write-Host "Preparing $Replicas x $FromVersion pods for deployment/$Deployment..."
+kubectl -n $Namespace scale "deployment/$Deployment" --replicas=$Replicas | Out-Null
+Set-VersionLabel $FromVersion
+kubectl -n $Namespace rollout status "deployment/$Deployment" --timeout="${WaitSeconds}s" | Out-Null
+Add-RolloutAnnotation ("Baseline: {0} x {1}" -f $Replicas, $FromVersion)
+kubectl -n $Namespace get pods -l "app=$Deployment" -L version --no-headers
 
-Write-Host ("Rolling deployment/{0}: desired={1}, ready={2}, updated={3}" -f `
-    $Deployment, $before.Desired, $before.Ready, $before.Updated)
-Add-RolloutAnnotation ("Rolling update started: {0}/{1}" -f $Namespace, $Deployment)
+Write-Host ''
+Write-Host "Starting rolling update: $FromVersion -> $ToVersion (3 old + 1 new, then all new)..."
+Set-VersionLabel $ToVersion
 
-# This creates a new ReplicaSet in the same way a new image tag would. The running
-# Deployment keeps serving from the old pods until the new ones are Ready.
-kubectl -n $Namespace rollout restart "deployment/$Deployment"
-
-# A durable rolling update can finish between two 15-second kube-state-metrics
-# scrapes. Pausing for the demo leaves one new pod visible while the old pods
-# keep serving; resume below completes it normally.
-if ($PauseSeconds -gt 0) {
-    Start-Sleep -Seconds 2
-    kubectl -n $Namespace rollout pause "deployment/$Deployment"
-    Add-RolloutAnnotation ("Rolling update paused for inspection: {0}/{1}" -f $Namespace, $Deployment)
-    Write-Host "Rollout paused for $PauseSeconds seconds (old pods keep serving)..."
-    Start-Sleep -Seconds $PauseSeconds
-    kubectl -n $Namespace rollout resume "deployment/$Deployment"
-    Add-RolloutAnnotation ("Rolling update resumed: {0}/{1}" -f $Namespace, $Deployment)
-}
-
-$deadline = (Get-Date).AddSeconds($WaitSeconds)
-do {
-    Start-Sleep -Seconds 2
+# Wait until the deployment has created the first new pod, then pause before
+# the second replacement. The old ReplicaSet keeps serving during the pause.
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
     $state = Get-DeploymentState
-    Write-Host ("{0:HH:mm:ss} desired={1} ready={2} updated={3} unavailable={4}" -f `
-        (Get-Date), $state.Desired, $state.Ready, $state.Updated, $state.Unavailable)
-    $done = $state.Ready -eq $state.Desired -and $state.Updated -eq $state.Desired
-} while (-not $done -and (Get-Date) -lt $deadline)
-
-if (-not $done) {
-    throw "Rollout did not finish within $WaitSeconds seconds."
+    if ($state.Updated -ge 1) { break }
 }
 
-kubectl -n $Namespace rollout status "deployment/$Deployment" --timeout="$($WaitSeconds)s"
-Add-RolloutAnnotation ("Rolling update complete: {0}/{1}" -f $Namespace, $Deployment)
+if ($PauseSeconds -gt 0) {
+    kubectl -n $Namespace rollout pause "deployment/$Deployment" | Out-Null
+    Add-RolloutAnnotation ("Paused: {0} x {1} + 1 x {2} (old ReplicaSet still serving)" -f $Replicas, $FromVersion, $ToVersion)
+    Write-Host "Rollout paused for $PauseSeconds seconds. This is the 3 old + 1 new phase."
+    kubectl -n $Namespace get pods -l "app=$Deployment" -L version --no-headers
+    Start-Sleep -Seconds $PauseSeconds
+    kubectl -n $Namespace rollout resume "deployment/$Deployment" | Out-Null
+    Add-RolloutAnnotation ("Resumed: replacing the remaining {0} x {1} pods" -f $Replicas, $FromVersion)
+}
 
-# Leave a small tail so the next Prometheus scrape and Grafana refresh see the final state.
+kubectl -n $Namespace rollout status "deployment/$Deployment" --timeout="${WaitSeconds}s"
+Add-RolloutAnnotation ("Complete: {0} x {1}" -f $Replicas, $ToVersion)
+kubectl -n $Namespace get pods -l "app=$Deployment" -L version --no-headers
+
+# Let Prometheus scrape the final state and Grafana refresh the graph.
 if ($SettleSeconds -gt 0) {
     Write-Host "Settling for $SettleSeconds seconds so Grafana can refresh..."
     Start-Sleep -Seconds $SettleSeconds
@@ -89,4 +97,4 @@ if ($SettleSeconds -gt 0) {
 
 Write-Host ''
 Write-Host 'Open the rollout dashboard:'
-Write-Host '  http://localhost:3001/d/shift-happens-kubernetes-rollout?from=now-15m&to=now'
+Write-Host '  http://localhost:3001/d/shift-happens-kubernetes-rollout?from=now-10m&to=now'
