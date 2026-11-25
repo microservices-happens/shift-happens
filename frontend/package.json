@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@graphql-codegen/add": "^7.1.1",
+    "@graphql-codegen/add": "^8.0.0",
     "@graphql-codegen/cli": "^7.4.6",
     "@graphql-codegen/typed-document-node": "^7.2.0",
     "@graphql-codegen/typescript-operations": "^6.2.0",
