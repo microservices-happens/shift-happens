@@ -506,6 +506,7 @@ source scripts/docker-env.sh
 | Browser end-to-end (full stack running) | `npm --prefix frontend run e2e` |
 | API smoke (full stack running) | `node scripts/api-smoke.mjs` |
 | Load test (full stack running) | `node scripts/load-schedule.mjs` |
+| k6 performance checks (full stack + 1,000-employee fixture) | See [tests/performance/README.md](tests/performance/README.md) |
 | KEDA email burst (Kubernetes RabbitMQ) | `node scripts/keda-email-burst.mjs 500` |
 | KEDA notification autoscaling demo (Kubernetes) | `python -m pip install pika` then `.\scripts\notification-burst.ps1 -Count 50000` |
 

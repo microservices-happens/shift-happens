@@ -133,6 +133,44 @@ It needs the stack and `scheduling-command` + `ai-service` running.
 > The notification queue-vs-pods panel is fed by the **Kubernetes** KEDA and kube-state-metrics
 > NodePorts. On a Compose-only stack the panel is empty; use the Kubernetes section below for that demo.
 
+### Performance tests with k6
+
+The performance suite is in [`tests/performance`](tests/performance/README.md). It covers **P-01,
+P-02, P-04 and P-05**; P-03 is intentionally skipped. Load the local 1,000-employee fixture once:
+
+```powershell
+Get-Content tests/performance/seed-performance.sql -Raw |
+  docker compose -f docker-compose.microservices.yml exec -T workforce-db `
+    psql -v ON_ERROR_STOP=1 -U workforce -d workforce
+```
+
+Prometheus is configured to receive k6 remote-write metrics:
+
+```powershell
+$env:PERF_BASE_URL = 'https://localhost:8443'
+$env:K6_PROMETHEUS_RW_SERVER_URL = 'http://localhost:9090/api/v1/write'
+$env:K6_PROMETHEUS_RW_TREND_STATS = 'p(95),p(99),avg,min,max'
+k6 run --out experimental-prometheus-rw tests/performance/api.js
+```
+
+Open the provisioned k6 dashboard:
+
+<http://localhost:3001/d/shift-happens-performance>
+
+The captured local run is stored at
+[`docs/images/observability/k6-performance.png`](docs/images/observability/k6-performance.png).
+
+The baseline profile runs 50 read VUs and 10 write VUs for 60 seconds. For the 200-user P-05 run:
+
+```powershell
+$env:PERF_P05_ONLY = 'true'
+k6 run --out experimental-prometheus-rw tests/performance/api.js
+```
+
+The test results are stored as `k6_*` series in Prometheus, so Grafana shows the same run instead of
+a separate result file. The local stack and k6 share one workstation; the results are local evidence,
+not a production SLO.
+
 ## 5. Peek at RabbitMQ
 
 Open <http://localhost:15672> and log in with `shift` / `shift_dev` (or the values in `.env`).
