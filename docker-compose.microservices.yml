@@ -661,6 +661,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=7d
       - --web.enable-lifecycle
+      # k6 pushes its test metrics here with --out experimental-prometheus-rw.
+      - --web.enable-remote-write-receiver
     volumes:
       - ./docker/microservices/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/microservices/observability/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro

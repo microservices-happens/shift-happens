@@ -25,7 +25,7 @@ No rewrite needed; just confirm the final PDF says this:
 - [ ] §3.2.4 keeps the measured numbers: **41,808 backlog**, **1 → 3 → 4** pods, queue **0** by **15:23:30**, back to **1** by **15:26:30**.
 - [ ] §3.2.4 says this is **one node**, not multi-node/99.9% availability.
 - [ ] §3.3 says the Azure plan is a **plan, not deployed**.
-- [ ] §6.4 says **39 met / 18 partial / 6 not met / 2 not verified**.
+- [ ] §6.4 says **42 met / 17 partial / 6 not met / 0 not verified**.
 - [ ] §8 does **not** claim all 65 requirements are met.
 
 ## 3. Remove or qualify risky claims
@@ -40,7 +40,7 @@ No rewrite needed; just confirm the final PDF says this:
 
 ## 4. Deferred v1.0 scope — include it honestly
 
-Summary to keep in §6.4/§8: **39 met, 18 partial, 6 not met, 2 not verified**. Do not claim all 65.
+Summary to keep in §6.4/§8: **42 met, 17 partial, 6 not met, 0 not verified**. Do not claim all 65.
 
 ### Not met (6) — say “planned for v1.1”
 
@@ -51,21 +51,20 @@ Summary to keep in §6.4/§8: **39 met, 18 partial, 6 not met, 2 not verified**.
 - [ ] **S-05** — distributed tracing; metrics/logs only today.
 - [ ] **O-04** — automated daily database backups/PITR.
 
-### Not verified (2) — say “not measured”
+### Not verified (0)
 
-- [ ] **P-02** — write API p95 under 800 ms; no write benchmark yet.
-- [ ] **P-04** — 1,000 employees; seed has 13, benchmark uses 500.
+The k6 suite now covers P-02 and P-04.
 
-### Partial (18) — mention by ID, do not overclaim
+### Partial (17) — mention by ID, do not overclaim
 
-The six not-met and two not-verified items are listed above; the groups below contain the remaining 18 partial items.
+The six not-met items are listed above; the groups below contain the remaining 17 partial items.
 
 - [ ] **Frontend/UX (5):** F-07, F-08, F-12, F-22, U-03 — missing job-role/work-location pages, department/location filters and field-level validation.
 - [ ] **Authorization (2):** F-03, F-14 — leave reads are broad; Employees must get own-scope reads.
 - [ ] **Notifications/AI (4):** F-18, F-20, F-21, U-04 — swap eligibility picker, shift-update notifications, understaffed-on-create and preferences.
 - [ ] **Reliability/security (4):** R-03, R-06, A-04, SE-01 — liveness/PDB/replicas, publisher confirms, ingress leave route and TLS.
 - [ ] **Logs (1):** S-04 — JSON logs; current logs are plain text.
-- [ ] **Performance/scale (2):** P-01, P-05 — read p95 at 200 users and 200 distinct users.
+- [ ] **Performance/scale (1):** P-01 — the schedule read passes; the full 1,000-row employee list remains a pagination/caching item.
 
 ## 5. Fast verification commands
 
