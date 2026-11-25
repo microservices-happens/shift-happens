@@ -30,7 +30,7 @@
     "@graphql-codegen/add": "^7.1.1",
     "@graphql-codegen/cli": "^7.4.6",
     "@graphql-codegen/typed-document-node": "^7.2.0",
-    "@graphql-codegen/typescript-operations": "^6.2.0",
+    "@graphql-codegen/typescript-operations": "^7.0.2",
     "@playwright/test": "^1.65.1",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
