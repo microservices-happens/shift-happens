@@ -29,7 +29,25 @@ spec:
     name: notification-service
   minReplicaCount: 1
   maxReplicaCount: 4
-  cooldownPeriod: 60
+  # Short poll/cooldown make the local autoscaling demo observable in a 10-minute
+  # Grafana window; in production these should be tuned to the consumer's SLA.
+  pollingInterval: 5
+  cooldownPeriod: 30
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 15
+        scaleDown:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 15
   triggers:
     - type: rabbitmq
       metadata:

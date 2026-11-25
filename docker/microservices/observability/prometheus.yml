@@ -26,6 +26,12 @@ scrape_configs:
     static_configs:
       - targets: ["host.docker.internal:32073"]
 
+  # Kubernetes Deployment replica counts for the autoscaling dashboard. KEDA gives
+  # the queue length; kube-state-metrics gives the number of ready pods.
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["host.docker.internal:32080"]
+
   - job_name: identity-service
     metrics_path: /prometheus
     static_configs:

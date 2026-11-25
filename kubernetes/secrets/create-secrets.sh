@@ -37,7 +37,7 @@ if $generate; then
   else
     while IFS= read -r line || [ -n "$line" ]; do
       if [[ "$line" == *=CHANGE_ME ]]; then
-        echo "${line%%=*}=$(openssl rand -hex 24)"
+        echo "${line%%=*}=$(openssl rand -hex 20)"
       else
         echo "$line"
       fi

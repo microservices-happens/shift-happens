@@ -237,3 +237,37 @@ kubectl -n shift-happens get jobs
 The live Grafana dashboard is <http://localhost:3001/d/shift-happens-live>; Prometheus is
 <http://localhost:9090>.
 
+## 9. Queue-based autoscaling demo (Kubernetes)
+
+The `notification-service` ScaledObject is the clearest scaling demonstration: 1–4 replicas, target
+50 ready messages on `notification.events`. The replica count is exported by kube-state-metrics and
+the queue length by the KEDA RabbitMQ scaler.
+
+```powershell
+# One-time setup on the local cluster
+kubectl apply -n shift-happens -f kubernetes/observability/kube-state-metrics.yaml
+kubectl -n shift-happens rollout status deployment/kube-state-metrics
+curl.exe -X POST http://localhost:9090/-/reload
+
+# Install the AMQP client once, then publish 50,000 valid assignment events.
+python -m pip install pika
+.\scripts\notification-burst.ps1 -Count 50000
+
+# Watch the result
+kubectl -n shift-happens get pods -l app=notification-service -w
+kubectl -n shift-happens get hpa keda-hpa-notification-service -w
+```
+
+Open panel 19 in Grafana:
+
+```text
+http://localhost:3001/d/shift-happens-live?viewPanel=19
+```
+
+Expected: the orange queue line rises to tens of thousands, the blue ready-pod line steps from
+**1 to 3 to 4**, the queue falls while the extra replicas are alive, and the blue line returns to
+**1** after the cooldown. The captured evidence is
+[`images/observability/autoscaling-queue-vs-pods.png`](images/observability/autoscaling-queue-vs-pods.png).
+The script publishes valid `scheduling.assignment.created.v1` envelopes to employee 9999, which is
+not in the workforce replica, so it does not create e-mail traffic.
+

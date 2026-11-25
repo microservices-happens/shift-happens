@@ -9,6 +9,9 @@ This README is the **installation procedure**: from `git clone` to a running sta
 Compose (development) and on a local Kubernetes cluster (production-like). The design is in
 [docs/architecture.md](docs/architecture.md).
 
+**In a hurry?** Use the one-page teammate guide: [setup.md](setup.md) — Compose start, demo logins,
+Grafana/Prometheus/Tempo/Loki, RabbitMQ and an optional Kubernetes section.
+
 > The original monolith (databases course) is still in the repository as reference only. Its
 > documentation has moved to [docs/old/monolith-README.md](docs/old/monolith-README.md); see
 > [Legacy: the monolith](#legacy-the-monolith) at the end. Nothing below uses it.
@@ -108,7 +111,7 @@ cp .env.example .env
    replace it with a random one, for example the output of:
 
    ```bash
-   openssl rand -hex 24
+   openssl rand -hex 20
    ```
 
    Changing the pepper later makes every stored password hash invalid (start over with
@@ -490,6 +493,7 @@ source scripts/docker-env.sh
 | API smoke (full stack running) | `node scripts/api-smoke.mjs` |
 | Load test (full stack running) | `node scripts/load-schedule.mjs` |
 | KEDA email burst (Kubernetes RabbitMQ) | `node scripts/keda-email-burst.mjs 500` |
+| KEDA notification autoscaling demo (Kubernetes) | `python -m pip install pika` then `.\scripts\notification-burst.ps1 -Count 50000` |
 
 `<service>` is a folder name in `services/`: `identity-service`, `workforce-service`,
 `scheduling-service`, `leave-service`, `ai-service`, `notification-service`, `audit-service`.
@@ -551,6 +555,9 @@ More: [kubernetes/README.md](kubernetes/README.md) (logs, image updates, known d
 Compose) and [docs/ci-demo.md](docs/ci-demo.md) (CI).
 
 ## Further documentation
+
+- [docs/course-requirements.md](docs/course-requirements.md): course-level compliance matrix for the final project description.
+- [docs/v1.1-backlog.md](docs/v1.1-backlog.md): the 65 product requirements, v1.0 status and deliberate v1.1 deferrals.
 
 - [docs/architecture.md](docs/architecture.md): requirements, service decomposition, patterns,
   deployment, CI/CD, testing, monitoring, versioning.

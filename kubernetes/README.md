@@ -12,11 +12,12 @@ kubernetes/
   <service>/         deployment.yaml, service.yaml
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
-  otel-collector/    + configmap.yaml (Kubernetes OTLP pipelines)
+  otel-collector/    + configmap.yaml (Kubernetes OTLP pipelines; copy of docker/microservices/otel-collector.yml)
   tempo/, loki/, prometheus/, grafana/  local observability stack
-  autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob)
+  autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
   metrics-server/    install note for the metrics API used by the HPAs
-  infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server, observability)
+  observability/     kube-state-metrics (Deployment replica metrics for the Grafana autoscaling panel)
+  infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server)
   namespace.yaml     the shift-happens namespace
   ingress.yaml       ingress-nginx rules, same paths as the Compose Caddyfile
 ```
@@ -35,11 +36,11 @@ Cluster add-ons used by autoscaling (install once):
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml
-kubectl -n kube-system patch deployment metrics-server --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl -n kube-system patch deployment metrics-server --type=json --patch '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
 # KEDA: see autoscaling/README.md
 # ingress-nginx: see infrastructure/README.md
 ```
+> On Windows PowerShell the kubectl commands are single-line. PowerShell does not use a backslash as a line continuation; use the one-line --patch form shown above.
 
 ## Secrets (once per cluster, before the first deploy)
 
@@ -50,6 +51,12 @@ git-ignored files in `kubernetes/secrets/`:
 ```bash
 kubectl apply -f kubernetes/namespace.yaml
 NAMESPACE=shift-happens bash kubernetes/secrets/create-secrets.sh --generate
+```
+On Windows PowerShell, run the shell script through Git Bash (Git for Windows includes `bash` and `openssl`):
+
+```powershell
+$env:NAMESPACE='shift-happens'
+& 'C:\Program Files\Git\bin\bash.exe' kubernetes/secrets/create-secrets.sh --generate
 ```
 
 `--generate` writes `kubernetes/secrets/secrets.env` (from `secrets.env.example`, every `CHANGE_ME`
@@ -83,7 +90,7 @@ hosts and other non-sensitive settings stay as plain env or in the `service-env`
 their password when the data directory is first initialised, and the hostPath PVs keep that data.
 Either put the old compose dev passwords (`identity_dev`, `shift_dev`, ...) into `secrets.env`
 before running the script, or wipe the data (see Teardown) so the new random passwords are used.
-A new `PASSWORD_PEPPER` invalidates stored password hashes; reuse the old pepper to keep them.
+A new `PASSWORD_PEPPER` invalidates stored password hashes; reuse the old pepper to keep them. The script generates a 40-character (20-byte) pepper; do not use a longer value, because identity hashes a dummy password of 25 bytes and BCrypt rejects inputs over 72 bytes.
 The old shared Secret is no longer referenced: `kubectl delete secret shift-happens-secrets`.
 
 **Existing RabbitMQ data and the dead-letter fix.** Queues and bindings are durable and live in the hostPath
@@ -105,10 +112,36 @@ kubectl apply -n shift-happens -R -f kubernetes/
 kubectl get pods -w          # wait until everything is Running and 1/1 Ready
 ```
 
+The optional KEDA metrics bridge is kept as `autoscaling/keda-metrics-nodeport.yaml.example`: it belongs to the `keda` namespace, so the recursive app deploy does not apply it. Apply it separately with `kubectl apply -n keda -f kubernetes/autoscaling/keda-metrics-nodeport.yaml.example` if Compose Prometheus scrapes KEDA.
+
 App pods may restart a few times until their database and RabbitMQ are up. That is expected.
 A pod stuck in `CreateContainerConfigError` means its Secret is missing: run
 `kubernetes/secrets/create-secrets.sh` (see above). `kubectl apply -n shift-happens -R -f kubernetes/` only reads
 `.yaml`/`.json` files, so the script and the env template in `kubernetes/secrets/` are ignored by it.
+
+
+
+## Seed demo data
+
+After the services are Ready, load the same demo data as Compose. The seed writes events to the outbox, so the other services build their replicas normally.
+
+```bash
+kubectl -n shift-happens exec -i deployment/workforce-db -- sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < services/workforce-service/seed/dev-seed.sql
+```
+
+PowerShell equivalent:
+
+```powershell
+Get-Content -Raw services/workforce-service/seed/dev-seed.sql | kubectl -n shift-happens exec -i deployment/workforce-db -- sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+Then sign in with the `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from `secrets.env`. The seed creates accounts but does not set passwords for the other demo users. To give them the same demo password, log in as the bootstrap admin once and set each account through the identity API:
+
+```powershell
+$login = Invoke-RestMethod -SkipCertificateCheck -Method Post -Uri 'https://localhost:30443/api/v1/auth/login' -ContentType 'application/json' -Body '{"email":"admin@shift-happens.example","password":"<bootstrap-password>"}'
+$h = @{ Authorization = "Bearer $($login.token)" }
+2..11 + 13 | ForEach-Object { Invoke-RestMethod -SkipCertificateCheck -Method Put -Uri "https://localhost:30443/api/v1/auth/accounts/$_/password" -Headers $h -ContentType 'application/json' -Body '{"password":"Demo1234!"}' | Out-Null }
+```
 
 ## Status
 
@@ -220,5 +253,6 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
   A real cluster would add encryption at rest or an external secret store (Sealed Secrets, External
   Secrets Operator); the per-service split and key names stay the same.
 - Autoscaling: metrics-server + CPU HPA for the query roles/frontend, KEDA for the notification
-  consumer and the email ScaledJob; see `autoscaling/README.md` and `metrics-server/README.md`.
-  The observability stack runs in Compose for the demo.
+  consumer and the email ScaledJob, and kube-state-metrics for the replica series in Grafana; see
+  `autoscaling/README.md` and `metrics-server/README.md`. The observability stack runs in Compose
+  for the demo; Prometheus scrapes KEDA (NodePort 32073) and kube-state-metrics (NodePort 32080).
