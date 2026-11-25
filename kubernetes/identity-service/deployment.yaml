@@ -71,7 +71,7 @@ spec:
                   name: identity-service-secrets
                   key: BOOTSTRAP_ADMIN_PASSWORD
             - name: OIDC_REDIRECT_BASE_URL
-              value: "https://localhost:8443/api/v1/auth/oidc"
+              value: "https://localhost:30443/api/v1/auth/oidc"
             - name: OIDC_GOOGLE_CLIENT_ID
               value: ""
             - name: OIDC_GOOGLE_CLIENT_SECRET
@@ -86,8 +86,22 @@ spec:
                 secretKeyRef:
                   name: identity-service-secrets
                   key: OIDC_GITHUB_CLIENT_SECRET
+            # Keycloak is reached by the browser through the Caddy gateway on 30443, but
+            # identity-service calls token/JWKS internally through the keycloak Service.
+            - name: OIDC_LOCAL_CLIENT_ID
+              value: "shift-happens-web"
+            - name: OIDC_LOCAL_CLIENT_SECRET
+              value: ""
+            - name: OIDC_LOCAL_AUTHORIZATION_URI
+              value: "https://localhost:30443/realms/shift-happens/protocol/openid-connect/auth"
+            - name: OIDC_LOCAL_TOKEN_URI
+              value: "http://keycloak:8080/realms/shift-happens/protocol/openid-connect/token"
+            - name: OIDC_LOCAL_JWK_SET_URI
+              value: "http://keycloak:8080/realms/shift-happens/protocol/openid-connect/certs"
+            - name: OIDC_LOCAL_ISSUER
+              value: "https://localhost:30443/realms/shift-happens"
             - name: FRONTEND_LOGIN_CALLBACK_URL
-              value: "https://localhost:8443/login/callback"
+              value: "https://localhost:30443/login/callback"
           readinessProbe:
             httpGet:
               path: /health

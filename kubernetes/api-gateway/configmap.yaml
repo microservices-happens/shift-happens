@@ -82,6 +82,14 @@ data:
         }
       }
 
+      # Keycloak is exposed through the same HTTPS origin as the app, so the OIDC issuer
+      # (https://localhost:30443/realms/shift-happens) works for both browser and identity-service.
+      @keycloak path /realms/* /resources/* /admin/*
+      handle @keycloak {
+        # No active health check here: Keycloak has no /health endpoint on 8080.
+        reverse_proxy keycloak:8080
+      }
+
       # Named (not a bare path) so Caddy keeps it after the routes above.
       @unknownApi path /api /api/*
       handle @unknownApi {

@@ -12,6 +12,7 @@ kubernetes/
   <service>/         deployment.yaml, service.yaml
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
+  keycloak/           local OIDC provider: Deployment, Service and realm ConfigMap
   otel-collector/    + configmap.yaml (Kubernetes OTLP pipelines; copy of docker/microservices/otel-collector.yml)
   tempo/, loki/, prometheus/, grafana/  local observability stack
   autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
@@ -81,6 +82,7 @@ files and prints secret names and keys without touching the cluster.
 | `ai-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | ai-service, ai-db |
 | `email-function-secrets` | `RABBITMQ_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` | email-function |
 | `grafana-secrets` | `GRAFANA_ADMIN_PASSWORD` | Grafana |
+| `keycloak-secrets` | `KEYCLOAK_ADMIN_PASSWORD` | Keycloak |
 
 Secret keys are the env var names from `docker-compose.microservices.yml` (databases map
 `DB_PASSWORD`/`MONGO_PASSWORD` onto `POSTGRES_PASSWORD`/`MONGO_INITDB_ROOT_PASSWORD`). Usernames,
@@ -149,6 +151,38 @@ $h = @{ Authorization = "Bearer $($login.token)" }
 kubectl -n shift-happens get pods,svc,pvc
 kubectl get pv
 ```
+
+## Viewing the whole stack in Docker Desktop
+
+Docker Desktop's **Containers** view only groups containers that belong to a Compose project.
+Kubernetes pods are created by kubelet, not Compose, so they do not carry
+`com.docker.compose.project`; a pod template has no field that sets Docker container labels. The
+pods therefore stay as individual `k8s_...` rows in **Containers**, next to the Compose project.
+This is a Docker Desktop limitation, not a problem with the manifests.
+
+The grouped view is the built-in **Kubernetes** view:
+
+1. Open **Docker Desktop → Kubernetes**.
+2. Select namespace **`shift-happens`** in the namespace selector.
+3. Docker Desktop lists the pods, services and deployments of the application together; nothing
+   from the Compose stack or `kube-system` is mixed in.
+
+`kubectl` can be pointed at the same namespace once, so terminal commands no longer need `-n`:
+
+```bash
+kubectl config set-context --current --namespace=shift-happens
+kubectl get pods,deploy,svc
+```
+
+Lens uses the same namespace. For a report screenshot, open **Workloads → Pods** (or
+**Deployments**) with namespace `shift-happens` selected; that is the Kubernetes equivalent of the
+Compose project row.
+
+> The only way to make Kubernetes workloads appear as a Compose project in **Containers** would be
+> to run the cluster inside a Compose-managed Docker container (kind/k3d) and accept that the pods
+> are then no longer visible as individual Docker containers. The delivered manifests intentionally
+> use Docker Desktop Kubernetes, so the Kubernetes view is the supported way to see the stack as one
+> unit.
 
 ## Observability stack
 
@@ -225,13 +259,16 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 | rabbitmq management UI | NodePort 31672 (`rabbitmq-management`) | http://localhost:31672 (user `shift`, password `RABBITMQ_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | mailpit UI | NodePort 30025 (`mailpit-ui`) | http://localhost:30025 |
 | Grafana | NodePort 30300 | http://localhost:30300 |
+| Keycloak admin | via `api-gateway` NodePort 30443 | https://localhost:30443/admin/ (user `admin`, password `KEYCLOAK_ADMIN_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | everything else | ClusterIP | not reachable from localhost; use `kubectl port-forward svc/<name> <local>:<port>` |
 
 ## Known issues / differences from compose
 
-- **OIDC callback URLs** (`OIDC_REDIRECT_BASE_URL`, `FRONTEND_LOGIN_CALLBACK_URL` on identity-service)
-  are copied from compose and still say `https://localhost:8443`. Through the NodePort the gateway is
-  on `:30443`, so Google/GitHub login redirects go to the wrong port. Local password login is unaffected.
+- **Local OIDC** is exposed through the same `api-gateway` on `https://localhost:30443`. The
+  identity-service callback URLs, Keycloak issuer and realm redirect URI all use port **30443**.
+  Keycloak calls its token/JWKS endpoints internally through `http://keycloak:8080`; the browser
+  never needs a separate Keycloak port. The realm is imported from
+  `docker/microservices/local-oidc/realm.json` through the `keycloak-realm` ConfigMap.
 - **Ollama** runs as a Deployment with a ClusterIP Service. The AI service uses
   `http://ollama:11434` in the same namespace. Load the default model after the Deployment is ready:
 

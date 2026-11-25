@@ -174,9 +174,28 @@ Wait until all pods are `Running`/`Ready`. Seed the same 13 demo employees with 
 | What | URL |
 |---|---|
 | Frontend / gateway | <https://localhost:30443> |
+| Keycloak admin | <https://localhost:30443/admin/> (`admin` / `KEYCLOAK_ADMIN_PASSWORD` from `kubernetes/secrets/secrets.env`) |
 | Grafana | <http://localhost:30300> |
 | RabbitMQ management | <http://localhost:31672> |
 | Mailpit | <http://localhost:30025> |
+
+### Seeing the Kubernetes stack as one group
+
+The Compose stack appears as one project in Docker Desktop's **Containers** view. Kubernetes pods
+cannot join that group: Docker Desktop groups Compose projects by `com.docker.compose.project`, and
+Kubernetes pods are created by kubelet without that label. They stay as individual `k8s_...` rows.
+
+Use Docker Desktop's **Kubernetes** view instead and select namespace **`shift-happens`**; it lists
+the pods, services and deployments of the application together. To make `kubectl` use the same
+namespace by default:
+
+```powershell
+kubectl config set-context --current --namespace=shift-happens
+kubectl get pods,deploy,svc
+```
+
+Lens works the same way (namespace `shift-happens`). The detailed explanation and the kind/k3d
+alternative are in [`kubernetes/README.md`](kubernetes/README.md#viewing-the-whole-stack-in-docker-desktop).
 
 The Kubernetes application uses GHCR images, not your local uncommitted code. Use Compose if you are
 changing Java or frontend code.
