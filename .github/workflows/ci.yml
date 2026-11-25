@@ -166,7 +166,7 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
       - uses: docker/setup-buildx-action@v3
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
           # Swagger UI serves the hand-written contract, which lives outside the service directory.
@@ -201,7 +201,7 @@ jobs:
 
       - name: Push the image (amd64 + arm64)
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ contains(matrix.service, 'function') && 'functions' || 'services' }}/${{ matrix.service }}
           # Swagger UI serves the hand-written contract, which lives outside the service directory.
@@ -285,7 +285,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push the image (amd64 + arm64)
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           file: frontend/Dockerfile.microservices
