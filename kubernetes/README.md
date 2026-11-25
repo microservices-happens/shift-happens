@@ -152,6 +152,38 @@ kubectl -n shift-happens get pods,svc,pvc
 kubectl get pv
 ```
 
+## Viewing the whole stack in Docker Desktop
+
+Docker Desktop's **Containers** view only groups containers that belong to a Compose project.
+Kubernetes pods are created by kubelet, not Compose, so they do not carry
+`com.docker.compose.project`; a pod template has no field that sets Docker container labels. The
+pods therefore stay as individual `k8s_...` rows in **Containers**, next to the Compose project.
+This is a Docker Desktop limitation, not a problem with the manifests.
+
+The grouped view is the built-in **Kubernetes** view:
+
+1. Open **Docker Desktop → Kubernetes**.
+2. Select namespace **`shift-happens`** in the namespace selector.
+3. Docker Desktop lists the pods, services and deployments of the application together; nothing
+   from the Compose stack or `kube-system` is mixed in.
+
+`kubectl` can be pointed at the same namespace once, so terminal commands no longer need `-n`:
+
+```bash
+kubectl config set-context --current --namespace=shift-happens
+kubectl get pods,deploy,svc
+```
+
+Lens uses the same namespace. For a report screenshot, open **Workloads → Pods** (or
+**Deployments**) with namespace `shift-happens` selected; that is the Kubernetes equivalent of the
+Compose project row.
+
+> The only way to make Kubernetes workloads appear as a Compose project in **Containers** would be
+> to run the cluster inside a Compose-managed Docker container (kind/k3d) and accept that the pods
+> are then no longer visible as individual Docker containers. The delivered manifests intentionally
+> use Docker Desktop Kubernetes, so the Kubernetes view is the supported way to see the stack as one
+> unit.
+
 ## Observability stack
 
 The Kubernetes stack runs Tempo, Loki, Prometheus and Grafana. Grafana provisions these

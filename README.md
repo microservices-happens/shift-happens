@@ -405,6 +405,18 @@ kubectl get pv,pvc           # every PVC Bound
 
 The readiness probes call `GET /health` on each service, so `READY 1/1` means `/health` answers.
 
+The Kubernetes stack is grouped in Docker Desktop's **Kubernetes** view, not in the **Containers**
+view. Select namespace **`shift-happens`** there to see all pods, services and deployments together.
+Docker Desktop only groups Compose projects in **Containers**; Kubernetes pods do not carry the
+`com.docker.compose.project` label. To make `kubectl` use the namespace by default:
+
+```bash
+kubectl config set-context --current --namespace=shift-happens
+```
+
+See [kubernetes/README.md](kubernetes/README.md#viewing-the-whole-stack-in-docker-desktop) for the
+full explanation.
+
 **Docker Desktop** forwards NodePorts to localhost:
 
 | What | URL |
@@ -449,9 +461,11 @@ accounts. Then log in at `https://localhost:30443/login` (or your node address) 
 `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` from `kubernetes/secrets/secrets.env`. The admin
 can set other accounts' passwords with `PUT /api/v1/auth/accounts/{employeeId}/password`.
 
-Google/GitHub login does not work on this setup yet: the callback URLs in
-`kubernetes/identity-service/deployment.yaml` say `https://localhost:8443`, while the gateway is on
-`30443` (kubernetes/README.md, "Known issues"). Local password login is unaffected.
+Local Keycloak login works with the same `https://localhost:30443` gateway: use **Local demo
+(Keycloak)** on the login page, or open the admin console at `https://localhost:30443/admin/`.
+Google/GitHub login still needs client IDs and secrets in `kubernetes/secrets/secrets.env`; the
+callback base is already `https://localhost:30443/api/v1/auth/oidc`, so register the matching
+redirect URIs with those providers. Password and Local demo login work without that setup.
 
 ### 3.6 Logs, updates and teardown
 

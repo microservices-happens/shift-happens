@@ -117,10 +117,9 @@ namespace.
 | Mailpit | http://localhost:30025 | `kubectl port-forward svc/mailpit 8025:8025` |
 | Anything else | not exposed | `kubectl port-forward svc/<name> <local>:<port>` |
 
-Google/GitHub login: the identity Deployment still has the compose callback URLs on port 8443
-(`OIDC_REDIRECT_BASE_URL`, `FRONTEND_LOGIN_CALLBACK_URL`), so through NodePort 30443 the redirect goes
-to the wrong port. Port-forwarding the gateway to 8443 (above) matches them, as long as the Compose
-gateway is not also using 8443. Password login works either way.
+Google/GitHub login needs the provider client IDs and secrets in `kubernetes/secrets/`; the callback
+base is `https://localhost:30443/api/v1/auth/oidc`, so register the matching redirect URIs with the
+provider. Local password login and the local Keycloak demo work without that setup.
 
 Health check of one service from inside the cluster:
 
