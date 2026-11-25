@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -33,6 +35,8 @@ import java.util.regex.Pattern;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(CorrelationIdFilter.class);
+
     public static final String HEADER = "X-Correlation-Id";
     public static final String MDC_KEY = "correlationId";
 
@@ -45,11 +49,22 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         String correlationId = correlationIdOf(request.getHeader(HEADER));
         MDC.put(MDC_KEY, correlationId);
         response.setHeader(HEADER, correlationId);
+        long startedAt = System.nanoTime();
         try {
             chain.doFilter(new CorrelatedRequest(request, correlationId), response);
         } finally {
+            // Omit probe and scrape traffic; the remaining lines are the useful request log for Loki.
+            if (isApplicationRequest(request.getRequestURI())) {
+                log.info("{} {} -> {} ({} ms)", request.getMethod(), request.getRequestURI(),
+                        response.getStatus(), (System.nanoTime() - startedAt) / 1_000_000);
+            }
             MDC.remove(MDC_KEY);
         }
+    }
+
+    private static boolean isApplicationRequest(String uri) {
+        return !(uri.equals("/health") || uri.startsWith("/health/")
+                || uri.equals("/prometheus") || uri.startsWith("/metrics"));
     }
 
     static String correlationIdOf(String header) {

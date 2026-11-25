@@ -17,7 +17,7 @@ kubernetes/
   tempo/, loki/, prometheus/, grafana/  local observability stack
   autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
   metrics-server/    install note for the metrics API used by the HPAs
-  observability/     kube-state-metrics (Deployment replica metrics for the Grafana autoscaling panel)
+  observability/     kube-state-metrics (Deployment and pod/version metrics for Grafana)
   infrastructure/    cluster add-ons (ingress-nginx, KEDA, metrics-server)
   namespace.yaml     the shift-happens namespace
   ingress.yaml       ingress-nginx rules, same paths as the Compose Caddyfile
@@ -219,6 +219,54 @@ The Actions tab shows when the `ci` run on main has finished pushing.
 
 **Republish everything** (first setup, or after a base-image update): Actions → `ci` → Run workflow,
 branch `main`, `services` = `all`.
+
+## Rolling update demo (Grafana)
+
+The Compose Grafana instance (`http://localhost:3001`) scrapes kube-state-metrics and Loki from the
+Kubernetes stack, so it can show a version-aware Kubernetes rollout next to live application logs.
+The dashboard is **Shift Happens — Kubernetes rollout & live logs**.
+
+```powershell
+# identity-service is prepared at 3 x v1.0.0, then rolled to 3 x v1.0.1.
+# The default pause is 60 s; use -PauseSeconds 0 to let it run through.
+.\scripts\kubernetes-rollout-demo.ps1 `
+  -Deployment identity-service `
+  -FromVersion v1.0.0 `
+  -ToVersion v1.0.1 `
+  -Replicas 3 `
+  -PauseSeconds 60
+
+# Generate request logs in Identity and Workforce for the same dashboard.
+.\scripts\live-log-demo.ps1 -Gateway https://localhost:8443 -Count 12
+```
+
+Open <http://localhost:3001/d/shift-happens-kubernetes-rollout>. The **Pods by version** panel
+counts Running pods from `kube_pod_labels` and shows the intended sequence:
+
+| Phase | v1.0.0 | v1.0.1 | Total pods |
+|---|---:|---:|---:|
+| Baseline | 3 | 0 | 3 |
+| First new pod, rollout paused | 3 | 1 | 4 |
+| Rolling replacement | 2 | 2 | 4 |
+| Complete | 0 | 3 | 3 |
+
+The **Replica state** panel shows desired/ready/updated/unavailable and `pods (old + new)`. The script
+adds Grafana annotations for baseline, pause and completion. The captured example is
+[`docs/images/observability/kubernetes-rolling-update.png`](../docs/images/observability/kubernetes-rolling-update.png).
+
+The pause is only a presentation aid: the same Deployment uses the normal rolling-update strategy,
+and `kubectl rollout resume` replaces the remaining old pods. `identity-service` has 3 replicas and
+its pod template carries `version: v1.0.0`; the script patches that label to `v1.0.1`, which creates
+the new ReplicaSet. kube-state-metrics is configured with `--resources=deployments,pods` and
+`--metric-labels-allowlist=pods=[app,version]`.
+
+The live log panel reads `{service=~"identity-service|workforce-service"}` from Loki. The two
+services log one request line per API call (method, path, status, duration and correlation id) and
+skip `/health` and `/prometheus`, so the panel stays useful without probe noise.
+
+> The Kubernetes Grafana at `30300` is the separate in-cluster observability dashboard. The rollout
+> and live-log dashboard is in Compose Grafana because that is where Prometheus and Loki scrape the
+> local cluster.
 
 ## Where the images come from (read this before changing code)
 

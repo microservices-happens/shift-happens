@@ -83,6 +83,11 @@ The Kubernetes dashboard shows application metrics. Kubernetes pod resource usag
 scaling have their own checks in [autoscaling/README.md](autoscaling/README.md). Email telemetry from
 the KEDA ScaledJob still needs a smoke check.
 
+For the **rolling update and live log** demo, use the Compose Grafana at
+<http://localhost:3001/d/shift-happens-kubernetes-rollout>. It reads the Kubernetes
+kube-state-metrics NodePort and the Compose Loki/Promtail streams. The commands and captured
+screenshot are in [README.md](README.md#rolling-update-demo-grafana).
+
 To run the same demo against a seeded local Kubernetes deployment, expose Tempo in another terminal
 with `kubectl -n shift-happens port-forward svc/tempo 3200:3200` and set
 `$env:TRACE_DEMO_GATEWAY = 'https://localhost:30443'` before running the script.
