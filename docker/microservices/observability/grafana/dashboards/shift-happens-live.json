@@ -1,6 +1,6 @@
 {
   "uid": "shift-happens-live",
-  "title": "Shift Happens — Live System",
+  "title": "Shift Happens \u2014 Live System",
   "tags": [
     "shift-happens",
     "microservices",
@@ -221,7 +221,8 @@
           }
         },
         "overrides": []
-      }
+      },
+      "description": "Total 5xx responses in the last minute. This is the error-rate stat of the RED trio, not a separate dashboard; the HighServerErrorRate alert handles the sustained rate."
     },
     {
       "id": 5,
@@ -645,7 +646,7 @@
     {
       "id": 13,
       "type": "timeseries",
-      "title": "KEDA queue demand — email.send",
+      "title": "KEDA queue demand \u2014 email.send",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -847,7 +848,7 @@
     {
       "id": 19,
       "type": "timeseries",
-      "title": "Autoscaling demo — notification.events backlog vs ready pods",
+      "title": "Autoscaling demo \u2014 notification.events backlog vs ready pods",
       "description": "KEDA queue length (left axis) and the number of ready notification-service pods (right axis). Load starts with a burst of scheduling.assignment.created.v1 events; KEDA adds replicas above 50 ready messages, then the queue drains and the HPA scales back to one pod after the cooldown.",
       "datasource": {
         "type": "prometheus",
@@ -976,7 +977,7 @@
     {
       "id": 20,
       "type": "stat",
-      "title": "notification-service — queue now",
+      "title": "notification-service \u2014 queue now",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1025,7 +1026,7 @@
     {
       "id": 21,
       "type": "stat",
-      "title": "notification-service — ready pods now",
+      "title": "notification-service \u2014 ready pods now",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1075,7 +1076,7 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "notification-service — desired vs ready replicas",
+      "title": "notification-service \u2014 desired vs ready replicas",
       "description": "kube-state-metrics shows both the Deployment spec and the pods that passed readiness. A gap means a new pod is starting or failing its probe.",
       "datasource": {
         "type": "prometheus",

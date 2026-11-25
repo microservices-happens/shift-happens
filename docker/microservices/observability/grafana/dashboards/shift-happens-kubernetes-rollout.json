@@ -1,0 +1,161 @@
+{
+  "uid": "shift-happens-kubernetes-rollout",
+  "title": "Shift Happens \u2014 Kubernetes rollout & live logs",
+  "tags": [
+    "shift-happens",
+    "kubernetes",
+    "rollout",
+    "logs"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "deployment",
+        "label": "Deployment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(kube_deployment_spec_replicas{namespace=\"shift-happens\"}, deployment)",
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1,
+        "current": {
+          "text": "identity-service",
+          "value": "identity-service"
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Rollouts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "rolling-update"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Rolling update \u2014 $deployment",
+      "description": "Kubernetes Deployment replica state from kube-state-metrics. During a rollout the desired count stays constant, the total pod count can rise while old and new pods overlap, updated rises as the new ReplicaSet is created, and unavailable should return to zero when the rollout finishes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(kube_deployment_spec_replicas{namespace=\"shift-happens\",deployment=\"$deployment\"})",
+          "legendFormat": "desired"
+        },
+        {
+          "refId": "B",
+          "expr": "max(kube_deployment_status_replicas_ready{namespace=\"shift-happens\",deployment=\"$deployment\"})",
+          "legendFormat": "ready"
+        },
+        {
+          "refId": "C",
+          "expr": "max(kube_deployment_status_replicas_updated{namespace=\"shift-happens\",deployment=\"$deployment\"})",
+          "legendFormat": "updated (new version)"
+        },
+        {
+          "refId": "D",
+          "expr": "max(kube_deployment_status_replicas_unavailable{namespace=\"shift-happens\",deployment=\"$deployment\"})",
+          "legendFormat": "unavailable"
+        },
+        {
+          "refId": "E",
+          "expr": "max(kube_deployment_status_replicas{namespace=\"shift-happens\",deployment=\"$deployment\"})",
+          "legendFormat": "pods (old + new)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "always",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Live logs \u2014 identity-service + workforce-service",
+      "description": "Request logs from the two services. The correlation id is added by CorrelationIdFilter and is visible in the log line when the logging pattern is applied.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\"identity-service|workforce-service\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}

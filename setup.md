@@ -195,6 +195,32 @@ Then open Grafana panel **19**:
 Expected: queue rises, `notification-service` goes `1 → 3 → 4` pods, queue drains, pods return to `1`.
 The detailed runbook is [`kubernetes/autoscaling/README.md`](kubernetes/autoscaling/README.md).
 
+### Kubernetes rolling update and live logs
+
+The rollout dashboard is in **Compose Grafana** (`3001`) because that Prometheus also scrapes the
+Kubernetes kube-state-metrics endpoint. Start with the Compose observability stack running, then:
+
+```powershell
+# New ReplicaSet, paused for 60 s so the old + new pods are visible in Grafana.
+.\scripts\kubernetes-rollout-demo.ps1 -Deployment identity-service -PauseSeconds 60
+
+# Create request logs in Identity and Workforce for the same dashboard.
+.\scripts\live-log-demo.ps1 -Gateway https://localhost:8443 -Count 12
+```
+
+Open:
+
+<http://localhost:3001/d/shift-happens-kubernetes-rollout>
+
+The screenshot is [`docs/images/observability/kubernetes-rolling-update.png`](docs/images/observability/kubernetes-rolling-update.png).
+The panel shows desired, ready, updated, unavailable and **pods (old + new)**; the logs panel shows
+both services with the `log-demo-*` correlation ids. See
+[`kubernetes/README.md`](kubernetes/README.md#rolling-update-demo-grafana) for the full explanation.
+
+> The `5xx / min` is a stat panel on the normal Live System dashboard. It counts 5xx responses in
+> the last minute (`increase(...[1m])`); it is the error-rate part of RED, not a separate dashboard.
+> The `HighServerErrorRate` alert still owns the sustained error-rate check.
+
 ## 7. Stop or reset
 
 ```powershell

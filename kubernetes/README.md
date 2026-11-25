@@ -186,6 +186,40 @@ The Actions tab shows when the `ci` run on main has finished pushing.
 **Republish everything** (first setup, or after a base-image update): Actions → `ci` → Run workflow,
 branch `main`, `services` = `all`.
 
+## Rolling update demo (Grafana)
+
+The Compose Grafana instance (`http://localhost:3001`) scrapes kube-state-metrics and Loki from the
+Kubernetes stack, so it can show a Kubernetes rollout next to live application logs. The dashboards
+are **Shift Happens — Kubernetes rollout & live logs** and the Compose **Shift Happens — Live
+System**.
+
+```powershell
+# One new ReplicaSet, paused briefly so the overlap is visible in Prometheus.
+.\scripts\kubernetes-rollout-demo.ps1 -Deployment identity-service -PauseSeconds 60
+
+# Generate request logs in Identity and Workforce for the same dashboard.
+.\scripts\live-log-demo.ps1 -Gateway https://localhost:8443 -Count 12
+```
+
+Open <http://localhost:3001/d/shift-happens-kubernetes-rollout>. Select the deployment in the
+**Deployment** variable; the panel shows desired, ready, updated, unavailable and the total old +
+new pod count. The script adds Grafana annotations for start, pause and resume so the screenshot
+shows exactly when the rollout happened. The captured example is
+[`docs/images/observability/kubernetes-rolling-update.png`](../docs/images/observability/kubernetes-rolling-update.png).
+
+A durable update can finish between two 15-second kube-state-metrics scrapes. `-PauseSeconds` keeps
+one new pod visible while the old pods keep serving, then resumes the same rollout; it does not
+change the Deployment strategy. The frontend Deployment also sets `minReadySeconds: 30` so a new
+pod is not marked available before it has stayed Ready.
+
+The live log panel reads `{service=~"identity-service|workforce-service"}` from Loki. The two
+services log one request line per API call (method, path, status, duration and correlation id) and
+skip `/health` and `/prometheus`, so the panel stays useful without probe noise.
+
+> The Kubernetes Grafana at `30300` is the separate in-cluster observability dashboard. The rollout
+> and live-log dashboard is in Compose Grafana because that is where Prometheus and Loki scrape the
+> local cluster.
+
 ## Where the images come from (read this before changing code)
 
 - `kubectl apply` makes the cluster **pull our images from GHCR** and the public ones (postgres, mongo,

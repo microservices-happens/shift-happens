@@ -6,6 +6,10 @@ metadata:
     app: frontend
 spec:
   replicas: 1
+  # Keep a new frontend pod non-available for a short, stable window before the
+  # old one is retired. This makes the rolling update observable and avoids
+  # routing traffic to a pod that immediately fails.
+  minReadySeconds: 30
   selector:
     matchLabels:
       app: frontend
