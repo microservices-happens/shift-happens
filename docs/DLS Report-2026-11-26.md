@@ -618,6 +618,7 @@ The production-like environment is a single-node **Docker Desktop Kubernetes** c
 ●      Readiness probes on `/health`, shared non-secret configuration in the `service-env` ConfigMap, and database/RabbitMQ passwords in Kubernetes Secrets created from local files by `kubernetes/secrets/create-secrets.sh`. No secret is committed.
 ●      One PostgreSQL instance per write model, two MongoDB instances for the read models, RabbitMQ with the `shift-happens.events` topic exchange and dead-letter exchange, Mailpit for e-mail capture, and Ollama for local inference.
 ●      A Caddy `api-gateway` Service of type NodePort on **30443** is the supported browser entry point. The optional `kubernetes/ingress.yaml` is not installed by default; its leave routes are incomplete (all leave paths point at `leave-command`), so the Caddy gateway is the documented path.
+●      Keycloak runs as a local OIDC provider and is reached through the same Caddy gateway at `https://localhost:30443/realms/shift-happens`; identity-service calls its token/JWKS endpoints internally through the `keycloak` Service. The browser callback and issuer therefore use port 30443, not the Compose port 8443.
 ●      KEDA 2.17, metrics-server and kube-state-metrics provide the autoscaling signals. KEDA and metrics-server are cluster add-ons; kube-state-metrics is part of `kubernetes/observability/`.
 ●      The full application stack has been applied and smoke-tested locally: all pods are Ready, `https://localhost:30443/health` returns `200`, login returns a JWT, and the demo seed loads 13 employees.
 

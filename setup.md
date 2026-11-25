@@ -174,6 +174,7 @@ Wait until all pods are `Running`/`Ready`. Seed the same 13 demo employees with 
 | What | URL |
 |---|---|
 | Frontend / gateway | <https://localhost:30443> |
+| Keycloak admin | <https://localhost:30443/admin/> (`admin` / `KEYCLOAK_ADMIN_PASSWORD` from `kubernetes/secrets/secrets.env`) |
 | Grafana | <http://localhost:30300> |
 | RabbitMQ management | <http://localhost:31672> |
 | Mailpit | <http://localhost:30025> |

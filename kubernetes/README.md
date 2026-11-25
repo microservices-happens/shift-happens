@@ -12,6 +12,7 @@ kubernetes/
   <service>/         deployment.yaml, service.yaml
   <database>/        + pv.yaml (hostPath PV, storageClassName manual, Retain + PVC)
   api-gateway/       + configmap.yaml (Caddyfile copied from compose)
+  keycloak/           local OIDC provider: Deployment, Service and realm ConfigMap
   otel-collector/    + configmap.yaml (Kubernetes OTLP pipelines; copy of docker/microservices/otel-collector.yml)
   tempo/, loki/, prometheus/, grafana/  local observability stack
   autoscaling/       hpa.yaml (CPU) + keda.yaml (queue-based ScaledObject/ScaledJob) + optional metrics bridge example
@@ -81,6 +82,7 @@ files and prints secret names and keys without touching the cluster.
 | `ai-service-secrets` | `RABBITMQ_PASSWORD`, `DB_PASSWORD` | ai-service, ai-db |
 | `email-function-secrets` | `RABBITMQ_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` | email-function |
 | `grafana-secrets` | `GRAFANA_ADMIN_PASSWORD` | Grafana |
+| `keycloak-secrets` | `KEYCLOAK_ADMIN_PASSWORD` | Keycloak |
 
 Secret keys are the env var names from `docker-compose.microservices.yml` (databases map
 `DB_PASSWORD`/`MONGO_PASSWORD` onto `POSTGRES_PASSWORD`/`MONGO_INITDB_ROOT_PASSWORD`). Usernames,
@@ -225,13 +227,16 @@ cluster in Docker Desktop (Settings → Kubernetes → Reset Kubernetes Cluster)
 | rabbitmq management UI | NodePort 31672 (`rabbitmq-management`) | http://localhost:31672 (user `shift`, password `RABBITMQ_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | mailpit UI | NodePort 30025 (`mailpit-ui`) | http://localhost:30025 |
 | Grafana | NodePort 30300 | http://localhost:30300 |
+| Keycloak admin | via `api-gateway` NodePort 30443 | https://localhost:30443/admin/ (user `admin`, password `KEYCLOAK_ADMIN_PASSWORD` in `kubernetes/secrets/secrets.env`) |
 | everything else | ClusterIP | not reachable from localhost; use `kubectl port-forward svc/<name> <local>:<port>` |
 
 ## Known issues / differences from compose
 
-- **OIDC callback URLs** (`OIDC_REDIRECT_BASE_URL`, `FRONTEND_LOGIN_CALLBACK_URL` on identity-service)
-  are copied from compose and still say `https://localhost:8443`. Through the NodePort the gateway is
-  on `:30443`, so Google/GitHub login redirects go to the wrong port. Local password login is unaffected.
+- **Local OIDC** is exposed through the same `api-gateway` on `https://localhost:30443`. The
+  identity-service callback URLs, Keycloak issuer and realm redirect URI all use port **30443**.
+  Keycloak calls its token/JWKS endpoints internally through `http://keycloak:8080`; the browser
+  never needs a separate Keycloak port. The realm is imported from
+  `docker/microservices/local-oidc/realm.json` through the `keycloak-realm` ConfigMap.
 - **Ollama** runs as a Deployment with a ClusterIP Service. The AI service uses
   `http://ollama:11434` in the same namespace. Load the default model after the Deployment is ready:
 
